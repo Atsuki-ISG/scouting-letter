@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scout Assistant</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <h1>Scout Assistant</h1>
+      <div class="company-select">
+        <label for="company">会社:</label>
+        <select id="company">
+          <option value="ark-visiting-nurse">ark-visiting-nurse</option>
+        </select>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="extract">プロフィール抽出</button>
+      <button class="tab" data-tab="send">送信アシスト</button>
+      <button class="tab" data-tab="conversation">返信・やりとり</button>
+    </nav>
+
+    <!-- Phase 1: 抽出パネル -->
+    <section id="panel-extract" class="panel active">
+      <div class="extraction-controls">
+        <div class="input-group">
+          <label for="extract-count">抽出件数:</label>
+          <input type="number" id="extract-count" value="5" min="1" max="50">
+        </div>
+        <button id="btn-start-extract" class="btn btn-primary">抽出開始</button>
+        <button id="btn-stop-extract" class="btn btn-danger hidden">停止</button>
+      </div>
+
+      <div id="extraction-progress" class="progress-section hidden">
+        <div class="progress-text">
+          進捗: <span id="progress-current">0</span>/<span id="progress-total">0</span>
+        </div>
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div id="extracted-list" class="candidate-list"></div>
+
+      <button id="btn-download-csv" class="btn btn-secondary hidden">
+        CSVダウンロード
+      </button>
+    </section>
+
+    <!-- Phase 3: 送信アシストパネル -->
+    <section id="panel-send" class="panel hidden">
+      <div class="import-controls">
+        <button id="btn-import-csv" class="btn btn-primary">CSVインポート</button>
+        <button id="btn-clear-candidates" class="btn btn-danger">クリア</button>
+      </div>
+
+      <div id="send-progress" class="progress-section hidden">
+        <div class="progress-text">
+          進捗: <span id="send-current">0</span>/<span id="send-total">0</span> 送信済み
+        </div>
+        <div class="progress-bar">
+          <div id="send-progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div id="candidate-list" class="candidate-list"></div>
+
+      <div id="fix-export" class="fix-export hidden">
+        <button id="btn-export-fixes" class="btn btn-secondary btn-block">修正履歴エクスポート</button>
+      </div>
+    </section>
+    <!-- 返信・やりとりパネル -->
+    <section id="panel-conversation" class="panel hidden">
+      <div class="conversation-controls">
+        <button id="btn-extract-conversation" class="btn btn-primary">やりとりを取得</button>
+        <button id="btn-toggle-manual" class="btn btn-secondary">手動入力</button>
+      </div>
+
+      <div id="conversation-status" class="status-message hidden"></div>
+
+      <!-- 手動入力フォーム -->
+      <div id="manual-input-form" class="manual-form hidden">
+        <div class="input-group">
+          <label for="manual-member-id">会員番号:</label>
+          <input type="text" id="manual-member-id" placeholder="例: 03122692">
+        </div>
+        <div class="manual-messages-group">
+          <label for="manual-messages">やりとり内容:</label>
+          <textarea id="manual-messages" class="manual-textarea" placeholder="企業: はじめまして...&#10;求職者: ご連絡ありがとうございます...&#10;企業: ご返信ありがとうございます...&#10;&#10;※日付行（2026-03-01）を挟むと日付が反映されます"></textarea>
+        </div>
+        <button id="btn-save-manual" class="btn btn-primary btn-block">保存</button>
+      </div>
+
+      <div id="conversation-list" class="conversation-list"></div>
+
+      <div class="export-section">
+        <button id="btn-export-all-conversations" class="btn btn-secondary btn-block">全件YAMLエクスポート</button>
+        <button id="btn-export-reply-records" class="btn btn-secondary btn-block">返信スカウト記録エクスポート</button>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="index.ts"></script>
+</body>
+</html>
