@@ -65,11 +65,24 @@ scouting-letter/
 
 ## 修正の反映
 
+### Claude Code内で生成した場合
+
 スカウト文を修正した後、以下のコマンドを実行してナレッジを同期:
 
 ```
 /integrate-feedback [会社名] [会員番号] [修正理由] [修正前後]
 ```
+
+### 一般のAIチャット（ChatGPT、Claude.aiなど）で生成した場合
+
+1. AIが出力した「📝 learnings.md追加用（コピペ用）」セクションをコピー
+2. Claude Codeで以下のコマンドを実行:
+```
+/add-learning
+```
+3. コピーした内容を貼り付け
+
+このコマンドにより、`knowledge/learnings.md` の「改善履歴」セクションに自動的に追加されます。
 
 このコマンドにより：
 1. `history/fixes/YYYY-MM.md` への自動記録
