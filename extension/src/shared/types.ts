@@ -86,6 +86,10 @@ export interface ConversationThread {
   member_id: string;
   company: string;
   started: string;
+  candidate_name?: string;
+  candidate_age?: string;
+  candidate_gender?: string;
+  job_title?: string;
   messages: ConversationMessage[];
 }
 
@@ -120,9 +124,18 @@ export type Message =
   | { type: 'EXTRACTION_ERROR'; error: string }
   | { type: 'GET_OVERLAY_MEMBER_ID' }
   | { type: 'OVERLAY_MEMBER_ID'; memberId: string | null }
-  | { type: 'FILL_FORM'; text: string; memberId?: string }
+  | { type: 'FILL_FORM'; text: string; memberId?: string; jobOfferId?: string; jobOfferName?: string }
   | { type: 'FILL_FORM_RESULT'; success: boolean; error?: string }
   | { type: 'OPEN_SIDE_PANEL' }
   | { type: 'EXTRACT_CONVERSATION' }
+  | { type: 'EXTRACT_ALL_CONVERSATIONS' }
   | { type: 'CONVERSATION_DATA'; thread: ConversationThread }
-  | { type: 'CONVERSATION_ERROR'; error: string };
+  | { type: 'CONVERSATION_PROGRESS'; current: number; total: number; thread: ConversationThread }
+  | { type: 'CONVERSATION_BATCH_COMPLETE'; count: number }
+  | { type: 'CONVERSATION_ERROR'; error: string }
+  | { type: 'START_CONTINUOUS_SEND' }
+  | { type: 'STOP_CONTINUOUS_SEND' }
+  | { type: 'GET_NEXT_CANDIDATE' }
+  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string } | null }
+  | { type: 'CANDIDATE_SENT'; memberId: string }
+  | { type: 'SKIP_CURRENT_CANDIDATE' };

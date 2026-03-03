@@ -46,6 +46,8 @@ scouting-letter/
 
 ## スキルの使い方
 
+### 単体生成（スクリーンショットから1名ずつ）
+
 1. 求職者のプロフィールスクリーンショットを用意
 2. スクリーンショットを貼り付け
 3. `/generate-scout [会社名]` を実行
@@ -55,6 +57,31 @@ scouting-letter/
 ```
 /generate-scout ark-visiting-nurse
 ```
+
+### バッチ生成（CSVから一括）
+
+Chrome拡張で抽出したプロフィールCSVから一括でスカウト文を生成:
+```
+/csv-scout [会社名] [CSVパス]
+/csv-scout ark-visiting-nurse /Users/aki/Downloads/profiles.csv
+```
+
+- 元CSVに `template_type`, `personalized_text`, `full_scout_text` 列を追加して上書き
+- Chrome拡張の「送信アシスト」→「CSVインポート」でそのまま読み込み可能
+- オプション: `resend`（再送）、`seishain`（正社員テンプレート強制）
+
+## 返信分析
+
+蓄積されたやりとりデータを分析し、スカウト改善のナレッジを抽出:
+```
+/analyze-replies [会社名]
+```
+
+分析内容:
+- 返信率・テンプレート別効果
+- パーソナライズ文の傾向分析
+- 求職者の返信パターン分類
+- 改善提案の生成
 
 ## 良い例の保存
 

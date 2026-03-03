@@ -14,9 +14,13 @@ chrome.runtime.onMessage.addListener(
       // サイドパネルからの抽出開始指示 → Content Scriptに転送
       case 'START_EXTRACTION':
       case 'STOP_EXTRACTION': {
+        console.log('[SW] Forwarding', message.type, 'to content script');
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          console.log('[SW] Active tabs:', tabs.length, tabs[0]?.id);
           if (tabs[0]?.id) {
-            chrome.tabs.sendMessage(tabs[0].id, message).catch(() => {});
+            chrome.tabs.sendMessage(tabs[0].id, message).catch((err) => {
+              console.error('[SW] sendMessage failed:', err);
+            });
           }
         });
         sendResponse({ ok: true });
@@ -52,7 +56,8 @@ chrome.runtime.onMessage.addListener(
       }
 
       // メッセージ抽出 → アクティブタブのContent Scriptに転送
-      case 'EXTRACT_CONVERSATION': {
+      case 'EXTRACT_CONVERSATION':
+      case 'EXTRACT_ALL_CONVERSATIONS': {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (tabs[0]?.id) {
             chrome.tabs.sendMessage(tabs[0].id, message, (response) => {
@@ -63,6 +68,19 @@ chrome.runtime.onMessage.addListener(
           }
         });
         return true;
+      }
+
+      // 連続送信: サイドパネル→Content Script
+      case 'START_CONTINUOUS_SEND':
+      case 'STOP_CONTINUOUS_SEND':
+      case 'SKIP_CURRENT_CANDIDATE': {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0]?.id) {
+            chrome.tabs.sendMessage(tabs[0].id, message).catch(() => {});
+          }
+        });
+        sendResponse({ ok: true });
+        return false;
       }
 
       case 'OPEN_SIDE_PANEL': {

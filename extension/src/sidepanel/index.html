@@ -14,6 +14,7 @@
         <label for="company">会社:</label>
         <select id="company">
           <option value="ark-visiting-nurse">ark-visiting-nurse</option>
+          <option value="lcc-visiting-nurse">lcc-visiting-nurse</option>
         </select>
       </div>
     </header>
@@ -53,9 +54,32 @@
 
     <!-- Phase 3: 送信アシストパネル -->
     <section id="panel-send" class="panel hidden">
+      <div class="job-offer-select">
+        <label for="job-offer">対象求人:</label>
+        <select id="job-offer">
+          <option value="">-- 選択してください --</option>
+        </select>
+      </div>
+
       <div class="import-controls">
-        <button id="btn-import-csv" class="btn btn-primary">CSVインポート</button>
+        <button id="btn-import-csv" class="btn btn-primary">CSVファイル</button>
+        <button id="btn-toggle-paste" class="btn btn-secondary">貼り付け</button>
         <button id="btn-clear-candidates" class="btn btn-danger">クリア</button>
+      </div>
+
+      <div id="paste-import" class="paste-import hidden">
+        <textarea id="paste-csv" class="paste-textarea" placeholder="Gemini等から出力されたCSVをここに貼り付け&#10;（コードブロックの中身をそのままペーストしてください）" rows="6"></textarea>
+        <button id="btn-paste-import" class="btn btn-primary btn-block">インポート</button>
+      </div>
+
+      <div class="continuous-send-controls">
+        <label class="toggle-label">
+          <input type="checkbox" id="toggle-continuous">
+          連続送信アシスト
+        </label>
+        <button id="btn-start-continuous" class="btn btn-primary hidden">開始</button>
+        <button id="btn-skip-continuous" class="btn btn-secondary hidden">スキップ</button>
+        <button id="btn-stop-continuous" class="btn btn-danger hidden">停止</button>
       </div>
 
       <div id="send-progress" class="progress-section hidden">
@@ -77,6 +101,7 @@
     <section id="panel-conversation" class="panel hidden">
       <div class="conversation-controls">
         <button id="btn-extract-conversation" class="btn btn-primary">やりとりを取得</button>
+        <button id="btn-batch-extract" class="btn btn-primary">一括取得</button>
         <button id="btn-toggle-manual" class="btn btn-secondary">手動入力</button>
       </div>
 

@@ -144,7 +144,8 @@ export class ExtractionPanel {
     const csv = toCSV(this.profiles, PROFILE_CSV_COLUMNS);
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
-    downloadCSV(csv, `profiles_${dateStr}.csv`);
+    const timeStr = now.toTimeString().slice(0, 5).replace(':', '');
+    downloadCSV(csv, `profiles_${dateStr}_${timeStr}.csv`);
   }
 
   private escapeHtml(text: string): string {

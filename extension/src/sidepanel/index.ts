@@ -4,6 +4,7 @@ import { ImportPanel } from './components/ImportPanel';
 import { ConversationPanel } from './components/ConversationPanel';
 import { storage } from '../shared/storage';
 import { FixRecord } from '../shared/types';
+import { COMPANY_JOB_OFFERS } from '../shared/constants';
 
 /** タブ切替 */
 function setupTabs(): void {
@@ -30,12 +31,67 @@ function setupTabs(): void {
 function setupCompanySelect(): void {
   const select = document.getElementById('company') as HTMLSelectElement;
 
+  // COMPANY_JOB_OFFERSから動的に会社リストを生成
+  const companies = Object.keys(COMPANY_JOB_OFFERS);
+  for (const company of companies) {
+    if (!select.querySelector(`option[value="${company}"]`)) {
+      const option = document.createElement('option');
+      option.value = company;
+      option.textContent = company;
+      select.appendChild(option);
+    }
+  }
+
   storage.getCompany().then((company) => {
     select.value = company;
+    populateJobOffers(company);
   });
 
   select.addEventListener('change', () => {
     storage.setCompany(select.value);
+    populateJobOffers(select.value);
+    // 会社変更時は求人選択をリセット
+    storage.setSelectedJobOffer(null);
+  });
+}
+
+/** 求人ドロップダウンを会社に応じて更新 */
+function populateJobOffers(company: string): void {
+  const select = document.getElementById('job-offer') as HTMLSelectElement;
+  const offers = COMPANY_JOB_OFFERS[company] || [];
+
+  // 既存の選択肢をクリア（プレースホルダー以外）
+  while (select.options.length > 1) {
+    select.remove(1);
+  }
+
+  for (const offer of offers) {
+    const option = document.createElement('option');
+    option.value = offer.id;
+    option.textContent = offer.label;
+    select.appendChild(option);
+  }
+
+  // 保存済みの選択を復元、なければ最初の求人を自動選択
+  storage.getSelectedJobOffer().then((saved) => {
+    if (saved && offers.some((o) => o.id === saved.id)) {
+      select.value = saved.id;
+    } else if (offers.length > 0) {
+      select.value = offers[0].id;
+      storage.setSelectedJobOffer(offers[0]);
+    }
+  });
+}
+
+/** 求人選択 */
+function setupJobOfferSelect(): void {
+  const select = document.getElementById('job-offer') as HTMLSelectElement;
+
+  select.addEventListener('change', async () => {
+    const company = await storage.getCompany();
+    const offers = COMPANY_JOB_OFFERS[company] || [];
+    const selected = offers.find((o) => o.id === select.value);
+    storage.setSelectedJobOffer(selected || null);
   });
 }
 
@@ -101,6 +157,7 @@ function downloadText(content: string, filename: string): void {
 function init(): void {
   setupTabs();
   setupCompanySelect();
+  setupJobOfferSelect();
   setupFixExport();
 
   // 各パネルのインスタンス生成

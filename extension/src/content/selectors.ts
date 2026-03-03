@@ -16,7 +16,7 @@ export const SELECTORS = {
   memberCheckbox: 'input[name="member-select"]',
 
   /** カード内の「スカウトを送る」ボタン */
-  scoutButton: 'button.c-button--secondary',
+  scoutButton: 'button.js-tour-guide-scout-button',
 
   /** サイドカバー（スカウト送信パネル） */
   overlay: '.c-side-cover',
@@ -29,6 +29,12 @@ export const SELECTORS = {
 
   /** 本文テキストエリア */
   scoutTextarea: 'textarea[name="body"]',
+
+  /** スカウト対象求人の隠しinput */
+  jobOfferInput: 'input[name="jobOffer"]',
+
+  /** スカウト対象求人のサジェスト入力欄 */
+  jobOfferSuggestInput: '.c-search-box .c-text-field',
 
   /** プロフィールのDTラベル */
   definitionHead: 'dt',

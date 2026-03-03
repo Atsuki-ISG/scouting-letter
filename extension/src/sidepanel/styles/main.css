@@ -344,6 +344,34 @@ body {
   margin-top: 6px;
 }
 
+/* Continuous send controls */
+.continuous-send-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 6px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  flex: 1;
+}
+
+.toggle-label input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+}
+
 /* Fix export */
 .fix-export {
   margin-top: 16px;
@@ -469,6 +497,30 @@ body {
 }
 
 .manual-textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+/* Paste import */
+.paste-import {
+  padding: 8px 16px;
+}
+
+.paste-textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 100px;
+  margin-bottom: 8px;
+}
+
+.paste-textarea:focus {
   outline: none;
   border-color: #2563eb;
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);

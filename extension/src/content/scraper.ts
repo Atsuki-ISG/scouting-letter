@@ -74,13 +74,27 @@ export function waitForOverlay(): Promise<Element> {
 }
 
 /** サイドカバーが閉じるのを待つ（タイムアウト付き） */
-export function waitForOverlayClose(): Promise<void> {
+export function waitForOverlayClose(timeoutMs = 5000): Promise<void> {
   return new Promise((resolve) => {
     const startTime = Date.now();
+    let sawOpen = false;
     const check = () => {
       const el = document.querySelector(SELECTORS.overlay);
       const hidden = !el || el.classList.contains('u-is-hidden') || (el as HTMLElement).offsetParent === null;
-      if (hidden || Date.now() - startTime > 5000) {
+
+      // まずoverlayが開いている状態を検知する
+      if (!hidden) {
+        sawOpen = true;
+      }
+
+      // overlayが開いた後に閉じた場合のみresolve
+      if (sawOpen && hidden) {
+        resolve();
+        return;
+      }
+
+      // タイムアウト（0なら無限待機）
+      if (timeoutMs > 0 && Date.now() - startTime > timeoutMs) {
         resolve();
         return;
       }

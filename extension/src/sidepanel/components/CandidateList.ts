@@ -1,9 +1,11 @@
 import { CandidateItem, CandidateStatus, FixRecord, Message } from '../../shared/types';
 import { storage } from '../../shared/storage';
+import { COMPANY_JOB_OFFERS } from '../../shared/constants';
 
 export class CandidateList {
   private candidates: CandidateItem[] = [];
   private highlightedMemberId: string | null = null;
+  private continuousSendActive = false;
 
   private listEl: HTMLElement;
   private sendCurrent: HTMLElement;
@@ -18,15 +20,97 @@ export class CandidateList {
     this.sendProgressFill = document.getElementById('send-progress-fill')!;
     this.sendProgressSection = document.getElementById('send-progress')!;
 
-    // overlay会員番号の変更を監視
-    chrome.runtime.onMessage.addListener((msg: Message) => {
+    // overlay会員番号の変更を監視 + 連続送信メッセージ
+    chrome.runtime.onMessage.addListener((msg: Message, _sender, sendResponse) => {
       if (msg.type === 'OVERLAY_MEMBER_ID') {
         this.highlightCandidate(msg.memberId);
+      } else if (msg.type === 'GET_NEXT_CANDIDATE') {
+        const next = this.getNextReadyCandidate();
+        sendResponse({ type: 'NEXT_CANDIDATE', candidate: next });
+        return true;
+      } else if (msg.type === 'CANDIDATE_SENT') {
+        // skipped状態にすでに更新済みならsentに上書きしない
+        const c = this.candidates.find((c) => c.member_id === msg.memberId);
+        if (c && c.status !== 'skipped') {
+          this.updateStatus(msg.memberId, 'sent');
+        }
       }
     });
 
+    // 連続送信UI
+    this.setupContinuousSend();
+
     // 保存済みデータを復元
     this.restore();
+  }
+
+  private getNextReadyCandidate(): { memberId: string; text: string } | null {
+    const candidate = this.candidates.find((c) => c.status === 'ready');
+    if (!candidate) return null;
+    return { memberId: candidate.member_id, text: candidate.full_scout_text };
+  }
+
+  private setupContinuousSend(): void {
+    const toggle = document.getElementById('toggle-continuous') as HTMLInputElement | null;
+    const startBtn = document.getElementById('btn-start-continuous');
+    const skipBtn = document.getElementById('btn-skip-continuous');
+    const stopBtn = document.getElementById('btn-stop-continuous');
+
+    if (!toggle || !startBtn || !stopBtn || !skipBtn) return;
+
+    toggle.addEventListener('change', () => {
+      if (toggle.checked) {
+        startBtn.classList.remove('hidden');
+      } else {
+        startBtn.classList.add('hidden');
+        if (this.continuousSendActive) {
+          this.stopContinuousSend();
+        }
+      }
+    });
+
+    startBtn.addEventListener('click', () => {
+      this.startContinuousSend();
+    });
+
+    skipBtn.addEventListener('click', () => {
+      // 現在ハイライト中の候補者をスキップ
+      if (this.highlightedMemberId) {
+        this.skipCandidate(this.highlightedMemberId);
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      this.stopContinuousSend();
+    });
+  }
+
+  private startContinuousSend(): void {
+    const startBtn = document.getElementById('btn-start-continuous');
+    const skipBtn = document.getElementById('btn-skip-continuous');
+    const stopBtn = document.getElementById('btn-stop-continuous');
+
+    this.continuousSendActive = true;
+    startBtn?.classList.add('hidden');
+    skipBtn?.classList.remove('hidden');
+    stopBtn?.classList.remove('hidden');
+
+    chrome.runtime.sendMessage({ type: 'START_CONTINUOUS_SEND' } satisfies Message);
+  }
+
+  private stopContinuousSend(): void {
+    const startBtn = document.getElementById('btn-start-continuous');
+    const skipBtn = document.getElementById('btn-skip-continuous');
+    const stopBtn = document.getElementById('btn-stop-continuous');
+    const toggle = document.getElementById('toggle-continuous') as HTMLInputElement | null;
+
+    this.continuousSendActive = false;
+    stopBtn?.classList.add('hidden');
+    skipBtn?.classList.add('hidden');
+    startBtn?.classList.add('hidden');
+    if (toggle) toggle.checked = false;
+
+    chrome.runtime.sendMessage({ type: 'STOP_CONTINUOUS_SEND' } satisfies Message);
   }
 
   private async restore(): Promise<void> {
@@ -150,7 +234,7 @@ export class CandidateList {
     div.querySelector('.btn-copy')?.addEventListener('click', () => this.copyToClipboard(candidate));
     div.querySelector('.btn-fill')?.addEventListener('click', () => this.fillForm(candidate));
     div.querySelector('.btn-sent')?.addEventListener('click', () => this.updateStatus(candidate.member_id, 'sent'));
-    div.querySelector('.btn-skip')?.addEventListener('click', () => this.updateStatus(candidate.member_id, 'skipped'));
+    div.querySelector('.btn-skip')?.addEventListener('click', () => this.skipCandidate(candidate.member_id));
 
     return div;
   }
@@ -169,9 +253,33 @@ export class CandidateList {
     }
   }
 
-  private fillForm(candidate: CandidateItem): void {
+  private async fillForm(candidate: CandidateItem): Promise<void> {
+    let jobOffer = await storage.getSelectedJobOffer();
+    // storageにない場合、ドロップダウンの現在値からフォールバック
+    if (!jobOffer) {
+      const select = document.getElementById('job-offer') as HTMLSelectElement | null;
+      if (select && select.value) {
+        const company = await storage.getCompany();
+        const offers = COMPANY_JOB_OFFERS[company] || [];
+        const found = offers.find((o) => o.id === select.value);
+        if (found) {
+          jobOffer = found;
+          await storage.setSelectedJobOffer(found);
+        }
+      }
+    }
+    if (!jobOffer) {
+      alert('対象求人を選択してください');
+      return;
+    }
     chrome.runtime.sendMessage(
-      { type: 'FILL_FORM', text: candidate.full_scout_text, memberId: candidate.member_id } satisfies Message,
+      {
+        type: 'FILL_FORM',
+        text: candidate.full_scout_text,
+        memberId: candidate.member_id,
+        jobOfferId: jobOffer.id,
+        jobOfferName: jobOffer.name,
+      } satisfies Message,
       (response) => {
         if (response && !response.success) {
           alert(response.error || 'フォーム入力に失敗しました');
@@ -209,6 +317,14 @@ export class CandidateList {
       this.candidates[index].personalized_text = trimmed;
       await storage.setCandidates(this.candidates);
       this.render();
+    }
+  }
+
+  private async skipCandidate(memberId: string): Promise<void> {
+    await this.updateStatus(memberId, 'skipped');
+    // 連続送信中はContent Scriptにスキップを通知
+    if (this.continuousSendActive) {
+      chrome.runtime.sendMessage({ type: 'SKIP_CURRENT_CANDIDATE' } satisfies Message);
     }
   }
 

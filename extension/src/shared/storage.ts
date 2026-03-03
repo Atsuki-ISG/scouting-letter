@@ -1,5 +1,5 @@
 import { CandidateItem, CandidateProfile, ConversationThread, FixRecord, ReplyRecord } from './types';
-import { STORAGE_KEYS, DEFAULT_COMPANY } from './constants';
+import { STORAGE_KEYS, DEFAULT_COMPANY, JobOffer } from './constants';
 
 /** chrome.storage.local ラッパー */
 export const storage = {
@@ -101,6 +101,21 @@ export const storage = {
 
   async clearConversations(): Promise<void> {
     await chrome.storage.local.remove(STORAGE_KEYS.CONVERSATIONS);
+  },
+
+  // --- 選択中の求人 ---
+
+  async getSelectedJobOffer(): Promise<JobOffer | null> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.SELECTED_JOB_OFFER);
+    return (result[STORAGE_KEYS.SELECTED_JOB_OFFER] as JobOffer | undefined) || null;
+  },
+
+  async setSelectedJobOffer(offer: JobOffer | null): Promise<void> {
+    if (offer) {
+      await chrome.storage.local.set({ [STORAGE_KEYS.SELECTED_JOB_OFFER]: offer });
+    } else {
+      await chrome.storage.local.remove(STORAGE_KEYS.SELECTED_JOB_OFFER);
+    }
   },
 
   async clear(): Promise<void> {

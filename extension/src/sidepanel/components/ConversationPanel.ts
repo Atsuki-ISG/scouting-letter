@@ -1,12 +1,12 @@
-import { ConversationMessage, ConversationThread, ReplyRecord } from '../../shared/types';
+import { ConversationMessage, ConversationThread, ReplyRecord, Message } from '../../shared/types';
 import { storage } from '../../shared/storage';
 import { toYAML, downloadYAML } from '../../shared/yaml';
 
 /**
  * 返信・やりとりタブのUIコンポーネント
  *
- * - メッセージページからのやりとり取得（Phase B）
- * - 手動入力モード（Phase A）
+ * - メッセージページからのやりとり取得（単体 / 一括）
+ * - 手動入力モード
  * - 保存済みやりとり一覧
  * - YAML個別/一括エクスポート
  * - 返信スカウト記録エクスポート
@@ -14,18 +14,38 @@ import { toYAML, downloadYAML } from '../../shared/yaml';
 export class ConversationPanel {
   private listEl: HTMLElement;
   private manualFormEl: HTMLElement;
+  private isBatchRunning = false;
 
   constructor() {
     this.listEl = document.getElementById('conversation-list')!;
     this.manualFormEl = document.getElementById('manual-input-form')!;
 
     this.setupExtractButton();
+    this.setupBatchExtractButton();
     this.setupManualInput();
     this.setupExportButtons();
+    this.setupMessageListener();
     this.loadConversations();
   }
 
-  /** やりとりを取得ボタン */
+  /** Content Scriptからの進捗メッセージを受信 */
+  private setupMessageListener(): void {
+    chrome.runtime.onMessage.addListener((message: Message) => {
+      switch (message.type) {
+        case 'CONVERSATION_PROGRESS': {
+          const { current, total, thread } = message;
+          this.handleBatchProgress(current, total, thread);
+          break;
+        }
+        case 'CONVERSATION_BATCH_COMPLETE': {
+          this.handleBatchComplete(message.count);
+          break;
+        }
+      }
+    });
+  }
+
+  /** やりとりを取得ボタン（単体） */
   private setupExtractButton(): void {
     const btn = document.getElementById('btn-extract-conversation');
     btn?.addEventListener('click', async () => {
@@ -35,13 +55,15 @@ export class ConversationPanel {
       try {
         const response = await chrome.runtime.sendMessage({ type: 'EXTRACT_CONVERSATION' });
         if (response?.type === 'CONVERSATION_DATA' && response.thread) {
+          if (!response.thread.company) {
+            response.thread.company = this.getCompanyFromUI();
+          }
           await storage.addConversation(response.thread);
           await this.loadConversations();
           this.showStatus('やりとりを保存しました');
         } else {
           const errorMsg = response?.error || '抽出に失敗しました';
           this.showStatus(errorMsg, true);
-          // 手動入力フォームを表示
           this.manualFormEl.classList.remove('hidden');
         }
       } catch {
@@ -52,6 +74,65 @@ export class ConversationPanel {
         btn.textContent = 'やりとりを取得';
       }
     });
+  }
+
+  /** 一括取得ボタン */
+  private setupBatchExtractButton(): void {
+    const btn = document.getElementById('btn-batch-extract');
+    if (!btn) return;
+
+    btn.addEventListener('click', async () => {
+      if (this.isBatchRunning) {
+        // 中断
+        await chrome.runtime.sendMessage({ type: 'STOP_EXTRACTION' });
+        this.isBatchRunning = false;
+        btn.textContent = '一括取得';
+        btn.classList.remove('btn-danger');
+        this.showStatus('一括取得を中断しました');
+        return;
+      }
+
+      btn.textContent = '中断';
+      btn.classList.add('btn-danger');
+      this.isBatchRunning = true;
+      this.showStatus('一括取得を開始しています...', false);
+
+      try {
+        const response = await chrome.runtime.sendMessage({ type: 'EXTRACT_ALL_CONVERSATIONS' });
+        if (response?.type === 'CONVERSATION_ERROR') {
+          this.showStatus(response.error, true);
+          this.resetBatchButton(btn);
+        }
+        // 成功時は非同期で進捗が来る（setupMessageListenerで処理）
+      } catch {
+        this.showStatus('Content Scriptと通信できません。', true);
+        this.resetBatchButton(btn);
+      }
+    });
+  }
+
+  /** 一括取得の進捗処理 */
+  private async handleBatchProgress(current: number, total: number, thread: ConversationThread): Promise<void> {
+    if (!thread.company) {
+      thread.company = this.getCompanyFromUI();
+    }
+    await storage.addConversation(thread);
+    await this.loadConversations();
+    this.showStatus(`取得中... ${current}/${total}件 (${thread.member_id})`, false);
+  }
+
+  /** 一括取得完了 */
+  private handleBatchComplete(count: number): void {
+    const btn = document.getElementById('btn-batch-extract');
+    if (btn) this.resetBatchButton(btn);
+    this.showStatus(`一括取得完了: ${count}件のやりとりを保存しました`);
+    this.loadConversations();
+  }
+
+  private resetBatchButton(btn: HTMLElement): void {
+    this.isBatchRunning = false;
+    btn.textContent = '一括取得';
+    btn.classList.remove('btn-danger');
   }
 
   /** 手動入力フォーム */
@@ -256,31 +337,41 @@ export class ConversationPanel {
 
   /** エクスポートボタン */
   private setupExportButtons(): void {
-    // 全件やりとりYAMLエクスポート
+    // 全件やりとりYAMLエクスポート（1ファイルにまとめる）
     document.getElementById('btn-export-all-conversations')?.addEventListener('click', async () => {
       const conversations = await storage.getConversations();
       if (conversations.length === 0) {
         alert('やりとりデータがありません');
         return;
       }
-      for (const thread of conversations) {
-        const yaml = toYAML(thread as unknown as Record<string, unknown>);
-        downloadYAML(yaml, `${thread.member_id}.yml`);
-      }
+      const yamlParts = conversations.map(
+        (thread) => toYAML(thread as unknown as Record<string, unknown>)
+      );
+      const combined = yamlParts.join('\n---\n');
+      const date = new Date().toISOString().slice(0, 10);
+      downloadYAML(combined, `conversations_${date}.yml`);
     });
 
-    // 返信スカウト記録エクスポート
+    // 返信スカウト記録エクスポート（1ファイルにまとめる）
     document.getElementById('btn-export-reply-records')?.addEventListener('click', async () => {
       const records = await storage.getReplyRecords();
       if (records.length === 0) {
         alert('返信スカウト記録がありません');
         return;
       }
-      for (const record of records) {
-        const yaml = toYAML(record as unknown as Record<string, unknown>);
-        downloadYAML(yaml, `reply-${record.member_id}.yml`);
-      }
+      const yamlParts = records.map(
+        (record) => toYAML(record as unknown as Record<string, unknown>)
+      );
+      const combined = yamlParts.join('\n---\n');
+      const date = new Date().toISOString().slice(0, 10);
+      downloadYAML(combined, `reply-records_${date}.yml`);
     });
+  }
+
+  /** UIのセレクトから会社名を取得（storageが空の場合のフォールバック） */
+  private getCompanyFromUI(): string {
+    const select = document.getElementById('company') as HTMLSelectElement | null;
+    return select?.value || 'ark-visiting-nurse';
   }
 
   /** ステータスメッセージ表示 */
@@ -292,8 +383,11 @@ export class ConversationPanel {
     statusEl.className = `status-message ${isError ? 'status-error' : 'status-success'}`;
     statusEl.classList.remove('hidden');
 
-    setTimeout(() => {
-      statusEl.classList.add('hidden');
-    }, 3000);
+    // 一括取得中はタイマーで消さない
+    if (!this.isBatchRunning) {
+      setTimeout(() => {
+        statusEl.classList.add('hidden');
+      }, 3000);
+    }
   }
 }
