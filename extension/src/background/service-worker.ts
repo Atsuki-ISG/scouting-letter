@@ -78,6 +78,7 @@ chrome.runtime.onMessage.addListener(
       case 'START_CONTINUOUS_SEND':
       case 'STOP_CONTINUOUS_SEND':
       case 'SKIP_CURRENT_CANDIDATE':
+      case 'RESUME_AFTER_JOB_OFFER':
       case 'CONFIRM_RESPONSE': {
         forwardToContentScript(message);
         sendResponse({ ok: true });
@@ -87,7 +88,9 @@ chrome.runtime.onMessage.addListener(
       // Content Script → サイドパネル（そのままbroadcast）
       case 'DEBUG_LOG':
       case 'CONFIRM_BEFORE_SEND':
-      case 'DRY_RUN_COMPLETE': {
+      case 'DRY_RUN_COMPLETE':
+      case 'JOB_OFFER_FAILED':
+      case 'CONTINUOUS_SEND_COMPLETE': {
         sendResponse({ ok: true });
         return false;
       }

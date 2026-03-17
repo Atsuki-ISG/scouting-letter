@@ -32,7 +32,7 @@ chrome.runtime.onMessage.addListener(
       }
 
       case 'FILL_FORM': {
-        handleFillForm(message.text, message.memberId, message.jobOfferId, message.jobOfferName).then(sendResponse);
+        handleFillForm(message.text, message.memberId, message.jobOfferId, message.jobOfferName, message.skipJobOffer).then(sendResponse);
         return true;
       }
 
@@ -89,6 +89,11 @@ chrome.runtime.onMessage.addListener(
 
       case 'SKIP_CURRENT_CANDIDATE':
         continuousSender.skipCurrent();
+        sendResponse({ ok: true });
+        return false;
+
+      case 'RESUME_AFTER_JOB_OFFER':
+        continuousSender.resumeAfterJobOfferFix();
         sendResponse({ ok: true });
         return false;
 

@@ -167,7 +167,7 @@ export type Message =
   | { type: 'EXTRACTION_ERROR'; error: string }
   | { type: 'GET_OVERLAY_MEMBER_ID' }
   | { type: 'OVERLAY_MEMBER_ID'; memberId: string | null }
-  | { type: 'FILL_FORM'; text: string; memberId?: string; jobOfferId?: string; jobOfferName?: string }
+  | { type: 'FILL_FORM'; text: string; memberId?: string; jobOfferId?: string; jobOfferName?: string; skipJobOffer?: boolean }
   | { type: 'FILL_FORM_RESULT'; success: boolean; error?: string }
   | { type: 'FILL_JOB_OFFER'; jobOfferId: string; jobOfferName: string; memberId?: string }
   | { type: 'OPEN_SIDE_PANEL' }
@@ -186,4 +186,7 @@ export type Message =
   | { type: 'DEBUG_LOG'; entry: DebugLogEntry }
   | { type: 'DRY_RUN_COMPLETE'; memberId: string }
   | { type: 'CONFIRM_BEFORE_SEND'; data: ConfirmationData }
-  | { type: 'CONFIRM_RESPONSE'; result: 'ok' | 'ng' };
+  | { type: 'CONFIRM_RESPONSE'; result: 'ok' | 'ng' }
+  | { type: 'JOB_OFFER_FAILED'; memberId?: string; error: string }
+  | { type: 'RESUME_AFTER_JOB_OFFER' }
+  | { type: 'CONTINUOUS_SEND_COMPLETE' };

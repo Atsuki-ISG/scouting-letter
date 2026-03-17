@@ -2,7 +2,7 @@ import { randomSleep } from '../shared/utils';
 import { SELECTORS, queryAllElements } from './selectors';
 import { waitForOverlay, waitForOverlayClose } from './scraper';
 import { fillScoutText, fillJobOffer } from './form-filler';
-import { debugLog } from './helpers';
+import { debugLog, safeSendMessage } from './helpers';
 
 /** overlay内のフォーム要素（求人input・テキストエリア）が出現するまで待機 */
 function waitForFormElements(timeoutMs = 5000): Promise<void> {
@@ -66,6 +66,24 @@ async function openOverlayForMember(
   }
 }
 
+/** 求人選択を実行し、失敗時はサイドパネルに通知する */
+async function tryFillJobOffer(
+  jobOfferId: string,
+  jobOfferName: string,
+  memberId?: string
+): Promise<{ success: boolean; error?: string }> {
+  debugLog('求人選択', 'pending');
+  const jobResult = await fillJobOffer(jobOfferId, jobOfferName);
+  debugLog('求人選択', jobResult.success ? 'success' : 'error', jobResult.success ? jobOfferName : jobResult.error);
+
+  if (!jobResult.success) {
+    debugLog('求人選択失敗', 'error', `手動で求人を選択してください: ${jobResult.error}`);
+    safeSendMessage({ type: 'JOB_OFFER_FAILED', memberId, error: jobResult.error || '求人自動選択に失敗' });
+  }
+
+  return jobResult;
+}
+
 /** FILL_JOB_OFFERハンドラ: overlayを開いてから求人だけ選択 */
 export async function handleFillJobOffer(
   jobOfferId: string,
@@ -76,13 +94,13 @@ export async function handleFillJobOffer(
   const existingOverlay = document.querySelector(SELECTORS.overlay);
   if (existingOverlay && !existingOverlay.classList.contains('u-is-hidden')) {
     await waitForFormElements();
-    return fillJobOffer(jobOfferId, jobOfferName);
+    return tryFillJobOffer(jobOfferId, jobOfferName, memberId);
   }
 
   if (memberId) {
     const openResult = await openOverlayForMember(memberId);
     if (!openResult.success) return openResult;
-    return fillJobOffer(jobOfferId, jobOfferName);
+    return tryFillJobOffer(jobOfferId, jobOfferName, memberId);
   }
 
   return { success: false, error: 'スカウト画面が開いていません' };
@@ -93,22 +111,23 @@ export async function handleFillForm(
   text: string,
   memberId?: string,
   jobOfferId?: string,
-  jobOfferName?: string
-): Promise<{ success: boolean; error?: string }> {
+  jobOfferName?: string,
+  skipJobOffer?: boolean
+): Promise<{ success: boolean; error?: string; jobOfferFailed?: boolean }> {
   // overlayが既に開いていればそのまま入力
   const existingOverlay = document.querySelector(SELECTORS.overlay);
   if (existingOverlay && !existingOverlay.classList.contains('u-is-hidden')) {
-    if (jobOfferId && jobOfferName) {
-      debugLog('求人選択', 'pending');
-      const jobResult = await fillJobOffer(jobOfferId, jobOfferName);
-      debugLog('求人選択', jobResult.success ? 'success' : 'error', jobResult.success ? jobOfferName : jobResult.error);
+    let jobOfferFailed = false;
+    if (jobOfferId && jobOfferName && !skipJobOffer) {
+      const jobResult = await tryFillJobOffer(jobOfferId, jobOfferName, memberId);
+      jobOfferFailed = !jobResult.success;
       // 求人選択後のReact再レンダリングを待つ（揺らぎ付き）
       await randomSleep(250, 600);
     }
     debugLog('本文セット', 'pending');
     const result = await fillScoutText(text);
     debugLog('本文セット', result.success ? 'success' : 'error', result.success ? `${text.length}文字` : result.error);
-    return result;
+    return { ...result, jobOfferFailed };
   }
 
   // memberIdが指定されていれば、該当カードのスカウトボタンをクリック
@@ -125,10 +144,10 @@ export async function handleFillForm(
     debugLog('カード検索', 'success', 'カード発見');
 
     // 求人を自動選択
-    if (jobOfferId && jobOfferName) {
-      debugLog('求人選択', 'pending');
-      const jobResult = await fillJobOffer(jobOfferId, jobOfferName);
-      debugLog('求人選択', jobResult.success ? 'success' : 'error', jobResult.success ? jobOfferName : jobResult.error);
+    let jobOfferFailed = false;
+    if (jobOfferId && jobOfferName && !skipJobOffer) {
+      const jobResult = await tryFillJobOffer(jobOfferId, jobOfferName, memberId);
+      jobOfferFailed = !jobResult.success;
       // 求人選択後のReact再レンダリングを待つ（揺らぎ付き）
       await randomSleep(250, 600);
     }
@@ -136,7 +155,7 @@ export async function handleFillForm(
     debugLog('本文セット', 'pending');
     const result = await fillScoutText(text);
     debugLog('本文セット', result.success ? 'success' : 'error', result.success ? `${text.length}文字` : result.error);
-    return result;
+    return { ...result, jobOfferFailed };
   }
 
   return { success: false, error: 'スカウト画面が開いていません。先に候補者のスカウト画面を開いてください。' };

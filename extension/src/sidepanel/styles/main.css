@@ -903,6 +903,27 @@ body {
   overflow-y: auto;
 }
 
+.confirmation-stop-row {
+  padding: 0 16px 10px;
+  text-align: center;
+}
+
+.confirmation-stop-row .btn {
+  width: 100%;
+  font-size: 12px;
+}
+
+.confirmation-warning {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin: 0 16px 8px;
+  color: #991b1b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .confirmation-actions {
   display: flex;
   gap: 8px;

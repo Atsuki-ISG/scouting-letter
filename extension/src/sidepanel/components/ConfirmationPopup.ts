@@ -4,14 +4,28 @@ import { escapeHtml } from '../../shared/utils';
 export class ConfirmationPopup {
   private containerEl: HTMLElement;
   private resolver: ((result: 'ok' | 'ng') => void) | null = null;
+  private stopCallback: (() => void) | null = null;
 
   constructor() {
     this.containerEl = document.getElementById('confirmation-popup')!;
   }
 
+  /** 連続送信停止時のコールバックを設定 */
+  setStopCallback(cb: (() => void) | null): void {
+    this.stopCallback = cb;
+  }
+
   show(data: ConfirmationData): Promise<'ok' | 'ng'> {
     return new Promise((resolve) => {
       this.resolver = resolve;
+
+      const isEmpty = !data.personalized_text?.trim() || !data.full_scout_text?.trim();
+      const warningHtml = isEmpty
+        ? `<div class="confirmation-warning">
+            <div style="font-weight:bold;margin-bottom:4px;">⚠ スカウト対象外の候補者です</div>
+            <div>パーソナライズ文が生成されていません。スキップしてください。</div>
+          </div>`
+        : '';
 
       const profileHtml = data.profileSummary
         ? `
@@ -32,6 +46,7 @@ export class ConfirmationPopup {
         <div class="confirmation-backdrop"></div>
         <div class="confirmation-card">
           <h3 class="confirmation-title">送信前確認</h3>
+          ${warningHtml}
           <div class="confirmation-body">
             <label class="confirmation-check-row">
               <input type="checkbox" class="confirm-check" data-check="member">
@@ -64,6 +79,9 @@ export class ConfirmationPopup {
             <button class="btn btn-primary btn-confirm-ok" disabled>OK - 送信する</button>
             <button class="btn btn-secondary btn-confirm-ng">NG - スキップ</button>
           </div>
+          <div class="confirmation-stop-row hidden">
+            <button class="btn btn-danger btn-confirm-stop">連続送信を停止</button>
+          </div>
         </div>
       `;
 
@@ -73,6 +91,10 @@ export class ConfirmationPopup {
       const okBtn = this.containerEl.querySelector('.btn-confirm-ok') as HTMLButtonElement;
       const checks = this.containerEl.querySelectorAll<HTMLInputElement>('.confirm-check');
       const updateOkState = () => {
+        if (isEmpty) {
+          okBtn.disabled = true;
+          return;
+        }
         const allChecked = Array.from(checks).every((c) => c.checked);
         okBtn.disabled = !allChecked;
       };
@@ -95,6 +117,20 @@ export class ConfirmationPopup {
         this.resolver?.('ng');
         this.resolver = null;
       });
+
+      // 連続送信中なら停止ボタンを表示
+      if (this.stopCallback) {
+        const stopRow = this.containerEl.querySelector('.confirmation-stop-row');
+        stopRow?.classList.remove('hidden');
+        this.containerEl.querySelector('.btn-confirm-stop')?.addEventListener('click', () => {
+          // resolver('ng')は呼ばない — STOP_CONTINUOUS_SENDで
+          // continuous-senderのstop()→confirmCancelResolverが発火し、
+          // requestConfirmationが'cancelled'で解決してループがbreakする。
+          // ポップアップはstopContinuousSend内のDOM操作で閉じられる。
+          this.resolver = null;
+          this.stopCallback?.();
+        });
+      }
     });
   }
 

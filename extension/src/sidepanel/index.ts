@@ -163,6 +163,20 @@ function downloadText(content: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+/** 求人自動選択トグル */
+function setupAutoJobOfferToggle(): void {
+  const toggle = document.getElementById('toggle-auto-job-offer') as HTMLInputElement;
+
+  // 保存値を復元（デフォルトはON）
+  storage.isAutoJobOfferEnabled().then((enabled) => {
+    toggle.checked = enabled;
+  });
+
+  toggle.addEventListener('change', () => {
+    storage.setAutoJobOffer(toggle.checked);
+  });
+}
+
 /** デバッグ・ドライラン設定 */
 function setupDebugControls(debugPanel: DebugPanel): void {
   const dryRunToggle = document.getElementById('toggle-dry-run') as HTMLInputElement;
@@ -196,6 +210,9 @@ function setupMessageHandlers(debugPanel: DebugPanel, confirmPopup: Confirmation
     } else if (msg.type === 'DRY_RUN_COMPLETE') {
       // ドライラン完了 → ステータスをskippedに更新
       candidateList.updateStatusExternal(msg.memberId, 'skipped');
+    } else if (msg.type === 'JOB_OFFER_FAILED') {
+      // 求人自動選択失敗の通知 → 再開ボタンを表示
+      showJobOfferFailedNotification(msg.error);
     } else if (msg.type === 'CONFIRM_BEFORE_SEND') {
       // 確認ポップアップ表示 → 候補者データで補完してから表示
       (async () => {
@@ -232,6 +249,32 @@ function setupMessageHandlers(debugPanel: DebugPanel, confirmPopup: Confirmation
   });
 }
 
+/** 求人選択失敗時の通知・再開ボタン */
+function showJobOfferFailedNotification(error: string): void {
+  // 既存の通知があれば削除
+  document.getElementById('job-offer-failed-notification')?.remove();
+
+  const notification = document.createElement('div');
+  notification.id = 'job-offer-failed-notification';
+  notification.style.cssText = 'background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px;margin:8px 0;';
+  notification.innerHTML = `
+    <div style="color:#dc2626;font-weight:bold;font-size:13px;margin-bottom:6px;">⚠ 求人自動選択に失敗</div>
+    <div style="color:#7f1d1d;font-size:12px;margin-bottom:8px;">${error}<br>ジョブメドレー画面で求人を手動で選択してください。</div>
+    <button id="btn-resume-job-offer" style="background:#2563eb;color:white;border:none;border-radius:4px;padding:6px 16px;cursor:pointer;font-size:12px;">求人選択済み → 再開</button>
+  `;
+
+  // 送信パネル内の先頭に挿入
+  const sendPanel = document.getElementById('panel-send');
+  if (sendPanel) {
+    sendPanel.insertBefore(notification, sendPanel.firstChild);
+  }
+
+  document.getElementById('btn-resume-job-offer')?.addEventListener('click', () => {
+    notification.remove();
+    chrome.runtime.sendMessage({ type: 'RESUME_AFTER_JOB_OFFER' } satisfies Message);
+  });
+}
+
 /** 初期化 */
 function init(): void {
   setupTabs();
@@ -243,12 +286,18 @@ function init(): void {
   const candidateList = new CandidateList();
   new ImportPanel(candidateList);
   setupJobOfferSelect(candidateList);
+  setupAutoJobOfferToggle();
   new ConversationPanel();
   const debugPanel = new DebugPanel();
   const confirmPopup = new ConfirmationPopup();
 
   setupDebugControls(debugPanel);
   setupMessageHandlers(debugPanel, confirmPopup, candidateList);
+
+  // 確認ポップアップ内の停止ボタンから連続送信を停止
+  confirmPopup.setStopCallback(() => {
+    chrome.runtime.sendMessage({ type: 'STOP_CONTINUOUS_SEND' } satisfies Message);
+  });
 
   // 確認ポップアップをCandidateListに接続
   candidateList.setConfirmCallback((data) => confirmPopup.show(data));

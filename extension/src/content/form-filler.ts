@@ -32,13 +32,30 @@ function insertTextViaExecCommand(el: HTMLInputElement | HTMLTextAreaElement, te
 }
 
 /**
- * メインワールドのスクリプトにCustomEventでReact要素のクリックを依頼する
- * Content Script（隔離ワールド）からはReactの内部プロパティが見えないため
+ * メインワールドのスクリプトにCustomEventでReact要素のクリックを依頼し、
+ * 結果をPromiseで返す
  */
-function clickOptionInMainWorld(optionSelector: string, index: number, jobId: string, jobName: string): void {
-  document.dispatchEvent(new CustomEvent('__scout_click_option', {
-    detail: { selector: optionSelector, index, jobId, jobName },
-  }));
+function clickOptionInMainWorld(index: number, jobId: string, jobName: string): Promise<{ success: boolean; selectedValue?: string; error?: string }> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      window.removeEventListener('__scout_job_offer_result__', handler);
+      console.log('[Scout Assistant] Main world result timeout');
+      resolve({ success: false, error: 'main_world_timeout' });
+    }, 3000);
+
+    const handler = (e: Event) => {
+      clearTimeout(timeout);
+      window.removeEventListener('__scout_job_offer_result__', handler);
+      const detail = (e as CustomEvent).detail;
+      resolve({ success: detail.success, selectedValue: detail.selectedValue, error: detail.error });
+    };
+
+    window.addEventListener('__scout_job_offer_result__', handler);
+
+    document.dispatchEvent(new CustomEvent('__scout_click_option', {
+      detail: { selector: '[role="option"]', index, jobId, jobName },
+    }));
+  });
 }
 
 /**
@@ -58,25 +75,24 @@ export async function fillJobOffer(jobId: string, jobName: string): Promise<{ su
   document.execCommand('delete', false);
   await randomSleep(80, 200);
 
-  // 2. 短い検索キーワードで入力（完全な求人名だと一致しない場合があるため）
-  // 求人名から施設名部分を抽出して検索に使う
+  // 2. 短い検索キーワードで入力
   const searchTerm = extractSearchTerm(jobName);
   console.log('[Scout Assistant] Searching job offer with:', searchTerm);
   insertTextViaExecCommand(suggestInput, searchTerm);
   await randomSleep(400, 700);
 
-  // 3. Downshiftのドロップダウンが開くのを待つ
+  // 3. Downshiftのドロップダウンが開くのを待つ（最大8秒）
   const combobox = suggestInput.closest('[role="combobox"]');
   console.log('[Scout Assistant] Combobox found:', !!combobox, 'aria-expanded:', combobox?.getAttribute('aria-expanded'));
   console.log('[Scout Assistant] suggestInput value:', suggestInput.value);
   if (!combobox) {
-    console.log('[Scout Assistant] Combobox not found, using fallback');
-    return fillJobOfferFallback(jobId, jobName);
+    console.log('[Scout Assistant] Combobox not found');
+    return { success: false, error: 'combobox_not_found' };
   }
 
-  // aria-expanded="true" になるまで待機（最大3秒）
+  // aria-expanded="true" になるまで待機（最大8秒）
   let expanded = false;
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 80; i++) {
     if (combobox.getAttribute('aria-expanded') === 'true') {
       expanded = true;
       break;
@@ -86,18 +102,15 @@ export async function fillJobOffer(jobId: string, jobName: string): Promise<{ su
   console.log('[Scout Assistant] Dropdown expanded:', expanded);
 
   if (!expanded) {
-    console.log('[Scout Assistant] Dropdown did not open, using fallback');
-    return fillJobOfferFallback(jobId, jobName);
+    console.log('[Scout Assistant] Dropdown did not open');
+    return { success: false, error: 'dropdown_not_opened' };
   }
 
-  // 4. ドロップダウン内のoption要素を探してクリック
-  // Downshiftは[role="listbox"]を使わず、.c-suggest__list内にli[role="option"]を描画する
-  // option描画を待つ（最大5秒ポーリング）
+  // 4. ドロップダウン内のoption要素を探す（最大8秒ポーリング）
   let options: NodeListOf<Element> = document.querySelectorAll('[role="option"]');
-  for (let i = 0; i < 50 && options.length === 0; i++) {
+  for (let i = 0; i < 80 && options.length === 0; i++) {
     await sleep(100);
     options = document.querySelectorAll('[role="option"]');
-    // デバッグ: .c-suggest__listの存在も確認
     if (i === 10) {
       const suggestList = document.querySelector('.c-suggest__list');
       console.log('[Scout Assistant] .c-suggest__list found:', !!suggestList, suggestList?.innerHTML?.slice(0, 200));
@@ -106,8 +119,8 @@ export async function fillJobOffer(jobId: string, jobName: string): Promise<{ su
   console.log('[Scout Assistant] Found', options.length, 'options');
 
   if (options.length === 0) {
-    console.log('[Scout Assistant] No options found, using fallback');
-    return fillJobOfferFallback(jobId, jobName);
+    console.log('[Scout Assistant] No options found');
+    return { success: false, error: 'no_options' };
   }
 
   // デバッグ: 全optionのテキストを出力
@@ -132,23 +145,58 @@ export async function fillJobOffer(jobId: string, jobName: string): Promise<{ su
       }
     }
   }
-  if (targetIndex === -1) targetIndex = 0; // 最初の選択肢
+
+  // マッチしない場合はindex 0にフォールバックしない → 失敗を返す
+  if (targetIndex === -1) {
+    console.log('[Scout Assistant] No matching option found for:', jobName);
+    return { success: false, error: 'no_match' };
+  }
 
   const targetEl = options[targetIndex] as HTMLElement;
   console.log('[Scout Assistant] Target option index:', targetIndex, targetEl?.textContent?.trim().slice(0, 60));
 
-  // メインワールドでReact Fiberを辿ってDownshiftから直接選択
-  clickOptionInMainWorld('[role="option"]', targetIndex, jobId, jobName);
-  await randomSleep(250, 500);
+  // メインワールドでReact Fiberを辿ってDownshiftから直接選択し、結果を待つ
+  const mwResult = await clickOptionInMainWorld(targetIndex, jobId, jobName);
+  console.log('[Scout Assistant] Main world result:', mwResult);
+
+  if (!mwResult.success) {
+    console.log('[Scout Assistant] Main world selection failed:', mwResult.error);
+    return { success: false, error: `main_world_failed: ${mwResult.error}` };
+  }
+
+  // Reactレンダリング完了を少し待ってからhidden inputを検証
+  await sleep(300);
 
   // 5. 選択後にhidden inputが正しくセットされたか確認
   const hiddenInput = document.querySelector(SELECTORS.jobOfferInput) as HTMLInputElement | null;
-  if (hiddenInput && hiddenInput.value !== jobId) {
-    console.log('[Scout Assistant] Hidden input mismatch, correcting:', hiddenInput.value, '->', jobId);
-    setNativeInputValue(hiddenInput, jobId);
+  if (!hiddenInput) {
+    console.log('[Scout Assistant] Hidden input not found');
+    return { success: false, error: 'hidden_input_not_found' };
   }
 
-  return { success: true };
+  if (hiddenInput.value === jobId) {
+    console.log('[Scout Assistant] Job offer selected correctly:', jobId);
+    return { success: true };
+  }
+
+  // hidden inputの値が違う場合、Reactがまだ更新中の可能性があるので追加待機
+  await sleep(500);
+  const hiddenInputRetry = document.querySelector(SELECTORS.jobOfferInput) as HTMLInputElement | null;
+  if (hiddenInputRetry && hiddenInputRetry.value === jobId) {
+    console.log('[Scout Assistant] Job offer selected correctly (after retry):', jobId);
+    return { success: true };
+  }
+
+  // それでも不一致の場合 → 値を直接セット（ベストエフォート）
+  console.log('[Scout Assistant] Hidden input mismatch:', hiddenInputRetry?.value, 'expected:', jobId, '- correcting');
+  if (hiddenInputRetry) {
+    setNativeInputValue(hiddenInputRetry, jobId);
+    // 修正した場合はsuccessとするが、warningをログに残す
+    console.log('[Scout Assistant] Hidden input corrected to:', jobId);
+    return { success: true };
+  }
+
+  return { success: false, error: 'hidden_input_verification_failed' };
 }
 
 /**
@@ -171,24 +219,6 @@ function extractSearchTerm(jobName: string): string {
     return parts.slice(1, 3).join(' ');
   }
   return jobName;
-}
-
-/**
- * フォールバック: hidden inputとテキスト入力欄を直接セット
- */
-function fillJobOfferFallback(jobId: string, jobName: string): { success: boolean; error?: string } {
-  console.log('[Scout Assistant] Using fallback for job offer');
-  const hiddenInput = document.querySelector(SELECTORS.jobOfferInput) as HTMLInputElement | null;
-  if (hiddenInput) {
-    setNativeInputValue(hiddenInput, jobId);
-  }
-
-  const suggestInput = document.querySelector(SELECTORS.jobOfferSuggestInput) as HTMLInputElement | null;
-  if (suggestInput) {
-    setNativeInputValue(suggestInput, jobName);
-  }
-
-  return { success: true };
 }
 
 /**

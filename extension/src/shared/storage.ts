@@ -138,6 +138,18 @@ export const storage = {
     await chrome.storage.local.set({ [STORAGE_KEYS.DEBUG_LOG_ENABLED]: enabled });
   },
 
+  // --- 求人自動選択 ---
+
+  async isAutoJobOfferEnabled(): Promise<boolean> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.AUTO_JOB_OFFER);
+    // デフォルトはON
+    return result[STORAGE_KEYS.AUTO_JOB_OFFER] !== false;
+  },
+
+  async setAutoJobOffer(enabled: boolean): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.AUTO_JOB_OFFER]: enabled });
+  },
+
   // --- GAS連携 ---
 
   async getGASEndpoint(): Promise<string> {

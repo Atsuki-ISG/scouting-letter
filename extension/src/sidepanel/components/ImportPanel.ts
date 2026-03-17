@@ -1,5 +1,6 @@
 import { ScoutEntry, CandidateItem, SCOUT_CSV_COLUMNS } from '../../shared/types';
 import { parseCSV, readCSVFile } from '../../shared/csv';
+import { buildFullScoutText } from '../../shared/templates';
 import { CandidateList } from './CandidateList';
 
 export class ImportPanel {

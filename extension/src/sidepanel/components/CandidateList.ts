@@ -43,6 +43,9 @@ export class CandidateList {
         if (c && c.status !== 'skipped') {
           this.updateStatus(msg.memberId, 'sent');
         }
+      } else if (msg.type === 'CONTINUOUS_SEND_COMPLETE') {
+        // 連続送信ループが終了した → UIをリセット（Content Script側は既に停止済み）
+        this.stopContinuousSend(false);
       }
     });
 
@@ -118,7 +121,7 @@ export class CandidateList {
     chrome.runtime.sendMessage({ type: 'START_CONTINUOUS_SEND' } satisfies Message);
   }
 
-  private stopContinuousSend(): void {
+  private stopContinuousSend(sendStopMessage = true): void {
     const startBtn = document.getElementById('btn-start-continuous');
     const skipBtn = document.getElementById('btn-skip-continuous');
     const stopBtn = document.getElementById('btn-stop-continuous');
@@ -130,7 +133,16 @@ export class CandidateList {
     startBtn?.classList.add('hidden');
     if (toggle) toggle.checked = false;
 
-    chrome.runtime.sendMessage({ type: 'STOP_CONTINUOUS_SEND' } satisfies Message);
+    // 確認ポップアップが開いていたら閉じる
+    const popup = document.getElementById('confirmation-popup');
+    if (popup && !popup.classList.contains('hidden')) {
+      popup.classList.add('hidden');
+      popup.innerHTML = '';
+    }
+
+    if (sendStopMessage) {
+      chrome.runtime.sendMessage({ type: 'STOP_CONTINUOUS_SEND' } satisfies Message);
+    }
   }
 
   /** 確認ポップアップのコールバックを設定 */
@@ -333,6 +345,7 @@ export class CandidateList {
       alert('対象求人を選択してください');
       return;
     }
+    const autoJobOffer = await storage.isAutoJobOfferEnabled();
     chrome.runtime.sendMessage(
       {
         type: 'FILL_FORM',
@@ -340,6 +353,7 @@ export class CandidateList {
         memberId: candidate.member_id,
         jobOfferId: jobOffer.id,
         jobOfferName: jobOffer.name,
+        skipJobOffer: !autoJobOffer,
       } satisfies Message,
       async (response) => {
         if (response && !response.success) {

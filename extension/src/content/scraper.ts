@@ -26,14 +26,31 @@ async function waitForContent(overlay: Element): Promise<void> {
 }
 
 /** 指定ラベルのDT要素が出現するまで待つ（タブ切替後のコンテンツ検知用） */
-async function waitForLabel(overlay: Element, label: string, maxWait = 1500): Promise<void> {
-  const interval = 20;
+async function waitForLabel(overlay: Element, label: string, maxWait = 2500): Promise<void> {
+  const interval = 50;
   let elapsed = 0;
   while (elapsed < maxWait) {
     const dts = overlay.querySelectorAll('dt');
     for (const dt of dts) {
       if (dt.textContent?.trim() === label) return;
     }
+    await sleep(interval);
+    elapsed += interval;
+  }
+}
+
+/** 複数ラベルのうち指定数以上が出現するまで待つ（タブ内容の安定確認用） */
+async function waitForLabels(overlay: Element, labels: string[], minCount: number, maxWait = 3000): Promise<void> {
+  const interval = 50;
+  let elapsed = 0;
+  while (elapsed < maxWait) {
+    const dts = overlay.querySelectorAll('dt');
+    const foundLabels = new Set<string>();
+    for (const dt of dts) {
+      const text = dt.textContent?.trim() || '';
+      if (labels.includes(text)) foundLabels.add(text);
+    }
+    if (foundLabels.size >= minCount) return;
     await sleep(interval);
     elapsed += interval;
   }
@@ -145,9 +162,16 @@ export async function extractProfile(overlay: Element): Promise<CandidateProfile
   // overlayのコンテンツ読み込みを待機
   await waitForContent(overlay);
 
-  // プロフィールタブを表示し、会員番号ラベルの出現で読み込み完了を検知
+  // プロフィールタブを表示し、主要フィールドの出現で読み込み完了を検知
   clickTab(overlay, 'プロフィール');
-  await waitForLabel(overlay, FIELD_LABELS.memberId);
+  await waitForLabels(
+    overlay,
+    [FIELD_LABELS.memberId, FIELD_LABELS.age, FIELD_LABELS.qualifications, FIELD_LABELS.selfPr],
+    3, // 4つ中3つ出現すればOK
+    3000
+  );
+  // タブ内のレンダリング安定化を待つ
+  await sleep(100);
 
   // 経験職種から職種と年数を分離
   const expRaw = getValueByLabel(overlay, FIELD_LABELS.experienceType);
@@ -174,7 +198,9 @@ export async function extractProfile(overlay: Element): Promise<CandidateProfile
 
   // 職務経歴タブに切替えて抽出（勤務先名ラベルの出現で読み込み完了を検知）
   clickTab(overlay, '職務経歴');
-  await waitForLabel(overlay, '勤務先名', 1000).catch(() => {});
+  await waitForLabel(overlay, '勤務先名', 2500).catch(() => {});
+  // タブ内のレンダリング安定化を待つ
+  await sleep(100);
 
   // 職務経歴: プロフィールの既知ラベルとUI文言を除外してDT/DDペアを取得
   const profileLabels = new Set<string>(Object.values(FIELD_LABELS));
