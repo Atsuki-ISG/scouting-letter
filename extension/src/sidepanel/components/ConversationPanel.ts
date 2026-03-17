@@ -1,6 +1,8 @@
 import { ConversationMessage, ConversationThread, ReplyRecord, Message } from '../../shared/types';
 import { storage } from '../../shared/storage';
 import { toYAML, downloadYAML } from '../../shared/yaml';
+import { localDate } from '../../shared/constants';
+import { escapeHtml } from '../../shared/utils';
 
 /**
  * 返信・やりとりタブのUIコンポーネント
@@ -30,7 +32,8 @@ export class ConversationPanel {
 
   /** Content Scriptからの進捗メッセージを受信 */
   private setupMessageListener(): void {
-    chrome.runtime.onMessage.addListener((message: Message) => {
+    chrome.runtime.onMessage.addListener((message: Message, sender) => {
+      if (sender.id !== chrome.runtime.id) return;
       switch (message.type) {
         case 'CONVERSATION_PROGRESS': {
           const { current, total, thread } = message;
@@ -166,7 +169,7 @@ export class ConversationPanel {
       const thread: ConversationThread = {
         member_id: memberId,
         company,
-        started: messages[0].date || new Date().toISOString().slice(0, 10),
+        started: messages[0].date || localDate(),
         messages,
       };
 
@@ -212,7 +215,7 @@ export class ConversationPanel {
         if (currentRole && currentText) {
           messages.push({
             role: currentRole,
-            date: currentDate || new Date().toISOString().slice(0, 10),
+            date: currentDate || localDate(),
             text: currentText.trim(),
           });
         }
@@ -228,7 +231,7 @@ export class ConversationPanel {
     if (currentRole && currentText) {
       messages.push({
         role: currentRole,
-        date: currentDate || new Date().toISOString().slice(0, 10),
+        date: currentDate || localDate(),
         text: currentText.trim(),
       });
     }
@@ -307,8 +310,8 @@ export class ConversationPanel {
 
     el.innerHTML = `
       <div class="conversation-header">
-        <span class="member-id">${thread.member_id}</span>
-        <span class="conversation-date">${thread.started}</span>
+        <span class="member-id">${escapeHtml(thread.member_id)}</span>
+        <span class="conversation-date">${escapeHtml(thread.started)}</span>
       </div>
       <div class="conversation-summary">
         スカウト → ${hasReply ? '返信あり' : '返信なし'} (${thread.messages.length}通)
@@ -348,7 +351,7 @@ export class ConversationPanel {
         (thread) => toYAML(thread as unknown as Record<string, unknown>)
       );
       const combined = yamlParts.join('\n---\n');
-      const date = new Date().toISOString().slice(0, 10);
+      const date = localDate();
       downloadYAML(combined, `conversations_${date}.yml`);
     });
 
@@ -363,7 +366,7 @@ export class ConversationPanel {
         (record) => toYAML(record as unknown as Record<string, unknown>)
       );
       const combined = yamlParts.join('\n---\n');
-      const date = new Date().toISOString().slice(0, 10);
+      const date = localDate();
       downloadYAML(combined, `reply-records_${date}.yml`);
     });
   }

@@ -1,11 +1,26 @@
-/** 抽出間隔（ms）- レート制限回避 */
-export const EXTRACTION_INTERVAL_MS = 800;
+/** ローカル時刻文字列を返す（YYYY-MM-DDTHH:mm:ss+09:00 形式） */
+export function localTimestamp(): string {
+  const now = new Date();
+  const off = -now.getTimezoneOffset();
+  const sign = off >= 0 ? '+' : '-';
+  const hh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');
+  const mm = String(Math.abs(off) % 60).padStart(2, '0');
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}${sign}${hh}:${mm}`;
+}
+
+/** ローカル日付文字列を返す（YYYY-MM-DD 形式） */
+export function localDate(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** 抽出間隔（ms）- overlay閉じ後の最小待機 */
+export const EXTRACTION_INTERVAL_MS = 50;
 
 /** overlay表示の最大待機時間（ms） */
 export const OVERLAY_WAIT_TIMEOUT_MS = 5000;
-
-/** タブ切替後のコンテンツ読み込み待機時間（ms） */
-export const TAB_LOAD_WAIT_MS = 500;
 
 /** MutationObserverのタイムアウト（ms） */
 export const MUTATION_OBSERVER_TIMEOUT_MS = 10000;
@@ -18,6 +33,21 @@ export interface JobOffer {
   id: string;
   name: string;
   label: string; // ドロップダウン表示用の短縮名
+}
+
+/** template_typeから適切な求人を判定 */
+export function resolveJobOffer(templateType: string, jobOffers: JobOffer[]): JobOffer | undefined {
+  if (jobOffers.length === 0) return undefined;
+  if (jobOffers.length === 1) return jobOffers[0];
+
+  const isSeishain = templateType.includes('正社員');
+  const seishainOffer = jobOffers.find((j) => j.name.includes('正職員'));
+  const partOffer = jobOffers.find((j) => j.name.includes('パート'));
+
+  if (isSeishain && seishainOffer) return seishainOffer;
+  if (!isSeishain && partOffer) return partOffer;
+
+  return undefined;
 }
 
 /** 会社別の求人リスト */
@@ -62,4 +92,29 @@ export const STORAGE_KEYS = {
   REPLY_RECORDS: 'scout_reply_records',
   CONVERSATIONS: 'scout_conversations',
   SELECTED_JOB_OFFER: 'scout_selected_job_offer',
+  DRY_RUN_MODE: 'scout_dry_run_mode',
+  DEBUG_LOG_ENABLED: 'scout_debug_log_enabled',
+  GAS_ENDPOINT: 'scout_gas_endpoint',
+  GAS_ENABLED: 'scout_gas_enabled',
 } as const;
+
+/** 会社別バリデーション設定 */
+import { CompanyValidationConfig } from './types';
+
+export const COMPANY_VALIDATION_CONFIG: Record<string, CompanyValidationConfig> = {
+  'ark-visiting-nurse': {
+    ageRange: { min: 20, max: 59 },
+    qualificationRules: [
+      { jobOfferId: '1550716', required: ['看護師', '准看護師'], excluded: [] },
+      { jobOfferId: '1550715', required: ['看護師'], excluded: [] },
+    ],
+  },
+  'lcc-visiting-nurse': {
+    ageRange: { min: 20, max: 65 },
+    qualificationRules: [
+      { jobOfferId: '638104', required: ['看護師', '准看護師'], excluded: [] },
+      { jobOfferId: '1146892', required: ['理学療法士'], excluded: [] },
+      { jobOfferId: '1328672', required: ['言語聴覚士'], excluded: [] },
+    ],
+  },
+};

@@ -39,7 +39,11 @@ async function main() {
     sourcemap: true,
   });
 
-  // Step 4: Copy manifest.json with correct paths
+  // Step 4: Copy main-world script (plain JS, no bundling needed)
+  console.log('=== Copying main-world script ===');
+  cpSync(resolve(root, 'src/content/main-world.js'), resolve(root, 'dist/main-world.js'));
+
+  // Step 5: Copy manifest.json with correct paths
   console.log('=== Copying manifest and icons ===');
   const manifest = JSON.parse(readFileSync(resolve(root, 'manifest.json'), 'utf-8'));
 
@@ -47,8 +51,8 @@ async function main() {
   manifest.background.service_worker = 'service-worker.js';
   delete manifest.background.type; // IIFE doesn't need module type
   manifest.content_scripts[0].js = ['content.js'];
+  manifest.content_scripts[1].js = ['main-world.js'];
   manifest.side_panel.default_path = 'src/sidepanel/index.html';
-  manifest.action.default_popup = 'src/popup/index.html';
 
   writeFileSync(resolve(root, 'dist/manifest.json'), JSON.stringify(manifest, null, 2));
 

@@ -9,6 +9,7 @@
 
 import { ConversationMessage, ConversationThread, Message } from '../shared/types';
 import { MESSAGE_SELECTORS } from './message-selectors';
+import { sleep } from '../shared/utils';
 
 /**
  * メッセージページからやりとりスレッドを抽出
@@ -196,10 +197,6 @@ export function isMessagePage(): boolean {
   return location.pathname.includes('/messages');
 }
 
-/** 指定ミリ秒待機 */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /** メッセージビューが読み込まれるまで待機 */
 async function waitForMessageView(timeoutMs = 5000): Promise<boolean> {

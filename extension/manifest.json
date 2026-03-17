@@ -11,7 +11,9 @@
   ],
   "host_permissions": [
     "https://job-medley.com/*",
-    "https://*.job-medley.com/*"
+    "https://*.job-medley.com/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.ts",
@@ -25,14 +27,22 @@
       ],
       "js": ["src/content/index.ts"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://job-medley.com/*",
+        "https://*.job-medley.com/*"
+      ],
+      "js": ["src/content/main-world.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
     }
   ],
   "side_panel": {
     "default_path": "src/sidepanel/index.html"
   },
   "action": {
-    "default_popup": "src/popup/index.html",
-    "default_title": "Scout Assistant 設定"
+    "default_title": "Scout Assistant"
   },
   "icons": {
     "16": "icons/icon16.png",

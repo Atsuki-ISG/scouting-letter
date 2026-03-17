@@ -15,6 +15,7 @@ export interface CandidateProfile {
   self_pr: string;
   special_conditions: string;
   work_history_summary: string;
+  scout_sent_date: string;
 }
 
 /** CSV列の順序 */
@@ -34,6 +35,7 @@ export const PROFILE_CSV_COLUMNS: (keyof CandidateProfile)[] = [
   'self_pr',
   'special_conditions',
   'work_history_summary',
+  'scout_sent_date',
 ];
 
 /** 生成されたスカウト文データ */
@@ -51,6 +53,46 @@ export const SCOUT_CSV_COLUMNS: (keyof ScoutEntry)[] = [
   'full_scout_text',
 ];
 
+/** デバッグログエントリ */
+export interface DebugLogEntry {
+  timestamp: string;
+  step: string;
+  status: 'pending' | 'success' | 'error';
+  detail?: string;
+}
+
+/** バリデーション結果 */
+export interface ValidationResult {
+  ruleId: string;
+  severity: 'warning' | 'error';
+  message: string;
+}
+
+/** 会社別バリデーション設定 */
+export interface CompanyValidationConfig {
+  ageRange?: { min: number; max: number };
+  qualificationRules?: { jobOfferId: string; required: string[]; excluded: string[] }[];
+}
+
+/** 送信前確認データ */
+export interface ConfirmationData {
+  member_id: string;
+  label: string;
+  template_type: string;
+  personalized_text: string;
+  full_scout_text: string;
+  jobOfferName: string;
+  /** プロフィール要約（パーソナライズ文との照合用） */
+  profileSummary?: {
+    qualifications: string;
+    experience: string;
+    desiredEmploymentType: string;
+    area: string;
+    selfPr: string;
+    hasWorkHistory: boolean;
+  };
+}
+
 /** 候補者の送信ステータス */
 export type CandidateStatus = 'ready' | 'sent' | 'skipped';
 
@@ -62,6 +104,7 @@ export interface CandidateItem {
   personalized_text: string;
   full_scout_text: string;
   template_type: string;
+  validationResults?: ValidationResult[];
 }
 
 /** スカウト文の修正記録 */
@@ -117,7 +160,7 @@ export interface StorageData {
 
 /** Content Script ↔ Service Worker メッセージ */
 export type Message =
-  | { type: 'START_EXTRACTION'; count: number }
+  | { type: 'START_EXTRACTION'; count: number; startMemberId?: string }
   | { type: 'STOP_EXTRACTION' }
   | { type: 'EXTRACTION_PROGRESS'; current: number; total: number; profile: CandidateProfile }
   | { type: 'EXTRACTION_COMPLETE'; profiles: CandidateProfile[] }
@@ -126,6 +169,7 @@ export type Message =
   | { type: 'OVERLAY_MEMBER_ID'; memberId: string | null }
   | { type: 'FILL_FORM'; text: string; memberId?: string; jobOfferId?: string; jobOfferName?: string }
   | { type: 'FILL_FORM_RESULT'; success: boolean; error?: string }
+  | { type: 'FILL_JOB_OFFER'; jobOfferId: string; jobOfferName: string; memberId?: string }
   | { type: 'OPEN_SIDE_PANEL' }
   | { type: 'EXTRACT_CONVERSATION' }
   | { type: 'EXTRACT_ALL_CONVERSATIONS' }
@@ -136,6 +180,10 @@ export type Message =
   | { type: 'START_CONTINUOUS_SEND' }
   | { type: 'STOP_CONTINUOUS_SEND' }
   | { type: 'GET_NEXT_CANDIDATE' }
-  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string } | null }
+  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string; jobOfferId?: string; jobOfferName?: string } | null }
   | { type: 'CANDIDATE_SENT'; memberId: string }
-  | { type: 'SKIP_CURRENT_CANDIDATE' };
+  | { type: 'SKIP_CURRENT_CANDIDATE' }
+  | { type: 'DEBUG_LOG'; entry: DebugLogEntry }
+  | { type: 'DRY_RUN_COMPLETE'; memberId: string }
+  | { type: 'CONFIRM_BEFORE_SEND'; data: ConfirmationData }
+  | { type: 'CONFIRM_RESPONSE'; result: 'ok' | 'ng' };

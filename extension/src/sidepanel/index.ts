@@ -2,8 +2,10 @@ import { ExtractionPanel } from './components/ExtractionPanel';
 import { CandidateList } from './components/CandidateList';
 import { ImportPanel } from './components/ImportPanel';
 import { ConversationPanel } from './components/ConversationPanel';
+import { DebugPanel } from './components/DebugPanel';
+import { ConfirmationPopup } from './components/ConfirmationPopup';
 import { storage } from '../shared/storage';
-import { FixRecord } from '../shared/types';
+import { CandidateItem, CandidateProfile, FixRecord, Message } from '../shared/types';
 import { COMPANY_JOB_OFFERS } from '../shared/constants';
 
 /** タブ切替 */
@@ -84,14 +86,22 @@ function populateJobOffers(company: string): void {
 }
 
 /** 求人選択 */
-function setupJobOfferSelect(): void {
+function setupJobOfferSelect(candidateList?: CandidateList): void {
   const select = document.getElementById('job-offer') as HTMLSelectElement;
 
   select.addEventListener('change', async () => {
     const company = await storage.getCompany();
     const offers = COMPANY_JOB_OFFERS[company] || [];
     const selected = offers.find((o) => o.id === select.value);
-    storage.setSelectedJobOffer(selected || null);
+    await storage.setSelectedJobOffer(selected || null);
+    // 求人変更時にバリデーション再実行
+    if (candidateList) {
+      await candidateList.runValidation();
+      const candidates = await storage.getCandidates();
+      if (candidates.length > 0) {
+        await candidateList.setCandidates(candidates);
+      }
+    }
   });
 }
 
@@ -153,18 +163,95 @@ function downloadText(content: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+/** デバッグ・ドライラン設定 */
+function setupDebugControls(debugPanel: DebugPanel): void {
+  const dryRunToggle = document.getElementById('toggle-dry-run') as HTMLInputElement;
+  const debugLogToggle = document.getElementById('toggle-debug-log') as HTMLInputElement;
+
+  // 保存値を復元
+  storage.isDryRunMode().then((enabled) => {
+    dryRunToggle.checked = enabled;
+  });
+  storage.isDebugLogEnabled().then((enabled) => {
+    debugLogToggle.checked = enabled;
+    debugPanel.toggle(enabled);
+  });
+
+  dryRunToggle.addEventListener('change', () => {
+    storage.setDryRunMode(dryRunToggle.checked);
+  });
+
+  debugLogToggle.addEventListener('change', () => {
+    storage.setDebugLogEnabled(debugLogToggle.checked);
+    debugPanel.toggle(debugLogToggle.checked);
+  });
+}
+
+/** デバッグログ + 確認ポップアップのメッセージハンドラ */
+function setupMessageHandlers(debugPanel: DebugPanel, confirmPopup: ConfirmationPopup, candidateList: CandidateList): void {
+  chrome.runtime.onMessage.addListener((msg: Message, sender, sendResponse) => {
+    if (sender.id !== chrome.runtime.id) return false;
+    if (msg.type === 'DEBUG_LOG') {
+      debugPanel.addEntry(msg.entry);
+    } else if (msg.type === 'DRY_RUN_COMPLETE') {
+      // ドライラン完了 → ステータスをskippedに更新
+      candidateList.updateStatusExternal(msg.memberId, 'skipped');
+    } else if (msg.type === 'CONFIRM_BEFORE_SEND') {
+      // 確認ポップアップ表示 → 候補者データで補完してから表示
+      (async () => {
+        const data = { ...msg.data };
+        // member_idから候補者データとプロフィールを補完
+        if (data.member_id) {
+          const candidates = await storage.getCandidates();
+          const candidate = candidates.find((c: CandidateItem) => c.member_id === data.member_id);
+          if (candidate) {
+            if (!data.template_type) data.template_type = candidate.template_type;
+            if (!data.personalized_text) data.personalized_text = candidate.personalized_text;
+            if (!data.full_scout_text) data.full_scout_text = candidate.full_scout_text;
+            if (!data.label) data.label = candidate.label;
+          }
+          if (!data.profileSummary) {
+            const profiles = await storage.getExtractedProfiles();
+            const profile = profiles.find((p: CandidateProfile) => p.member_id === data.member_id);
+            if (profile) {
+              data.profileSummary = {
+                qualifications: profile.qualifications,
+                experience: [profile.experience_type, profile.experience_years].filter(Boolean).join('（') + (profile.experience_years ? '）' : ''),
+                desiredEmploymentType: profile.desired_employment_type,
+                area: profile.area,
+                selfPr: profile.self_pr,
+                hasWorkHistory: !!(profile.work_history_summary && profile.work_history_summary.trim()),
+              };
+            }
+          }
+        }
+        const result = await confirmPopup.show(data);
+        chrome.runtime.sendMessage({ type: 'CONFIRM_RESPONSE', result } satisfies Message);
+      })();
+    }
+  });
+}
+
 /** 初期化 */
 function init(): void {
   setupTabs();
   setupCompanySelect();
-  setupJobOfferSelect();
   setupFixExport();
 
   // 各パネルのインスタンス生成
   new ExtractionPanel();
   const candidateList = new CandidateList();
   new ImportPanel(candidateList);
+  setupJobOfferSelect(candidateList);
   new ConversationPanel();
+  const debugPanel = new DebugPanel();
+  const confirmPopup = new ConfirmationPopup();
+
+  setupDebugControls(debugPanel);
+  setupMessageHandlers(debugPanel, confirmPopup, candidateList);
+
+  // 確認ポップアップをCandidateListに接続
+  candidateList.setConfirmCallback((data) => confirmPopup.show(data));
 }
 
 document.addEventListener('DOMContentLoaded', init);

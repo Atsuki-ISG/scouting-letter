@@ -1,11 +1,18 @@
-import { CandidateItem, CandidateStatus, FixRecord, Message } from '../../shared/types';
+import { CandidateItem, CandidateStatus, CandidateProfile, ConfirmationData, FixRecord, Message, ValidationResult } from '../../shared/types';
 import { storage } from '../../shared/storage';
-import { COMPANY_JOB_OFFERS } from '../../shared/constants';
+import { COMPANY_JOB_OFFERS, COMPANY_VALIDATION_CONFIG, JobOffer, localTimestamp, resolveJobOffer } from '../../shared/constants';
+import { validateCandidate } from '../../shared/validation';
+import { gasClient } from '../../shared/gas-client';
+import { escapeHtml } from '../../shared/utils';
+
+/** 確認ポップアップを表示するコールバック */
+export type ConfirmCallback = (data: ConfirmationData) => Promise<'ok' | 'ng'>;
 
 export class CandidateList {
   private candidates: CandidateItem[] = [];
   private highlightedMemberId: string | null = null;
   private continuousSendActive = false;
+  private confirmCallback: ConfirmCallback | null = null;
 
   private listEl: HTMLElement;
   private sendCurrent: HTMLElement;
@@ -21,13 +28,15 @@ export class CandidateList {
     this.sendProgressSection = document.getElementById('send-progress')!;
 
     // overlay会員番号の変更を監視 + 連続送信メッセージ
-    chrome.runtime.onMessage.addListener((msg: Message, _sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((msg: Message, sender, sendResponse) => {
+      if (sender.id !== chrome.runtime.id) return false;
       if (msg.type === 'OVERLAY_MEMBER_ID') {
         this.highlightCandidate(msg.memberId);
       } else if (msg.type === 'GET_NEXT_CANDIDATE') {
-        const next = this.getNextReadyCandidate();
-        sendResponse({ type: 'NEXT_CANDIDATE', candidate: next });
-        return true;
+        this.getNextReadyCandidate().then((next) => {
+          sendResponse({ type: 'NEXT_CANDIDATE', candidate: next });
+        });
+        return true; // async response
       } else if (msg.type === 'CANDIDATE_SENT') {
         // skipped状態にすでに更新済みならsentに上書きしない
         const c = this.candidates.find((c) => c.member_id === msg.memberId);
@@ -44,10 +53,21 @@ export class CandidateList {
     this.restore();
   }
 
-  private getNextReadyCandidate(): { memberId: string; text: string } | null {
+  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; jobOfferId?: string; jobOfferName?: string } | null> {
     const candidate = this.candidates.find((c) => c.status === 'ready');
     if (!candidate) return null;
-    return { memberId: candidate.member_id, text: candidate.full_scout_text };
+
+    // template_typeに応じた求人を自動選択
+    const company = await storage.getCompany();
+    const jobOffers = COMPANY_JOB_OFFERS[company] || [];
+    const jobOffer = resolveJobOffer(candidate.template_type, jobOffers);
+
+    return {
+      memberId: candidate.member_id,
+      text: candidate.full_scout_text,
+      jobOfferId: jobOffer?.id,
+      jobOfferName: jobOffer?.name,
+    };
   }
 
   private setupContinuousSend(): void {
@@ -113,17 +133,45 @@ export class CandidateList {
     chrome.runtime.sendMessage({ type: 'STOP_CONTINUOUS_SEND' } satisfies Message);
   }
 
+  /** 確認ポップアップのコールバックを設定 */
+  setConfirmCallback(cb: ConfirmCallback): void {
+    this.confirmCallback = cb;
+  }
+
+  /** 外部（sidepanel/index.ts）からステータスを更新 */
+  async updateStatusExternal(memberId: string, status: CandidateStatus): Promise<void> {
+    await this.updateStatus(memberId, status);
+  }
+
   private async restore(): Promise<void> {
     this.candidates = await storage.getCandidates();
     if (this.candidates.length > 0) {
+      await this.runValidation();
       this.render();
     }
   }
 
   async setCandidates(candidates: CandidateItem[]): Promise<void> {
     this.candidates = candidates;
+    await this.runValidation();
     await storage.setCandidates(candidates);
     this.render();
+  }
+
+  /** 全候補者にバリデーションを実行 */
+  async runValidation(): Promise<void> {
+    const company = await storage.getCompany();
+    const config = COMPANY_VALIDATION_CONFIG[company];
+    if (!config) return;
+
+    const profiles = await storage.getExtractedProfiles();
+    const jobOffers = COMPANY_JOB_OFFERS[company] || [];
+
+    for (const candidate of this.candidates) {
+      const profile = profiles.find((p) => p.member_id === candidate.member_id) || null;
+      const jobOffer = resolveJobOffer(candidate.template_type, jobOffers) || null;
+      candidate.validationResults = validateCandidate(candidate, profile, jobOffer, config);
+    }
   }
 
   async clearCandidates(): Promise<void> {
@@ -167,6 +215,8 @@ export class CandidateList {
       const el = this.createCandidateElement(candidate);
       this.listEl.appendChild(el);
     }
+
+    this.renderSummaryBar();
   }
 
   private createCandidateElement(candidate: CandidateItem): HTMLElement {
@@ -178,30 +228,43 @@ export class CandidateList {
       div.classList.add('highlight');
     }
 
-    const statusIcon = this.getStatusIcon(candidate.status);
     const statusLabel = this.getStatusLabel(candidate.status);
 
+    // バリデーションバッジ生成
+    const validationHtml = this.renderValidationBadges(candidate.validationResults);
+
+    // template_type バッジ
+    const templateBadge = this.renderTemplateBadge(candidate.template_type);
+
     div.innerHTML = `
-      <div class="candidate-header">
-        <span class="status-icon">${statusIcon}</span>
-        <span class="member-id">${this.escapeHtml(candidate.member_id)}</span>
-        <span class="candidate-label">${this.escapeHtml(candidate.label)}</span>
-        <span class="candidate-status ${candidate.status}">${statusLabel}</span>
-      </div>
-      <div class="candidate-preview" title="クリックして編集">${this.escapeHtml(candidate.personalized_text)}</div>
-      <div class="candidate-edit hidden">
-        <textarea class="edit-textarea" rows="4"></textarea>
-        <input class="edit-reason" type="text" placeholder="修正理由（任意）">
-        <div class="edit-actions">
-          <button class="btn btn-sm btn-primary btn-save-edit">保存</button>
-          <button class="btn btn-sm btn-secondary btn-cancel-edit">キャンセル</button>
+      <div class="candidate-color-bar ${candidate.status}"></div>
+      <div class="candidate-body">
+        <div class="candidate-header">
+          <span class="member-id">${escapeHtml(candidate.member_id)}</span>
+          ${templateBadge}
+          <span class="candidate-status ${candidate.status}">${statusLabel}</span>
         </div>
-      </div>
-      <div class="candidate-actions">
-        <button class="btn btn-sm btn-primary btn-copy" data-id="${this.escapeHtml(candidate.member_id)}">コピー</button>
-        <button class="btn btn-sm btn-primary btn-fill" data-id="${this.escapeHtml(candidate.member_id)}">本文にセット</button>
-        <button class="btn btn-sm btn-secondary btn-sent" data-id="${this.escapeHtml(candidate.member_id)}" ${candidate.status === 'sent' ? 'disabled' : ''}>送信済み</button>
-        <button class="btn btn-sm btn-secondary btn-skip" data-id="${this.escapeHtml(candidate.member_id)}" ${candidate.status === 'skipped' ? 'disabled' : ''}>スキップ</button>
+        ${validationHtml}
+        <div class="candidate-preview" title="クリックして編集">${escapeHtml(candidate.personalized_text)}</div>
+        <div class="candidate-edit hidden">
+          <textarea class="edit-textarea" rows="4"></textarea>
+          <input class="edit-reason" type="text" placeholder="修正理由（任意）">
+          <div class="edit-actions">
+            <button class="btn btn-sm btn-primary btn-save-edit">保存</button>
+            <button class="btn btn-sm btn-secondary btn-cancel-edit">キャンセル</button>
+          </div>
+        </div>
+        <div class="candidate-actions">
+          <div class="candidate-actions-primary">
+            <button class="btn btn-sm btn-primary btn-copy" data-id="${escapeHtml(candidate.member_id)}">コピー</button>
+            <button class="btn btn-sm btn-primary btn-fill" data-id="${escapeHtml(candidate.member_id)}">本文セット</button>
+            <button class="btn btn-sm btn-test-job btn-primary" data-id="${escapeHtml(candidate.member_id)}">求人+本文</button>
+          </div>
+          <div class="candidate-actions-secondary">
+            <button class="btn btn-sm btn-secondary btn-sent" data-id="${escapeHtml(candidate.member_id)}" ${candidate.status === 'sent' ? 'disabled' : ''}>送信済</button>
+            <button class="btn btn-sm btn-secondary btn-skip" data-id="${escapeHtml(candidate.member_id)}" ${candidate.status === 'skipped' ? 'disabled' : ''}>スキップ</button>
+          </div>
+        </div>
       </div>
     `;
 
@@ -233,6 +296,7 @@ export class CandidateList {
     // イベントリスナー
     div.querySelector('.btn-copy')?.addEventListener('click', () => this.copyToClipboard(candidate));
     div.querySelector('.btn-fill')?.addEventListener('click', () => this.fillForm(candidate));
+    div.querySelector('.btn-test-job')?.addEventListener('click', () => this.fillFormWithJobOffer(candidate));
     div.querySelector('.btn-sent')?.addEventListener('click', () => this.updateStatus(candidate.member_id, 'sent'));
     div.querySelector('.btn-skip')?.addEventListener('click', () => this.skipCandidate(candidate.member_id));
 
@@ -253,9 +317,71 @@ export class CandidateList {
     }
   }
 
-  private async fillForm(candidate: CandidateItem): Promise<void> {
+  private async fillFormWithJobOffer(candidate: CandidateItem): Promise<void> {
+    // バリデーションエラーがある場合はブロック
+    const errors = (candidate.validationResults || []).filter((v) => v.severity === 'error');
+    if (errors.length > 0) {
+      alert(`バリデーションエラー:\n${errors.map((e) => e.message).join('\n')}`);
+      return;
+    }
+
+    // template_typeに応じた求人を自動判定（フォールバック: ドロップダウン選択）
+    const company = await storage.getCompany();
+    const allOffers = COMPANY_JOB_OFFERS[company] || [];
+    const jobOffer = resolveJobOffer(candidate.template_type, allOffers) || await this.getJobOffer();
+    if (!jobOffer) {
+      alert('対象求人を選択してください');
+      return;
+    }
+    chrome.runtime.sendMessage(
+      {
+        type: 'FILL_FORM',
+        text: candidate.full_scout_text,
+        memberId: candidate.member_id,
+        jobOfferId: jobOffer.id,
+        jobOfferName: jobOffer.name,
+      } satisfies Message,
+      async (response) => {
+        if (response && !response.success) {
+          alert(`セット失敗: ${response.error || '不明なエラー'}`);
+        } else {
+          console.log('[Scout Assistant] Fill form with job offer succeeded');
+          // 確認ポップアップを表示
+          if (this.confirmCallback) {
+            const profiles = await storage.getExtractedProfiles();
+            const profile = profiles.find((p) => p.member_id === candidate.member_id);
+            const profileSummary = profile
+              ? {
+                  qualifications: profile.qualifications,
+                  experience: [profile.experience_type, profile.experience_years].filter(Boolean).join('（') + (profile.experience_years ? '）' : ''),
+                  desiredEmploymentType: profile.desired_employment_type,
+                  area: profile.area,
+                  selfPr: profile.self_pr,
+                  hasWorkHistory: !!(profile.work_history_summary && profile.work_history_summary.trim()),
+                }
+              : undefined;
+            const result = await this.confirmCallback({
+              member_id: candidate.member_id,
+              label: candidate.label,
+              template_type: candidate.template_type,
+              personalized_text: candidate.personalized_text,
+              full_scout_text: candidate.full_scout_text,
+              jobOfferName: jobOffer.name,
+              profileSummary,
+            });
+            if (result === 'ng') {
+              // NGならoverlayを閉じてスキップ
+              // Content Scriptにoverlay閉じを依頼（SKIP_CURRENT_CANDIDATEで代用）
+              await this.skipCandidate(candidate.member_id);
+            }
+          }
+        }
+      }
+    );
+  }
+
+  private async getJobOffer(): Promise<{ id: string; name: string; label: string } | null> {
     let jobOffer = await storage.getSelectedJobOffer();
-    // storageにない場合、ドロップダウンの現在値からフォールバック
     if (!jobOffer) {
       const select = document.getElementById('job-offer') as HTMLSelectElement | null;
       if (select && select.value) {
@@ -268,17 +394,15 @@ export class CandidateList {
         }
       }
     }
-    if (!jobOffer) {
-      alert('対象求人を選択してください');
-      return;
-    }
+    return jobOffer;
+  }
+
+  private async fillForm(candidate: CandidateItem): Promise<void> {
     chrome.runtime.sendMessage(
       {
         type: 'FILL_FORM',
         text: candidate.full_scout_text,
         memberId: candidate.member_id,
-        jobOfferId: jobOffer.id,
-        jobOfferName: jobOffer.name,
       } satisfies Message,
       (response) => {
         if (response && !response.success) {
@@ -296,7 +420,7 @@ export class CandidateList {
     const record: FixRecord = {
       member_id: candidate.member_id,
       template_type: candidate.template_type,
-      timestamp: new Date().toISOString(),
+      timestamp: localTimestamp(),
       before: candidate.personalized_text,
       after: trimmed,
       reason: reason.trim(),
@@ -334,15 +458,68 @@ export class CandidateList {
       this.candidates[index].status = status;
       await storage.setCandidates(this.candidates);
       this.render();
+
+      // GAS連携: 送信済みマーク時にログ送信（fire-and-forget）
+      if (status === 'sent') {
+        const candidate = this.candidates[index];
+        const company = await storage.getCompany();
+        const jobOffer = await this.getJobOffer();
+        gasClient.logSentScout({
+          timestamp: localTimestamp(),
+          member_id: candidate.member_id,
+          company,
+          job_offer_id: jobOffer?.id || '',
+          job_offer_label: jobOffer?.label || '',
+          template_type: candidate.template_type,
+          personalized_text: candidate.personalized_text,
+        });
+      }
     }
   }
 
-  private getStatusIcon(status: CandidateStatus): string {
-    switch (status) {
-      case 'sent': return '<span style="color:#22c55e">&#10003;</span>';
-      case 'skipped': return '<span style="color:#9ca3af">&#8212;</span>';
-      default: return '<span style="color:#3b82f6">&#9679;</span>';
+  private renderTemplateBadge(templateType: string): string {
+    if (!templateType) return '';
+    const isSeishain = templateType.includes('正社員');
+    const isResend = templateType.includes('再送');
+    const typeCls = isSeishain ? 'seishain' : 'part';
+    const label = isSeishain ? '正社員' : 'パート';
+    let html = `<span class="template-badge ${typeCls}">${label}</span>`;
+    if (isResend) {
+      html += `<span class="template-badge resend">再送</span>`;
     }
+    return html;
+  }
+
+  renderSummaryBar(): void {
+    const existing = document.querySelector('.summary-bar');
+    if (existing) existing.remove();
+
+    if (this.candidates.length === 0) return;
+
+    const ready = this.candidates.filter((c) => c.status === 'ready').length;
+    const sent = this.candidates.filter((c) => c.status === 'sent').length;
+    const skipped = this.candidates.filter((c) => c.status === 'skipped').length;
+    const total = this.candidates.length;
+
+    const bar = document.createElement('div');
+    bar.className = 'summary-bar';
+    bar.innerHTML = `
+      <span class="summary-item"><span class="summary-count">${total}</span>件</span>
+      <span class="summary-item summary-label-ready"><span class="summary-count">${ready}</span>未送信</span>
+      <span class="summary-item summary-label-sent"><span class="summary-count">${sent}</span>送信済</span>
+      <span class="summary-item summary-label-skipped"><span class="summary-count">${skipped}</span>スキップ</span>
+    `;
+    this.listEl.parentElement?.insertBefore(bar, this.listEl);
+  }
+
+  private renderValidationBadges(results?: ValidationResult[]): string {
+    if (!results || results.length === 0) return '';
+    return `<div class="validation-badges">${results
+      .map((r) => {
+        const cls = r.severity === 'error' ? 'validation-error' : 'validation-warning';
+        return `<span class="${cls}" title="${escapeHtml(r.message)}">${r.severity === 'error' ? '\u26D4' : '\u26A0\uFE0F'} ${escapeHtml(r.message)}</span>`;
+      })
+      .join('')}</div>`;
   }
 
   private getStatusLabel(status: CandidateStatus): string {
@@ -353,9 +530,4 @@ export class CandidateList {
     }
   }
 
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
 }

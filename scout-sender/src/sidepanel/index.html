@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scout Sender - プロフィール抽出</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <h1>Scout Sender</h1>
+      <p class="header-sub">プロフィール一括抽出</p>
+    </header>
+
+    <section class="panel">
+      <div class="extraction-controls">
+        <div class="input-group">
+          <label for="extract-start">開始会員番号:</label>
+          <input type="text" id="extract-start" placeholder="空欄=先頭から">
+        </div>
+        <div class="input-group">
+          <label for="extract-count">抽出件数:</label>
+          <input type="number" id="extract-count" value="5" min="1" max="50">
+        </div>
+        <div class="button-group">
+          <button id="btn-start-extract" class="btn btn-primary">抽出開始</button>
+          <button id="btn-stop-extract" class="btn btn-danger hidden">停止</button>
+        </div>
+      </div>
+
+      <div id="extraction-progress" class="progress-section hidden">
+        <div class="progress-text">
+          進捗: <span id="progress-current">0</span>/<span id="progress-total">0</span>
+        </div>
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div id="extracted-list" class="extracted-list"></div>
+
+      <button id="btn-download-csv" class="btn btn-primary btn-block hidden">
+        CSVダウンロード
+      </button>
+    </section>
+  </div>
+
+  <script type="module" src="index.ts"></script>
+</body>
+</html>

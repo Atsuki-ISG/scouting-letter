@@ -118,6 +118,46 @@ export const storage = {
     }
   },
 
+  // --- デバッグ・ドライラン ---
+
+  async isDryRunMode(): Promise<boolean> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.DRY_RUN_MODE);
+    return !!result[STORAGE_KEYS.DRY_RUN_MODE];
+  },
+
+  async setDryRunMode(enabled: boolean): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.DRY_RUN_MODE]: enabled });
+  },
+
+  async isDebugLogEnabled(): Promise<boolean> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.DEBUG_LOG_ENABLED);
+    return !!result[STORAGE_KEYS.DEBUG_LOG_ENABLED];
+  },
+
+  async setDebugLogEnabled(enabled: boolean): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.DEBUG_LOG_ENABLED]: enabled });
+  },
+
+  // --- GAS連携 ---
+
+  async getGASEndpoint(): Promise<string> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.GAS_ENDPOINT);
+    return (result[STORAGE_KEYS.GAS_ENDPOINT] as string) || '';
+  },
+
+  async setGASEndpoint(url: string): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.GAS_ENDPOINT]: url });
+  },
+
+  async isGASEnabled(): Promise<boolean> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.GAS_ENABLED);
+    return !!result[STORAGE_KEYS.GAS_ENABLED];
+  },
+
+  async setGASEnabled(enabled: boolean): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.GAS_ENABLED]: enabled });
+  },
+
   async clear(): Promise<void> {
     await chrome.storage.local.remove([
       STORAGE_KEYS.CANDIDATES,

@@ -1,11 +1,7 @@
 import { CandidateProfile } from '../shared/types';
 import { SELECTORS, FIELD_LABELS, getValueByLabel } from './selectors';
-import { TAB_LOAD_WAIT_MS, MUTATION_OBSERVER_TIMEOUT_MS } from '../shared/constants';
-
-/** 指定ミリ秒待機 */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+import { MUTATION_OBSERVER_TIMEOUT_MS } from '../shared/constants';
+import { sleep } from '../shared/utils';
 
 /** overlayが表示されているか判定 */
 function isOverlayVisible(el: Element): boolean {
@@ -19,11 +15,25 @@ function isOverlayVisible(el: Element): boolean {
 
 /** overlay内のコンテンツ（DT要素）が読み込まれるまで待つ */
 async function waitForContent(overlay: Element): Promise<void> {
-  const maxWait = 5000;
-  const interval = 200;
+  const maxWait = 3000;
+  const interval = 20;
   let elapsed = 0;
   while (elapsed < maxWait) {
     if (overlay.querySelectorAll('dt').length > 0) return;
+    await sleep(interval);
+    elapsed += interval;
+  }
+}
+
+/** 指定ラベルのDT要素が出現するまで待つ（タブ切替後のコンテンツ検知用） */
+async function waitForLabel(overlay: Element, label: string, maxWait = 1500): Promise<void> {
+  const interval = 20;
+  let elapsed = 0;
+  while (elapsed < maxWait) {
+    const dts = overlay.querySelectorAll('dt');
+    for (const dt of dts) {
+      if (dt.textContent?.trim() === label) return;
+    }
     await sleep(interval);
     elapsed += interval;
   }
@@ -52,7 +62,7 @@ export function waitForOverlay(): Promise<Element> {
         observer.disconnect();
         resolve(el);
       }
-    }, 200);
+    }, 50);
 
     const observer = new MutationObserver(() => {
       const el = document.querySelector(SELECTORS.overlay);
@@ -104,13 +114,12 @@ export function waitForOverlayClose(timeoutMs = 5000): Promise<void> {
   });
 }
 
-/** タブをクリックしてコンテンツ読み込みを待つ */
-async function clickTabByText(overlay: Element, tabText: string): Promise<void> {
+/** タブをクリック（待機はcaller側でコンテンツ検知） */
+function clickTab(overlay: Element, tabText: string): void {
   const tabs = overlay.querySelectorAll(SELECTORS.tab);
   for (const tab of tabs) {
     if (tab.textContent?.trim() === tabText) {
       (tab as HTMLElement).click();
-      await sleep(TAB_LOAD_WAIT_MS);
       return;
     }
   }
@@ -136,9 +145,9 @@ export async function extractProfile(overlay: Element): Promise<CandidateProfile
   // overlayのコンテンツ読み込みを待機
   await waitForContent(overlay);
 
-  // プロフィールタブを表示
-  await clickTabByText(overlay, 'プロフィール');
-  await sleep(TAB_LOAD_WAIT_MS);
+  // プロフィールタブを表示し、会員番号ラベルの出現で読み込み完了を検知
+  clickTab(overlay, 'プロフィール');
+  await waitForLabel(overlay, FIELD_LABELS.memberId);
 
   // 経験職種から職種と年数を分離
   const expRaw = getValueByLabel(overlay, FIELD_LABELS.experienceType);
@@ -160,11 +169,12 @@ export async function extractProfile(overlay: Element): Promise<CandidateProfile
     self_pr: getValueByLabel(overlay, FIELD_LABELS.selfPr),
     special_conditions: getValueByLabel(overlay, FIELD_LABELS.specialConditions),
     work_history_summary: '',
+    scout_sent_date: '',
   };
 
-  // 職務経歴タブに切替えて抽出
-  await clickTabByText(overlay, '職務経歴');
-  await sleep(TAB_LOAD_WAIT_MS);
+  // 職務経歴タブに切替えて抽出（勤務先名ラベルの出現で読み込み完了を検知）
+  clickTab(overlay, '職務経歴');
+  await waitForLabel(overlay, '勤務先名', 1000).catch(() => {});
 
   // 職務経歴: プロフィールの既知ラベルとUI文言を除外してDT/DDペアを取得
   const profileLabels = new Set<string>(Object.values(FIELD_LABELS));

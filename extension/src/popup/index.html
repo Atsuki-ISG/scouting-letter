@@ -62,12 +62,29 @@
 
   <div class="field">
     <label for="company">会社:</label>
-    <select id="company">
-      <option value="ark-visiting-nurse">アーク訪問看護ステーション</option>
-    </select>
+    <select id="company"></select>
   </div>
 
   <button id="btn-open-panel" class="btn">サイドパネルを開く</button>
+
+  <hr style="margin: 12px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+  <h3 style="font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px;">GAS連携</h3>
+
+  <div class="field">
+    <label for="gas-enabled">
+      <input type="checkbox" id="gas-enabled" style="width:auto; margin-right:4px;">
+      有効化
+    </label>
+  </div>
+
+  <div class="field">
+    <label for="gas-url">GAS Web App URL:</label>
+    <input type="text" id="gas-url" placeholder="https://script.google.com/...">
+  </div>
+
+  <button id="btn-test-gas" class="btn" style="background:#6b7280; margin-top:4px;">接続テスト</button>
+  <div id="gas-status" class="status"></div>
 
   <div id="status" class="status">保存しました</div>
 

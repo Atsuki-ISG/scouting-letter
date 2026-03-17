@@ -1,6 +1,8 @@
 import { CandidateProfile, PROFILE_CSV_COLUMNS, Message } from '../../shared/types';
 import { toCSV, downloadCSV } from '../../shared/csv';
 import { storage } from '../../shared/storage';
+import { localDate } from '../../shared/constants';
+import { escapeHtml } from '../../shared/utils';
 
 export class ExtractionPanel {
   private profiles: CandidateProfile[] = [];
@@ -9,6 +11,7 @@ export class ExtractionPanel {
   private btnStart: HTMLButtonElement;
   private btnStop: HTMLButtonElement;
   private btnDownload: HTMLButtonElement;
+  private extractStart: HTMLInputElement;
   private extractCount: HTMLInputElement;
   private progressSection: HTMLElement;
   private progressCurrent: HTMLElement;
@@ -20,6 +23,7 @@ export class ExtractionPanel {
     this.btnStart = document.getElementById('btn-start-extract') as HTMLButtonElement;
     this.btnStop = document.getElementById('btn-stop-extract') as HTMLButtonElement;
     this.btnDownload = document.getElementById('btn-download-csv') as HTMLButtonElement;
+    this.extractStart = document.getElementById('extract-start') as HTMLInputElement;
     this.extractCount = document.getElementById('extract-count') as HTMLInputElement;
     this.progressSection = document.getElementById('extraction-progress')!;
     this.progressCurrent = document.getElementById('progress-current')!;
@@ -32,7 +36,8 @@ export class ExtractionPanel {
     this.btnDownload.addEventListener('click', () => this.downloadCSV());
 
     // メッセージリスナー
-    chrome.runtime.onMessage.addListener((msg: Message) => {
+    chrome.runtime.onMessage.addListener((msg: Message, sender) => {
+      if (sender.id !== chrome.runtime.id) return;
       switch (msg.type) {
         case 'EXTRACTION_PROGRESS':
           this.onProgress(msg.current, msg.total, msg.profile);
@@ -75,10 +80,13 @@ export class ExtractionPanel {
     this.extractedList.innerHTML = '';
     this.btnDownload.classList.add('hidden');
 
+    const startMemberId = this.extractStart.value.trim() || undefined;
+
     // Content Scriptに抽出開始を指示
     chrome.runtime.sendMessage({
       type: 'START_EXTRACTION',
       count,
+      startMemberId,
     } satisfies Message).catch(() => {});
   }
 
@@ -123,10 +131,10 @@ export class ExtractionPanel {
     const div = document.createElement('div');
     div.className = 'extracted-item';
     div.innerHTML = `
-      <div class="member-id">${this.escapeHtml(profile.member_id)}</div>
+      <div class="member-id">${escapeHtml(profile.member_id)}</div>
       <div class="extracted-info">
-        ${this.escapeHtml(profile.qualifications || '資格情報なし')} /
-        ${this.escapeHtml(profile.experience_years || '経験年数不明')}
+        ${escapeHtml(profile.qualifications || '資格情報なし')} /
+        ${escapeHtml(profile.experience_years || '経験年数不明')}
       </div>
     `;
     this.extractedList.appendChild(div);
@@ -143,14 +151,9 @@ export class ExtractionPanel {
     if (this.profiles.length === 0) return;
     const csv = toCSV(this.profiles, PROFILE_CSV_COLUMNS);
     const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10);
-    const timeStr = now.toTimeString().slice(0, 5).replace(':', '');
+    const dateStr = localDate();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
     downloadCSV(csv, `profiles_${dateStr}_${timeStr}.csv`);
   }
 
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
 }
