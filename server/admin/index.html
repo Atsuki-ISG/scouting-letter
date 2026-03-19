@@ -932,6 +932,110 @@ tbody tr:hover { background: #f8fafc; }
 
 .flow-link:hover { text-decoration: underline; }
 
+/* Multi-select dropdown */
+.multi-select {
+  position: relative;
+  width: 100%;
+}
+
+.multi-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  transition: border-color 0.15s;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.multi-select-trigger:hover { border-color: #94a3b8; }
+.multi-select.open .multi-select-trigger { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+.multi-select-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  flex: 1;
+}
+
+.multi-select-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: #dbeafe;
+  color: #1e40af;
+  white-space: nowrap;
+}
+
+.multi-select-tag button {
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  color: #1e40af;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.multi-select-tag button:hover { opacity: 1; }
+
+.multi-select-placeholder {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.multi-select-arrow {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-left: 4px;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.multi-select.open .multi-select-arrow { transform: rotate(180deg); }
+
+.multi-select-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 50;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.multi-select.open .multi-select-dropdown { display: block; }
+
+.multi-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.multi-select-option:hover { background: #f1f5f9; }
+.multi-select-option input { margin: 0; }
+
 /* Placeholder highlight in pattern text */
 .ph { background: #fef3c7; border-radius: 3px; padding: 0 3px; color: #92400e; font-weight: 600; }
 </style>
@@ -1462,11 +1566,9 @@ const QUALIFICATION_MASTER = [
 ];
 
 function renderTestPanel() {
-  const qualCheckboxes = QUALIFICATION_MASTER.map(q =>
-    `<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;padding:2px 0">
-      <input type="checkbox" class="testQualCb" value="${q}" ${q === '看護師' ? 'checked' : ''}> ${q}
-    </label>`
-  ).join(' ');
+  const qualOptions = QUALIFICATION_MASTER.map(q =>
+    `<label class="multi-select-option"><input type="checkbox" class="testQualCb" value="${q}" ${q === '看護師' ? 'checked' : ''}> ${q}</label>`
+  ).join('');
 
   return `<div class="flow-test-panel">
     <div class="flow-test-header">
@@ -1479,17 +1581,29 @@ function renderTestPanel() {
     <div class="flow-test-inputs">
       <div style="grid-column:1/-1">
         <label>資格（複数選択可）</label>
-        <div style="display:flex;flex-wrap:wrap;gap:4px 12px;padding:6px 0" id="testQualArea">${qualCheckboxes}</div>
+        <div class="multi-select" id="qualMultiSelect">
+          <div class="multi-select-trigger" onclick="toggleMultiSelect('qualMultiSelect')">
+            <div class="multi-select-tags" id="qualSelectedTags"><span class="multi-select-tag">看護師 <button onclick="event.stopPropagation();uncheckQual('看護師')">×</button></span></div>
+            <span class="multi-select-arrow">▾</span>
+          </div>
+          <div class="multi-select-dropdown" onclick="event.stopPropagation()">${qualOptions}</div>
+        </div>
       </div>
       <div><label>年齢</label><div style="display:flex;align-items:center;gap:4px"><input type="number" id="testAge" value="35" min="15" max="80" style="width:80px"><span style="font-size:13px;color:#64748b">歳</span></div></div>
       <div><label>経験年数</label><div style="display:flex;align-items:center;gap:4px"><input type="number" id="testExp" value="5" min="0" max="50" style="width:80px"><span style="font-size:13px;color:#64748b">年</span></div></div>
       <div><label>経歴タイプ</label><input type="text" id="testExpType" value="訪問看護" placeholder="訪問看護"></div>
       <div><label>希望雇用（複数可）</label>
-        <div style="display:flex;flex-wrap:wrap;gap:4px 10px;padding:4px 0">
-          <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" class="testEmpTypeCb" value="パート" checked> パート</label>
-          <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" class="testEmpTypeCb" value="正社員"> 正社員</label>
-          <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" class="testEmpTypeCb" value="契約社員"> 契約社員</label>
-          <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" class="testEmpTypeCb" value="業務委託"> 業務委託</label>
+        <div class="multi-select" id="empTypeMultiSelect">
+          <div class="multi-select-trigger" onclick="toggleMultiSelect('empTypeMultiSelect')">
+            <div class="multi-select-tags" id="empTypeSelectedTags"><span class="multi-select-tag">パート <button onclick="event.stopPropagation();uncheckEmpType('パート')">×</button></span></div>
+            <span class="multi-select-arrow">▾</span>
+          </div>
+          <div class="multi-select-dropdown" onclick="event.stopPropagation()">
+            <label class="multi-select-option"><input type="checkbox" class="testEmpTypeCb" value="パート" checked> パート</label>
+            <label class="multi-select-option"><input type="checkbox" class="testEmpTypeCb" value="正社員"> 正社員</label>
+            <label class="multi-select-option"><input type="checkbox" class="testEmpTypeCb" value="契約社員"> 契約社員</label>
+            <label class="multi-select-option"><input type="checkbox" class="testEmpTypeCb" value="業務委託"> 業務委託</label>
+          </div>
         </div>
       </div>
       <div><label>就業状態</label><select id="testEmpStatus"><option value="就業中">就業中</option><option value="離職中">離職中</option><option value="在学中">在学中</option></select></div>
@@ -1499,6 +1613,60 @@ function renderTestPanel() {
     <div class="flow-test-result" id="testResult"></div>
   </div>`;
 }
+
+function toggleMultiSelect(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+}
+
+function updateQualTags() {
+  const checked = [...document.querySelectorAll('.testQualCb:checked')].map(cb => cb.value);
+  const tagsEl = document.getElementById('qualSelectedTags');
+  if (checked.length === 0) {
+    tagsEl.innerHTML = '<span class="multi-select-placeholder">資格を選択...</span>';
+  } else {
+    tagsEl.innerHTML = checked.map(q =>
+      `<span class="multi-select-tag">${escHtml(q)} <button onclick="event.stopPropagation();uncheckQual('${q}')">×</button></span>`
+    ).join('');
+  }
+}
+
+function uncheckQual(q) {
+  const cb = document.querySelector(`.testQualCb[value="${q}"]`);
+  if (cb) cb.checked = false;
+  updateQualTags();
+}
+
+function updateEmpTypeTags() {
+  const checked = [...document.querySelectorAll('.testEmpTypeCb:checked')].map(cb => cb.value);
+  const tagsEl = document.getElementById('empTypeSelectedTags');
+  if (checked.length === 0) {
+    tagsEl.innerHTML = '<span class="multi-select-placeholder">雇用形態を選択...</span>';
+  } else {
+    tagsEl.innerHTML = checked.map(q =>
+      `<span class="multi-select-tag">${escHtml(q)} <button onclick="event.stopPropagation();uncheckEmpType('${q}')">×</button></span>`
+    ).join('');
+  }
+}
+
+function uncheckEmpType(q) {
+  const cb = document.querySelector(`.testEmpTypeCb[value="${q}"]`);
+  if (cb) cb.checked = false;
+  updateEmpTypeTags();
+}
+
+// Close multi-select on outside click
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('.multi-select.open').forEach(el => {
+    if (!el.contains(e.target)) el.classList.remove('open');
+  });
+});
+
+// Update tags when checkbox changes
+document.addEventListener('change', (e) => {
+  if (e.target.classList.contains('testQualCb')) updateQualTags();
+  if (e.target.classList.contains('testEmpTypeCb')) updateEmpTypeTags();
+});
 
 async function runPipelineTest() {
   const company = document.getElementById('companySelect').value;
