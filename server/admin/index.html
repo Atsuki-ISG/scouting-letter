@@ -1468,13 +1468,12 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
         </div>
         <div class="field">
           <label>会社情報<span class="hint">HPの内容、求人情報、特色などをコピペ</span></label>
-          <textarea id="wizardCompanyInfo" style="min-height:240px;font-size:13px" placeholder="会社名、所在地、サービス内容、対象エリア、給与、教育体制、特色、代表メッセージなど...&#10;&#10;テキストが多いほど精度の高い設定が生成されます。"></textarea>
+          <textarea id="wizardCompanyInfo" style="min-height:200px;font-size:13px" placeholder="会社名、所在地、サービス内容、対象エリア、給与、教育体制、特色、代表メッセージなど...&#10;&#10;テキストが多いほど精度の高い設定が生成されます。"></textarea>
         </div>
-        <div style="margin-top:4px">
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--c-text-secondary);cursor:pointer">
-            <input type="checkbox" id="wizardGenTemplates" style="width:auto;margin:0">
-            テンプレート本文もAIで生成する<span style="font-size:11px;color:var(--c-text-muted)">（雛形がない場合）</span>
-          </label>
+        <div class="field">
+          <label>スカウト文の雛形<span class="hint">任意。既存テンプレートがあれば貼り付け</span></label>
+          <textarea id="wizardTemplateText" style="min-height:120px;font-size:12px" placeholder="はじめまして。突然のご連絡大変失礼いたします...&#10;&#10;貼り付けると4種類（パート初回/再送、正社員初回/再送）のベースとして使います。"></textarea>
+          <p style="font-size:11px;color:var(--c-text-muted);margin-top:4px;">空欄の場合、上の会社情報からAIがテンプレート本文も自動生成します</p>
         </div>
       </div>
       <!-- Step 2: Generating -->
@@ -3125,6 +3124,7 @@ let wizardGeneratedData = null;
 function showAddCompanyDialog() {
   document.getElementById('newCompanyId').value = '';
   document.getElementById('wizardCompanyInfo').value = '';
+  document.getElementById('wizardTemplateText').value = '';
   wizardGeneratedData = null;
   wizardShowStep(1);
   document.getElementById('addCompanyOverlay').classList.add('open');
@@ -3191,11 +3191,12 @@ async function wizardNext() {
     }, 8000);
 
     try {
-      const genTemplates = document.getElementById('wizardGenTemplates').checked;
+      const templateText = document.getElementById('wizardTemplateText').value.trim();
       const result = await api('POST', '/api/v1/admin/generate_company', {
         company_id: companyId,
         company_info: companyInfo,
-        generate_templates: genTemplates,
+        template_text: templateText,
+        generate_templates: !templateText,
       });
       clearInterval(progressTimer);
       wizardGeneratedData = result;
@@ -3233,7 +3234,10 @@ function renderWizardPreview(result) {
   // Templates
   const templates = g.templates || [];
   const hasTemplateBody = templates.some(t => t.body && t.body !== '（手動入力）');
-  html += renderWizardSection('テンプレート', templates.length, templates.map(t => {
+  const templateSource = hasTemplateBody
+    ? (document.getElementById('wizardTemplateText').value.trim() ? '雛形を4種に適用' : 'AI生成')
+    : '手動入力';
+  html += renderWizardSection(`テンプレート（${templateSource}）`, templates.length, templates.map(t => {
     const body = (t.body || '').replace(/\\n/g, '\n');
     const isManual = !body || body === '（手動入力）';
     const preview = isManual

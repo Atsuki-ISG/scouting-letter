@@ -187,7 +187,8 @@ async def generate_company(data: dict, operator=Depends(verify_api_key)):
 
     company_id = data.get("company_id", "").strip()
     company_info = data.get("company_info", "").strip()
-    generate_templates = data.get("generate_templates", False)
+    template_text = data.get("template_text", "").strip()
+    generate_templates = data.get("generate_templates", not template_text)
     if not company_id:
         raise HTTPException(400, "company_id is required")
     if not company_info:
@@ -356,7 +357,14 @@ AI生成時のシステムプロンプトの構成パーツ。section_type と c
 
         # 1. Templates
         template_types = ["パート_初回", "パート_再送", "正社員_初回", "正社員_再送"]
-        if generate_templates and generated.get("templates"):
+        if template_text:
+            # User provided a template base — use it for all 4 types
+            body_escaped = template_text.replace("\n", "\\n")
+            for tt in template_types:
+                sheets_writer.append_row("テンプレート", [company_id, "nurse", tt, body_escaped])
+                total += 1
+            generated["templates"] = [{"type": tt, "body": template_text} for tt in template_types]
+        elif generate_templates and generated.get("templates"):
             # AI-generated templates
             for t in generated["templates"]:
                 body = t.get("body", "").replace("\n", "\\n")
