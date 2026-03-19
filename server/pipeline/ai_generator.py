@@ -47,6 +47,8 @@ async def generate_personalized_text(
     system_prompt: str,
     user_prompt: str,
     model_name: str | None = None,
+    max_output_tokens: int = 2048,
+    temperature: float = 0.7,
 ) -> str:
     """Call Gemini to generate personalized scout text.
 
@@ -68,7 +70,7 @@ async def generate_personalized_text(
         model = GenerativeModel(model_name=name, system_instruction=system_prompt)
         response = await model.generate_content_async(
             user_prompt,
-            generation_config={"temperature": 0.7, "max_output_tokens": 2048},
+            generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
         )
     else:
         import google.generativeai as genai
@@ -78,7 +80,7 @@ async def generate_personalized_text(
         response = await asyncio.to_thread(
             model.generate_content,
             user_prompt,
-            generation_config={"temperature": 0.7, "max_output_tokens": 2048},
+            generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
             request_options={"retry": _NO_RETRY},
         )
 
