@@ -26,16 +26,12 @@ def build_system_prompt(
         if content and content.strip():
             parts.append(content.strip())
 
-    # Add template context (abbreviated to keep system prompt short)
-    # Full template is too long (~1200 chars) and causes output truncation
-    template_lines = template_body.split("\n")
-    # Extract first 5 non-empty lines as tone reference
-    tone_sample = "\n".join(line for line in template_lines if line.strip())[:300]
+    # Add template context (full body for tone reference)
     template_section = (
-        "## テンプレート（冒頭抜粋）\n\n"
+        "## テンプレート\n\n"
         "以下のテンプレートの中にパーソナライズ文が挿入されます。"
         "テンプレート全体のトーンに合わせてください。\n\n"
-        f"```\n{tone_sample}\n...\n```"
+        f"```\n{template_body}\n```"
     )
     parts.append(template_section)
 
@@ -53,8 +49,7 @@ def build_system_prompt(
     # Add output instructions
     parts.append(
         "## 出力指示\n\n"
-        "パーソナライズ文のみを出力してください。説明・前置き・補足は不要です。\n"
-        "必ず句点（。）で終わる完成した2〜3文を出力すること。途中で切れた文は不可。"
+        "パーソナライズ文のみを出力してください。説明・前置き・補足は不要です。"
     )
 
     return "\n\n---\n\n".join(parts)
