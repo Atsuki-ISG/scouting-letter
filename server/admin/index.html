@@ -1451,7 +1451,8 @@ const _flowResizeObserver = new ResizeObserver(() => {
 });
 
 // --- Test Panel ---
-const TEST_QUALIFICATIONS = [
+// ジョブメドレー資格マスター（テストパネル・バリデーション設定で共用）
+const QUALIFICATION_MASTER = [
   '看護師', '准看護師', '保健師', '助産師',
   '理学療法士', '作業療法士', '言語聴覚士',
   '介護福祉士', 'ケアマネージャー', '社会福祉士', '精神保健福祉士',
@@ -1461,7 +1462,7 @@ const TEST_QUALIFICATIONS = [
 ];
 
 function renderTestPanel() {
-  const qualCheckboxes = TEST_QUALIFICATIONS.map(q =>
+  const qualCheckboxes = QUALIFICATION_MASTER.map(q =>
     `<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;padding:2px 0">
       <input type="checkbox" class="testQualCb" value="${q}" ${q === '看護師' ? 'checked' : ''}> ${q}
     </label>`
@@ -2307,19 +2308,21 @@ function buildValidationEditor(jsonStr) {
   try {
     const parsed = JSON.parse(jsonStr || '{}');
     if (Array.isArray(parsed)) {
-      // Old format: convert to new
+      // Old format: array of { jobOfferId, required, excluded }
       _validationData = {
         builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true },
         ai_conditions: [],
+        qual_rules: parsed,
       };
     } else {
       _validationData = {
         builtin: parsed.builtin || { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true },
         ai_conditions: parsed.ai_conditions || [],
+        qual_rules: parsed.qual_rules || [],
       };
     }
   } catch {
-    _validationData = { builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true }, ai_conditions: [] };
+    _validationData = { builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true }, ai_conditions: [], qual_rules: [] };
   }
   return renderValidationEditor();
 }
@@ -2342,6 +2345,43 @@ function renderValidationEditor() {
       <span><strong>${info.label}</strong><br><span style="font-size:11px;color:#94a3b8">${info.desc}</span></span>
     </label>`;
   }
+
+  // Qualification rules (per job offer)
+  html += '<div class="rule-section-label" style="font-weight:600;font-size:13px;margin-top:16px">求人別・資格ルール</div>';
+  html += '<div style="font-size:11px;color:#94a3b8;margin-bottom:6px">求人ごとに必須資格・除外資格を設定</div>';
+
+  (_validationData.qual_rules || []).forEach((rule, i) => {
+    const reqTags = (rule.required || []).map(q =>
+      `<span class="rule-tag rule-tag-required">${escHtml(q)} <button onclick="removeQualFromRule(${i},'required','${escHtml(q)}')">×</button></span>`
+    ).join('');
+    const excTags = (rule.excluded || []).map(q =>
+      `<span class="rule-tag rule-tag-excluded">${escHtml(q)} <button onclick="removeQualFromRule(${i},'excluded','${escHtml(q)}')">×</button></span>`
+    ).join('');
+    html += `<div class="rule-card">
+      <div class="rule-card-header">
+        <span>求人ID: ${escHtml(rule.jobOfferId || '(未設定)')}</span>
+        <button class="btn btn-danger btn-sm" onclick="removeQualRule(${i})">×</button>
+      </div>
+      <div class="rule-section-label">必須資格（いずれか1つ）</div>
+      <div class="rule-tags">${reqTags || '<span style="font-size:11px;color:#94a3b8">未設定</span>'}</div>
+      <div class="rule-add-row">
+        <select id="addReqQual_${i}"><option value="">資格を選択</option>${QUALIFICATION_MASTER.map(q => `<option value="${q}">${q}</option>`).join('')}</select>
+        <button class="btn btn-secondary btn-sm" onclick="addQualToRule(${i},'required')">追加</button>
+      </div>
+      <div class="rule-section-label">除外資格</div>
+      <div class="rule-tags">${excTags || '<span style="font-size:11px;color:#94a3b8">未設定</span>'}</div>
+      <div class="rule-add-row">
+        <select id="addExcQual_${i}"><option value="">資格を選択</option>${QUALIFICATION_MASTER.map(q => `<option value="${q}">${q}</option>`).join('')}</select>
+        <button class="btn btn-secondary btn-sm" onclick="addQualToRule(${i},'excluded')">追加</button>
+      </div>
+    </div>`;
+  });
+
+  // Add new rule
+  html += `<div style="display:flex;gap:6px;margin-top:6px">
+    <input type="text" id="newQualRuleJobId" placeholder="求人ID" style="width:140px;height:30px;border:1px solid #cbd5e1;border-radius:4px;padding:0 8px;font-size:12px;font-family:inherit">
+    <button class="btn btn-secondary btn-sm" onclick="addQualRule()">求人ルール追加</button>
+  </div>`;
 
   // AI conditions
   html += '<div class="rule-section-label" style="font-weight:600;font-size:13px;margin-top:16px">追加NG条件（AI判定）</div>';
@@ -2381,8 +2421,43 @@ function removeAiCondition(i) {
   document.getElementById('validationEditor').outerHTML = renderValidationEditor();
 }
 
+function addQualRule() {
+  const jobId = document.getElementById('newQualRuleJobId').value.trim();
+  if (!jobId) { toast('求人IDを入力してください', true); return; }
+  if (!_validationData.qual_rules) _validationData.qual_rules = [];
+  _validationData.qual_rules.push({ jobOfferId: jobId, required: [], excluded: [] });
+  document.getElementById('validationEditor').outerHTML = renderValidationEditor();
+}
+
+function removeQualRule(i) {
+  _validationData.qual_rules.splice(i, 1);
+  document.getElementById('validationEditor').outerHTML = renderValidationEditor();
+}
+
+function addQualToRule(ruleIdx, type) {
+  const select = document.getElementById(`add${type === 'required' ? 'Req' : 'Exc'}Qual_${ruleIdx}`);
+  const val = select.value;
+  if (!val) return;
+  const arr = _validationData.qual_rules[ruleIdx][type] || [];
+  if (!arr.includes(val)) {
+    arr.push(val);
+    _validationData.qual_rules[ruleIdx][type] = arr;
+  }
+  document.getElementById('validationEditor').outerHTML = renderValidationEditor();
+}
+
+function removeQualFromRule(ruleIdx, type, qual) {
+  const arr = _validationData.qual_rules[ruleIdx][type] || [];
+  _validationData.qual_rules[ruleIdx][type] = arr.filter(q => q !== qual);
+  document.getElementById('validationEditor').outerHTML = renderValidationEditor();
+}
+
 function getValidationEditorJson() {
-  return JSON.stringify(_validationData);
+  // If qual_rules exist and it's the only structured data, save as old format (array) for backward compat
+  // Otherwise save as new format with builtin/ai_conditions/qual_rules
+  const data = { ..._validationData };
+  // Always include qual_rules in the saved structure
+  return JSON.stringify(data);
 }
 
 // --- Prompt Preview ---
