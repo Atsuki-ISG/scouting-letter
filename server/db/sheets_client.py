@@ -6,8 +6,9 @@ Data is cached in memory and refreshed on demand via reload().
 Expected sheets and columns:
 
   テンプレート: company, job_category, type, body
-  パターン: company, job_category, pattern_type, employment_variant, template_text, feature_variations
-  資格修飾: company, qualification_combo, replacement_text
+  パターン: company, job_category, pattern_type, employment_variant, template_text, feature_variations,
+            display_name, target_description, match_rules, qualification_combo, replacement_text
+            (pattern_type="QUAL" rows are qualification modifiers)
   プロンプト: company, section_type, job_category, order, content
   求人: company, job_category, id, name, label, employment_type, active
   バリデーション: company, age_min, age_max, qualification_rules
@@ -30,7 +31,6 @@ logger = logging.getLogger(__name__)
 # Sheet names
 SHEET_TEMPLATES = "テンプレート"
 SHEET_PATTERNS = "パターン"
-SHEET_QUAL_MODIFIERS = "資格修飾"
 SHEET_PROMPT_SECTIONS = "プロンプト"
 SHEET_JOB_OFFERS = "求人"
 SHEET_VALIDATION = "バリデーション"
@@ -38,7 +38,6 @@ SHEET_VALIDATION = "バリデーション"
 ALL_SHEETS = [
     SHEET_TEMPLATES,
     SHEET_PATTERNS,
-    SHEET_QUAL_MODIFIERS,
     SHEET_PROMPT_SECTIONS,
     SHEET_JOB_OFFERS,
     SHEET_VALIDATION,
@@ -158,6 +157,8 @@ class SheetsClient:
         for row in rows:
             if row.get("company") != company_id:
                 continue
+            if row.get("pattern_type") == "QUAL":
+                continue  # qualification modifier rows handled separately
             feature_str = row.get("feature_variations", "")
             features = [f.strip() for f in feature_str.split("|") if f.strip()] if feature_str else []
             item = {
@@ -185,10 +186,13 @@ class SheetsClient:
         return result
 
     def _get_qualification_modifiers(self, company_id: str) -> list[dict]:
-        rows = self._cache.get(SHEET_QUAL_MODIFIERS, [])
+        """Get qualification modifiers from QUAL rows in the patterns sheet."""
+        rows = self._cache.get(SHEET_PATTERNS, [])
         result = []
         for row in rows:
             if row.get("company") != company_id:
+                continue
+            if row.get("pattern_type") != "QUAL":
                 continue
             combo_str = row.get("qualification_combo", "")
             combo = [q.strip() for q in combo_str.split(",") if q.strip()]

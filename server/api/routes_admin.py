@@ -12,7 +12,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 SHEET_MAP = {
     "templates": "テンプレート",
     "patterns": "パターン",
-    "qualifiers": "資格修飾",
+    "qualifiers": "パターン",  # QUAL rows in patterns sheet
     "prompts": "プロンプト",
     "job_offers": "求人",
     "validation": "バリデーション",
@@ -21,8 +21,8 @@ SHEET_MAP = {
 # Column order for each sheet (must match header row)
 COLUMNS = {
     "templates": ["company", "job_category", "type", "body"],
-    "patterns": ["company", "job_category", "pattern_type", "employment_variant", "template_text", "feature_variations", "display_name", "target_description", "match_rules"],
-    "qualifiers": ["company", "qualification_combo", "replacement_text"],
+    "patterns": ["company", "job_category", "pattern_type", "employment_variant", "template_text", "feature_variations", "display_name", "target_description", "match_rules", "qualification_combo", "replacement_text"],
+    "qualifiers": ["company", "job_category", "pattern_type", "employment_variant", "template_text", "feature_variations", "display_name", "target_description", "match_rules", "qualification_combo", "replacement_text"],
     "prompts": ["company", "section_type", "job_category", "order", "content"],
     "job_offers": ["company", "job_category", "id", "name", "label", "employment_type", "active"],
     "validation": ["company", "age_min", "age_max", "qualification_rules"],
@@ -102,6 +102,13 @@ async def list_rows(sheet_slug: str, company: Optional[str] = None, operator=Dep
         return {"headers": COLUMNS.get(sheet_slug, []), "rows": []}
 
     headers = rows[0]
+    # Determine pattern_type column index for QUAL filtering
+    pt_col_idx = None
+    for j, h in enumerate(headers):
+        if h.strip() == "pattern_type":
+            pt_col_idx = j
+            break
+
     data_rows = []
     for i, row in enumerate(rows[1:], start=2):  # row 2 = first data row in sheet
         item = {}
@@ -109,6 +116,12 @@ async def list_rows(sheet_slug: str, company: Optional[str] = None, operator=Dep
             item[h.strip()] = row[j].strip() if j < len(row) else ""
         item_company = item.get("company", "")
         if company and item_company and item_company != company:
+            continue
+        # Filter by pattern_type for qualifiers vs patterns
+        pt_value = item.get("pattern_type", "")
+        if sheet_slug == "qualifiers" and pt_value != "QUAL":
+            continue
+        if sheet_slug == "patterns" and pt_value == "QUAL":
             continue
         item["_row_index"] = i  # actual sheet row number
         data_rows.append(item)
@@ -451,11 +464,14 @@ AI生成時のシステムプロンプトの構成パーツ。section_type と c
         ])
         total += 1
 
-        # 5. Qualification modifiers
+        # 5. Qualification modifiers (as QUAL rows in patterns sheet)
         qualifiers = generated.get("qualifiers", [])
         for q in qualifiers:
-            sheets_writer.append_row("資格修飾", [
-                company_id,
+            # columns: company, job_category, pattern_type, employment_variant, template_text,
+            #          feature_variations, display_name, target_description, match_rules,
+            #          qualification_combo, replacement_text
+            sheets_writer.append_row("パターン", [
+                company_id, "nurse", "QUAL", "", "", "", "", "", "",
                 q.get("qualification_combo", ""),
                 q.get("replacement_text", ""),
             ])
@@ -566,6 +582,10 @@ async def create_row(sheet_slug: str, data: dict, operator=Depends(verify_api_ke
     sheet_name = SHEET_MAP.get(sheet_slug)
     if not sheet_name:
         raise HTTPException(404, f"Unknown sheet: {sheet_slug}")
+
+    # For qualifiers, force pattern_type=QUAL
+    if sheet_slug == "qualifiers":
+        data["pattern_type"] = "QUAL"
 
     columns = COLUMNS.get(sheet_slug, [])
     values = [data.get(col, "") for col in columns]

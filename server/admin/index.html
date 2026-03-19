@@ -1526,7 +1526,6 @@ const TABS = [
   { slug: 'validation', name: 'バリデーション' },
   { slug: 'prompts', name: 'AI生成設定', filter: r => (r.section_type || '') !== 'pattern_generation' },
   { slug: 'patterns', name: '型はめ設定' },
-  { slug: 'qualifiers', name: '資格修飾', parentTab: 'patterns' },
   { slug: 'job_offers', name: '求人' },
 ];
 
@@ -2242,7 +2241,6 @@ const FIELD_HINTS = {
 const TAB_DESCRIPTIONS = {
   templates: 'スカウト文の外枠。パート/正社員 × 初回/再送 の4パターン。{パーソナライズ文} 部分にAI生成 or 型はめの文章が挿入される。',
   patterns: '経歴が少ない候補者（自己PR・職歴なし）に使う型はめ文。経験年数×年齢で自動的に型が選ばれる。',
-  qualifiers: '複数資格（看護師+保健師 等）を持つ候補者に、パターン文の冒頭を差し替える。',
   prompts: 'AI生成パス（経歴あり候補者）で使われるプロンプトの構成パーツ。section_type ごとに分かれてsystem promptに結合される。',
   job_offers: 'ジョブメドレーの求人。スカウト送信時に自動選択される。',
   validation: 'スカウト対象外の条件（年齢制限・資格ルール）。',
@@ -2357,7 +2355,7 @@ async function loadData() {
 
     renderTable();
 
-    // If on patterns tab, also load qualifiers below
+    // If on patterns tab, also load qualifiers (QUAL rows) below
     if (currentTab === 'patterns') {
       try {
         const qData = await api('GET', `/api/v1/admin/qualifiers?company=${company}`);
@@ -2374,10 +2372,10 @@ async function loadData() {
 function renderQualifiersSection(qData) {
   const content = document.getElementById('content');
   let html = '<div style="margin-top:32px;border-top:2px solid #e2e8f0;padding-top:24px">';
-  html += '<div class="toolbar"><span class="toolbar-title">資格修飾（${qData.rows.length}件）</span>';
-  html += '<button class="btn btn-primary btn-sm" onclick="currentTab=\'qualifiers\';openAddModal();currentTab=\'patterns\'">＋ 追加</button></div>';
+  html += `<div class="toolbar"><span class="toolbar-title">資格修飾（${qData.rows.length}件）</span>`;
+  html += `<button class="btn btn-primary btn-sm" onclick="qualAddModal()">＋ 追加</button></div>`;
   html += '<div class="table-wrap"><table><thead><tr>';
-  const qHeaders = qData.headers.filter(h => h !== '_row_index');
+  const qHeaders = ['company', 'qualification_combo', 'replacement_text'];
   qHeaders.forEach(h => { html += `<th>${FIELD_LABELS[h] || h}</th>`; });
   html += '<th>操作</th></tr></thead><tbody>';
   for (const row of qData.rows) {
@@ -2386,14 +2384,55 @@ function renderQualifiersSection(qData) {
       html += `<td><div class="cell-text">${formatCellText(String(row[h] ?? ''))}</div></td>`;
     }
     html += `<td><div class="actions-cell">
-      <button class="btn btn-secondary btn-sm" onclick="currentTab='qualifiers';openEditModal(${row._row_index});currentTab='patterns'">編集</button>
-      <button class="btn btn-danger btn-sm" onclick="currentTab='qualifiers';deleteRow(${row._row_index});currentTab='patterns'">削除</button>
+      <button class="btn btn-secondary btn-sm" onclick="qualEditModal(${row._row_index})">編集</button>
+      <button class="btn btn-danger btn-sm" onclick="qualDeleteRow(${row._row_index})">削除</button>
     </div></td></tr>`;
   }
   html += '</tbody></table></div></div>';
   content.innerHTML += html;
-  // Re-init cell toggle for new elements
   initCellToggle();
+}
+
+// Qualifier CRUD helpers — operate on patterns sheet QUAL rows
+const QUAL_FIELDS = ['company', 'qualification_combo', 'replacement_text'];
+
+function _qualData(data) {
+  // Ensure QUAL row has pattern_type=QUAL and fills all pattern columns
+  return { ...data, pattern_type: 'QUAL', job_category: data.job_category || '', employment_variant: '', template_text: '', feature_variations: '', display_name: '', target_description: '', match_rules: '' };
+}
+function qualAddModal() {
+  const company = document.getElementById('companySelect').value;
+  openModal('資格修飾を追加', QUAL_FIELDS, {company}, async (data) => {
+    try {
+      await api('POST', '/api/v1/admin/qualifiers', _qualData(data));
+      closeModal();
+      toast('追加しました');
+      loadData();
+    } catch (e) { toast(e.message, true); }
+  });
+}
+function qualEditModal(rowIndex) {
+  const company = document.getElementById('companySelect').value;
+  api('GET', `/api/v1/admin/qualifiers?company=${company}`).then(qData => {
+    const row = qData.rows.find(r => r._row_index === rowIndex);
+    if (!row) return;
+    openModal('資格修飾を編集', QUAL_FIELDS, row, async (data) => {
+      try {
+        await api('PUT', `/api/v1/admin/qualifiers/${rowIndex}`, _qualData({...row, ...data}));
+        closeModal();
+        toast('更新しました');
+        loadData();
+      } catch (e) { toast(e.message, true); }
+    });
+  });
+}
+async function qualDeleteRow(rowIndex) {
+  if (!confirm('この資格修飾を削除しますか？')) return;
+  try {
+    await api('DELETE', `/api/v1/admin/qualifiers/${rowIndex}`);
+    toast('削除しました');
+    loadData();
+  } catch (e) { toast(e.message, true); }
 }
 
 // --- Table Rendering ---
@@ -2662,7 +2701,8 @@ function closeModal() {
 }
 
 function openAddModal() {
-  const tabName = TABS.find(t => t.slug === currentTab).name;
+  const tabDef = TABS.find(t => t.slug === currentTab);
+  const tabName = tabDef ? tabDef.name : currentTab;
   const fields = currentHeaders.filter(h => h !== '_row_index');
   openModal(`${tabName}を追加`, fields, {}, async (data) => {
     try {
@@ -2679,7 +2719,8 @@ function openAddModal() {
 function openEditModal(rowIndex) {
   const row = currentRows.find(r => r._row_index === rowIndex);
   if (!row) return;
-  const tabName = TABS.find(t => t.slug === currentTab).name;
+  const tabDef = TABS.find(t => t.slug === currentTab);
+  const tabName = tabDef ? tabDef.name : currentTab;
   const fields = currentHeaders.filter(h => h !== '_row_index');
   openModal(`${tabName}を編集`, fields, row, async (data) => {
     try {
