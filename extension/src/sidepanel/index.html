@@ -21,8 +21,10 @@
 
     <nav class="tabs">
       <button class="tab active" data-tab="extract">📋 抽出</button>
+      <button class="tab" data-tab="generate">🤖 API生成</button>
       <button class="tab" data-tab="send">📤 送信</button>
       <button class="tab" data-tab="conversation">💬 返信</button>
+      <button class="tab" data-tab="settings">⚙ 設定</button>
     </nav>
 
     <!-- Phase 1: 抽出パネル -->
@@ -54,6 +56,35 @@
       </button>
 
       <div id="extracted-list" class="candidate-list"></div>
+    </section>
+
+    <!-- API生成パネル -->
+    <section id="panel-generate" class="panel hidden">
+      <div class="generate-info">
+        <p>抽出済み: <strong id="generate-profile-count">0</strong>件</p>
+      </div>
+
+      <div class="generate-options">
+        <label class="toggle-label">
+          <input type="checkbox" id="option-resend">
+          再送モード
+        </label>
+        <label class="toggle-label">
+          <input type="checkbox" id="option-seishain">
+          正社員テンプレート強制
+        </label>
+      </div>
+
+      <button id="btn-api-generate" class="btn btn-primary btn-block" disabled>一括生成</button>
+
+      <div id="generate-progress" class="progress-section hidden">
+        <div id="generate-progress-text" class="progress-text">生成中...</div>
+        <div class="progress-bar">
+          <div id="generate-progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div id="generate-result-summary" class="result-summary hidden"></div>
     </section>
 
     <!-- Phase 3: 送信アシストパネル -->
@@ -156,6 +187,37 @@
         <button id="btn-export-reply-records" class="btn btn-secondary btn-block">返信スカウト記録エクスポート</button>
       </div>
     </section>
+    <!-- 設定パネル -->
+    <section id="panel-settings" class="panel hidden">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">API設定</h3>
+      <div class="input-group">
+        <label for="settings-api-endpoint">APIエンドポイント:</label>
+        <input type="text" id="settings-api-endpoint" placeholder="https://scout-api-xxxxx.run.app">
+      </div>
+      <div class="input-group">
+        <label for="settings-api-key">APIキー:</label>
+        <input type="password" id="settings-api-key" placeholder="APIキーを入力">
+      </div>
+      <button id="btn-test-api" class="btn btn-secondary" style="margin-top:8px;">接続テスト</button>
+      <div id="settings-api-status" style="font-size:12px;margin-top:6px;"></div>
+
+      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
+
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">GAS連携</h3>
+      <div class="input-group">
+        <label for="settings-gas-enabled">
+          <input type="checkbox" id="settings-gas-enabled" style="width:auto;margin-right:4px;">
+          有効化
+        </label>
+      </div>
+      <div class="input-group">
+        <label for="settings-gas-url">GAS Web App URL:</label>
+        <input type="text" id="settings-gas-url" placeholder="https://script.google.com/...">
+      </div>
+      <button id="btn-test-gas-settings" class="btn btn-secondary" style="margin-top:8px;">接続テスト</button>
+      <div id="settings-gas-status" style="font-size:12px;margin-top:6px;"></div>
+    </section>
+
     <div id="confirmation-popup" class="hidden"></div>
   </div>
 

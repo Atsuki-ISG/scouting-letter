@@ -2,11 +2,14 @@ import { ExtractionPanel } from './components/ExtractionPanel';
 import { CandidateList } from './components/CandidateList';
 import { ImportPanel } from './components/ImportPanel';
 import { ConversationPanel } from './components/ConversationPanel';
+import { GeneratePanel } from './components/GeneratePanel';
 import { DebugPanel } from './components/DebugPanel';
 import { ConfirmationPopup } from './components/ConfirmationPopup';
 import { storage } from '../shared/storage';
 import { CandidateItem, CandidateProfile, FixRecord, Message } from '../shared/types';
 import { COMPANY_JOB_OFFERS } from '../shared/constants';
+import { apiClient } from '../shared/api-client';
+import { gasClient } from '../shared/gas-client';
 
 /** タブ切替 */
 function setupTabs(): void {
@@ -275,6 +278,52 @@ function showJobOfferFailedNotification(error: string): void {
   });
 }
 
+/** 設定パネル */
+function setupSettingsPanel(): void {
+  const apiEndpoint = document.getElementById('settings-api-endpoint') as HTMLInputElement;
+  const apiKeyInput = document.getElementById('settings-api-key') as HTMLInputElement;
+  const btnTestApi = document.getElementById('btn-test-api') as HTMLButtonElement;
+  const apiStatus = document.getElementById('settings-api-status') as HTMLElement;
+
+  const gasEnabled = document.getElementById('settings-gas-enabled') as HTMLInputElement;
+  const gasUrl = document.getElementById('settings-gas-url') as HTMLInputElement;
+  const btnTestGas = document.getElementById('btn-test-gas-settings') as HTMLButtonElement;
+  const gasStatus = document.getElementById('settings-gas-status') as HTMLElement;
+
+  // 復元
+  storage.getAPIEndpoint().then((v) => { apiEndpoint.value = v; });
+  storage.getAPIKey().then((v) => { apiKeyInput.value = v; });
+  storage.isGASEnabled().then((v) => { gasEnabled.checked = v; });
+  storage.getGASEndpoint().then((v) => { gasUrl.value = v; });
+
+  // 保存
+  apiEndpoint.addEventListener('change', () => storage.setAPIEndpoint(apiEndpoint.value.trim()));
+  apiKeyInput.addEventListener('change', () => storage.setAPIKey(apiKeyInput.value.trim()));
+  gasEnabled.addEventListener('change', () => storage.setGASEnabled(gasEnabled.checked));
+  gasUrl.addEventListener('change', () => storage.setGASEndpoint(gasUrl.value.trim()));
+
+  // API接続テスト
+  btnTestApi.addEventListener('click', async () => {
+    apiStatus.textContent = 'テスト中...';
+    apiStatus.style.color = '#6b7280';
+    await storage.setAPIEndpoint(apiEndpoint.value.trim());
+    await storage.setAPIKey(apiKeyInput.value.trim());
+    const result = await apiClient.testConnection();
+    apiStatus.textContent = result.success ? '接続成功' : `接続失敗: ${result.error}`;
+    apiStatus.style.color = result.success ? '#22c55e' : '#ef4444';
+  });
+
+  // GAS接続テスト
+  btnTestGas.addEventListener('click', async () => {
+    gasStatus.textContent = 'テスト中...';
+    gasStatus.style.color = '#6b7280';
+    await storage.setGASEndpoint(gasUrl.value.trim());
+    const result = await gasClient.testConnection();
+    gasStatus.textContent = result.success ? '接続成功' : `接続失敗: ${result.error}`;
+    gasStatus.style.color = result.success ? '#22c55e' : '#ef4444';
+  });
+}
+
 /** 初期化 */
 function init(): void {
   setupTabs();
@@ -285,6 +334,7 @@ function init(): void {
   new ExtractionPanel();
   const candidateList = new CandidateList();
   new ImportPanel(candidateList);
+  new GeneratePanel(candidateList);
   setupJobOfferSelect(candidateList);
   setupAutoJobOfferToggle();
   new ConversationPanel();
@@ -292,6 +342,7 @@ function init(): void {
   const confirmPopup = new ConfirmationPopup();
 
   setupDebugControls(debugPanel);
+  setupSettingsPanel();
   setupMessageHandlers(debugPanel, confirmPopup, candidateList);
 
   // 確認ポップアップ内の停止ボタンから連続送信を停止

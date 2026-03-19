@@ -86,6 +86,23 @@
   <button id="btn-test-gas" class="btn" style="background:#6b7280; margin-top:4px;">接続テスト</button>
   <div id="gas-status" class="status"></div>
 
+  <hr style="margin: 12px 0; border: none; border-top: 1px solid #e5e7eb;">
+
+  <h3 style="font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px;">API設定</h3>
+
+  <div class="field">
+    <label for="api-endpoint">APIエンドポイント:</label>
+    <input type="text" id="api-endpoint" placeholder="https://scout-api-xxxxx.run.app">
+  </div>
+
+  <div class="field">
+    <label for="api-key">APIキー:</label>
+    <input type="password" id="api-key" placeholder="sk-...">
+  </div>
+
+  <button id="btn-test-api" class="btn" style="background:#6b7280; margin-top:4px;">接続テスト</button>
+  <div id="api-status" class="status"></div>
+
   <div id="status" class="status">保存しました</div>
 
   <script src="Popup.ts" type="module"></script>

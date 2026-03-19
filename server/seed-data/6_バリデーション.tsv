@@ -1,0 +1,3 @@
+company	age_min	age_max	qualification_rules
+ark-visiting-nurse	20	59	[{"jobOfferId":"1550716","required":["看護師","准看護師"],"excluded":[]},{"jobOfferId":"1550715","required":["看護師"],"excluded":[]}]
+lcc-visiting-nurse	20	65	[{"jobOfferId":"638104","required":["看護師","准看護師"],"excluded":[]},{"jobOfferId":"1146892","required":["理学療法士"],"excluded":[]},{"jobOfferId":"1328672","required":["言語聴覚士"],"excluded":[]}]

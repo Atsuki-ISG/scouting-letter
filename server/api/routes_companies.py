@@ -1,0 +1,24 @@
+from fastapi import APIRouter, Depends
+
+from auth.api_key import verify_api_key
+from db.sheets_client import sheets_client
+
+router = APIRouter(tags=["companies"])
+
+
+@router.get("/companies/{company_id}/config")
+async def get_company_config(
+    company_id: str,
+    operator: dict = Depends(verify_api_key),
+):
+    """Return templates, job_offers, validation_config for Chrome extension."""
+    return sheets_client.get_company_config(company_id)
+
+
+@router.post("/reload")
+async def reload_config(
+    operator: dict = Depends(verify_api_key),
+):
+    """Reload config from Google Sheets."""
+    sheets_client.reload()
+    return {"status": "reloaded"}

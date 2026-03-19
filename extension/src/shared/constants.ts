@@ -97,6 +97,8 @@ export const STORAGE_KEYS = {
   GAS_ENDPOINT: 'scout_gas_endpoint',
   GAS_ENABLED: 'scout_gas_enabled',
   AUTO_JOB_OFFER: 'scout_auto_job_offer',
+  API_ENDPOINT: 'scout_api_endpoint',
+  API_KEY: 'scout_api_key',
 } as const;
 
 /** 会社別バリデーション設定 */

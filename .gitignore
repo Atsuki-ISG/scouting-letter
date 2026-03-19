@@ -1,3 +1,12 @@
 .DS_Store
 node_modules/
 dist/
+
+# Server
+server/.venv/
+server/.env
+server/sa-key.json
+server/__pycache__/
+server/**/__pycache__/
+*.pyc
+.pytest_cache/

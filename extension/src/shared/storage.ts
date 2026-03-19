@@ -170,6 +170,26 @@ export const storage = {
     await chrome.storage.local.set({ [STORAGE_KEYS.GAS_ENABLED]: enabled });
   },
 
+  // --- API設定 ---
+
+  async getAPIEndpoint(): Promise<string> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.API_ENDPOINT);
+    return (result[STORAGE_KEYS.API_ENDPOINT] as string) || '';
+  },
+
+  async setAPIEndpoint(url: string): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.API_ENDPOINT]: url });
+  },
+
+  async getAPIKey(): Promise<string> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.API_KEY);
+    return (result[STORAGE_KEYS.API_KEY] as string) || '';
+  },
+
+  async setAPIKey(key: string): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.API_KEY]: key });
+  },
+
   async clear(): Promise<void> {
     await chrome.storage.local.remove([
       STORAGE_KEYS.CANDIDATES,

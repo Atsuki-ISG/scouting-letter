@@ -2,6 +2,7 @@ import { storage } from '../shared/storage';
 import { Message } from '../shared/types';
 import { COMPANY_JOB_OFFERS } from '../shared/constants';
 import { gasClient } from '../shared/gas-client';
+import { apiClient } from '../shared/api-client';
 
 function init(): void {
   const companySelect = document.getElementById('company') as HTMLSelectElement;
@@ -38,6 +39,9 @@ function init(): void {
 
   // GAS設定
   setupGASSettings();
+
+  // API設定
+  setupAPISettings();
 }
 
 function setupGASSettings(): void {
@@ -79,6 +83,50 @@ function setupGASSettings(): void {
     } else {
       gasStatus.textContent = `接続失敗: ${result.error}`;
       gasStatus.style.color = '#ef4444';
+    }
+  });
+}
+
+function setupAPISettings(): void {
+  const apiEndpoint = document.getElementById('api-endpoint') as HTMLInputElement;
+  const apiKey = document.getElementById('api-key') as HTMLInputElement;
+  const btnTest = document.getElementById('btn-test-api') as HTMLButtonElement;
+  const apiStatus = document.getElementById('api-status') as HTMLElement;
+
+  // 復元
+  storage.getAPIEndpoint().then((url) => {
+    apiEndpoint.value = url;
+  });
+  storage.getAPIKey().then((key) => {
+    apiKey.value = key;
+  });
+
+  // 変更時に保存
+  apiEndpoint.addEventListener('change', () => {
+    storage.setAPIEndpoint(apiEndpoint.value.trim());
+  });
+
+  apiKey.addEventListener('change', () => {
+    storage.setAPIKey(apiKey.value.trim());
+  });
+
+  // 接続テスト
+  btnTest.addEventListener('click', async () => {
+    apiStatus.style.display = 'block';
+    apiStatus.textContent = 'テスト中...';
+    apiStatus.style.color = '#6b7280';
+
+    // 最新値を保存してからテスト
+    await storage.setAPIEndpoint(apiEndpoint.value.trim());
+    await storage.setAPIKey(apiKey.value.trim());
+    const result = await apiClient.testConnection();
+
+    if (result.success) {
+      apiStatus.textContent = '接続成功';
+      apiStatus.style.color = '#22c55e';
+    } else {
+      apiStatus.textContent = `接続失敗: ${result.error}`;
+      apiStatus.style.color = '#ef4444';
     }
   });
 }

@@ -1,0 +1,6 @@
+company	job_category	id	name	label	employment_type	active
+ark-visiting-nurse	nurse	1550716	北海道 医療法人社団優希 アーク訪問看護ステーション 看護師/准看護師 (訪問看護師) パート・バイト	看護師 パート	パート	TRUE
+ark-visiting-nurse	nurse	1550715	北海道 医療法人社団優希 アーク訪問看護ステーション 看護師/准看護師 (訪問看護師) 正職員	看護師 正社員	正社員	TRUE
+lcc-visiting-nurse	nurse	638104	東京都 LCC訪問看護ステーション 本社 看護師/准看護師  正職員	看護師 正社員	正社員	TRUE
+lcc-visiting-nurse	rehab_pt	1146892	東京都 LCC訪問看護ステーション 本社 理学療法士  正職員	理学療法士 正社員	正社員	TRUE
+lcc-visiting-nurse	rehab_st	1328672	東京都 LCC訪問看護ステーション 本社 言語聴覚士  正職員	言語聴覚士 正社員	正社員	TRUE
