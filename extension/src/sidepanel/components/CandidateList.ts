@@ -1,6 +1,7 @@
 import { CandidateItem, CandidateStatus, CandidateProfile, ConfirmationData, FixRecord, Message, ValidationResult } from '../../shared/types';
 import { storage } from '../../shared/storage';
-import { COMPANY_JOB_OFFERS, COMPANY_VALIDATION_CONFIG, JobOffer, localTimestamp, resolveJobOffer } from '../../shared/constants';
+import { JobOffer, localTimestamp, resolveJobOffer } from '../../shared/constants';
+import { configProvider } from '../../shared/config-provider';
 import { validateCandidate } from '../../shared/validation';
 import { gasClient } from '../../shared/gas-client';
 import { escapeHtml } from '../../shared/utils';
@@ -62,7 +63,7 @@ export class CandidateList {
 
     // template_typeに応じた求人を自動選択
     const company = await storage.getCompany();
-    const jobOffers = COMPANY_JOB_OFFERS[company] || [];
+    const jobOffers = await configProvider.getJobOffers(company);
     const jobOffer = resolveJobOffer(candidate.template_type, jobOffers);
 
     return {
@@ -173,11 +174,11 @@ export class CandidateList {
   /** 全候補者にバリデーションを実行 */
   async runValidation(): Promise<void> {
     const company = await storage.getCompany();
-    const config = COMPANY_VALIDATION_CONFIG[company];
+    const config = await configProvider.getValidationConfig(company);
     if (!config) return;
 
     const profiles = await storage.getExtractedProfiles();
-    const jobOffers = COMPANY_JOB_OFFERS[company] || [];
+    const jobOffers = await configProvider.getJobOffers(company);
 
     for (const candidate of this.candidates) {
       const profile = profiles.find((p) => p.member_id === candidate.member_id) || null;
@@ -339,7 +340,7 @@ export class CandidateList {
 
     // template_typeに応じた求人を自動判定（フォールバック: ドロップダウン選択）
     const company = await storage.getCompany();
-    const allOffers = COMPANY_JOB_OFFERS[company] || [];
+    const allOffers = await configProvider.getJobOffers(company);
     const jobOffer = resolveJobOffer(candidate.template_type, allOffers) || await this.getJobOffer();
     if (!jobOffer) {
       alert('対象求人を選択してください');
@@ -400,7 +401,7 @@ export class CandidateList {
       const select = document.getElementById('job-offer') as HTMLSelectElement | null;
       if (select && select.value) {
         const company = await storage.getCompany();
-        const offers = COMPANY_JOB_OFFERS[company] || [];
+        const offers = await configProvider.getJobOffers(company);
         const found = offers.find((o) => o.id === select.value);
         if (found) {
           jobOffer = found;

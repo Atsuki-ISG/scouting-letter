@@ -91,7 +91,7 @@ async def _process_candidate(
     template_type = resolve_template_type(profile, options, job_category)
 
     # 3. Filter candidate
-    filter_reason = filter_candidate(
+    filter_reason = await filter_candidate(
         profile, company_id, job_category, config["validation_config"]
     )
     if filter_reason:
@@ -116,16 +116,27 @@ async def _process_candidate(
     template_body = template_data.get("body", "")
 
     # 5. Generate personalized text
-    if should_use_pattern(profile):
-        pattern_type, personalized_text, debug_info = match_pattern(
-            profile,
-            config["patterns"],
-            config["qualification_modifiers"],
-            feature_rotation_index=hash(profile.member_id) % 100,
-        )
-        generation_path = "pattern"
-        logger.info(f"[{profile.member_id}] pattern: {debug_info}")
-    else:
+    # Check if patterns have actual content (template_text filled in)
+    has_patterns = any(
+        p.get("template_text", "").strip() for p in config["patterns"]
+    )
+    use_pattern = should_use_pattern(profile) and has_patterns
+
+    if use_pattern:
+        try:
+            pattern_type, personalized_text, debug_info = match_pattern(
+                profile,
+                config["patterns"],
+                config["qualification_modifiers"],
+                feature_rotation_index=hash(profile.member_id) % 100,
+            )
+            generation_path = "pattern"
+            logger.info(f"[{profile.member_id}] pattern: {debug_info}")
+        except ValueError:
+            # Pattern not found → fall through to AI
+            use_pattern = False
+
+    if not use_pattern:
         system_prompt = build_system_prompt(
             config["prompt_sections"],
             template_body,

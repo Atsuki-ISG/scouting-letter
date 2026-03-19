@@ -137,10 +137,32 @@ thead th {
 tbody td {
   padding: 10px 14px;
   border-bottom: 1px solid #f1f5f9;
-  max-width: 240px;
+  max-width: 320px;
+  line-height: 1.6;
+  white-space: normal;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+tbody td .cell-text {
+  max-height: 4.8em;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+}
+
+tbody td .cell-text.expanded {
+  max-height: none;
+}
+
+tbody td .cell-text.clipped::after {
+  content: '...';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: #fff;
+  padding-left: 4px;
+  color: #94a3b8;
 }
 
 tbody tr:hover { background: #f8fafc; }
@@ -294,6 +316,257 @@ tbody tr:hover { background: #f8fafc; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Pattern Guide */
+.pattern-guide {
+  margin-bottom: 16px;
+}
+
+.pattern-guide-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 8px;
+  user-select: none;
+}
+
+.pattern-guide-toggle:hover { color: #2563eb; }
+
+.pattern-guide-toggle .arrow {
+  display: inline-block;
+  transition: transform 0.15s;
+  font-size: 11px;
+}
+
+.pattern-guide-toggle .arrow.open { transform: rotate(90deg); }
+
+.pattern-guide-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pattern-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  min-width: 160px;
+  flex: 0 1 auto;
+  border-left: 3px solid var(--card-color, #94a3b8);
+}
+
+.pattern-card-type {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--card-color, #1e293b);
+}
+
+.pattern-card-name {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 2px;
+}
+
+.pattern-card-target {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+/* Validation Rule Editor */
+.rule-editor { margin-top: 8px; }
+
+.rule-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: #f8fafc;
+}
+
+.rule-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.rule-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.rule-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: default;
+}
+
+.rule-tag-required { background: #dbeafe; color: #1e40af; }
+.rule-tag-excluded { background: #fee2e2; color: #dc2626; }
+
+.rule-tag button {
+  background: none;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.rule-tag button:hover { opacity: 1; }
+
+.rule-add-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.rule-add-row select, .rule-add-row input {
+  height: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 0 6px;
+  font-family: inherit;
+}
+
+.rule-section-label {
+  font-size: 12px;
+  color: #64748b;
+  margin: 6px 0 2px;
+}
+
+/* Prompt Preview */
+.preview-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.preview-flow-step {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #475569;
+  position: relative;
+}
+
+.preview-flow-step.active { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+
+.preview-section {
+  margin-bottom: 16px;
+}
+
+.preview-section h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-section .label-tag {
+  font-size: 11px;
+  font-weight: 400;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #e2e8f0;
+  color: #64748b;
+}
+
+.preview-prompt-block {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+/* AI Generate Modal */
+.ai-generate-preview {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f8fafc;
+}
+
+.ai-pattern-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.ai-pattern-card h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-pattern-card .text-preview {
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.ai-pattern-card .features {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.ai-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  justify-content: center;
+  color: #64748b;
+}
+
+/* Pattern Badge */
+.pattern-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  cursor: default;
+}
+
 /* API Key Dialog */
 .apikey-dialog {
   display: none;
@@ -333,11 +606,10 @@ tbody tr:hover { background: #f8fafc; }
 
 <header class="header">
   <span class="header-title">Scout Admin</span>
-  <select id="companySelect">
-    <option value="ark-visiting-nurse">ARK訪問看護</option>
-    <option value="lcc-visiting-nurse">LCC訪問看護</option>
-  </select>
+  <select id="companySelect"></select>
+  <button class="btn btn-secondary btn-sm" onclick="showAddCompanyDialog()">＋ 新規会社</button>
   <div class="header-right">
+    <button class="btn btn-primary" onclick="openPromptPreview()">生成フロー確認</button>
     <button class="btn btn-secondary" onclick="reloadCache()">キャッシュ更新</button>
     <button class="btn btn-secondary" onclick="showApiKeyDialog()">APIキー設定</button>
   </div>
@@ -358,6 +630,61 @@ tbody tr:hover { background: #f8fafc; }
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
       <button class="btn btn-primary" id="modalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prompt Preview Dialog -->
+<div class="modal-overlay" id="promptPreviewOverlay">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-header">
+      <h3>生成フロー・プロンプト構造</h3>
+      <button class="modal-close" onclick="closePromptPreview()">&times;</button>
+    </div>
+    <div class="modal-body" id="promptPreviewBody">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closePromptPreview()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI Generate Patterns Dialog -->
+<div class="modal-overlay" id="aiGenerateOverlay">
+  <div class="modal" style="max-width:800px">
+    <div class="modal-header">
+      <h3 id="aiGenerateTitle">AIでパターン一括生成</h3>
+      <button class="modal-close" onclick="closeAiGenerate()">&times;</button>
+    </div>
+    <div class="modal-body" id="aiGenerateBody">
+      <div id="aiInputPhase">
+        <div class="field">
+          <label>会社情報<span class="hint">profile.mdの内容を貼り付け</span></label>
+          <textarea id="aiCompanyInfo" style="min-height:200px" placeholder="会社の特色、教育体制、対象職種など..."></textarea>
+        </div>
+      </div>
+      <div id="aiPreviewPhase" style="display:none">
+        <div class="ai-generate-preview" id="aiPreviewContent"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeAiGenerate()">キャンセル</button>
+      <button class="btn btn-primary" id="aiGenerateBtn" onclick="startAiGenerate()">生成する</button>
+      <button class="btn btn-primary" id="aiSaveBtn" style="display:none" onclick="saveAiPatterns()">保存する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Company Dialog -->
+<div class="apikey-dialog" id="addCompanyDialog">
+  <div class="apikey-box">
+    <h3>新規会社を追加</h3>
+    <input type="text" id="newCompanyId" placeholder="会社ID（例: new-visiting-nurse）">
+    <p style="font-size:12px;color:#64748b;margin:4px 0 8px;">英数字とハイフンのみ。テンプレート・パターン・バリデーションの空枠が自動作成されます。</p>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeAddCompanyDialog()">キャンセル</button>
+      <button class="btn btn-primary" onclick="addCompany()">作成</button>
     </div>
   </div>
 </div>
@@ -385,7 +712,7 @@ const TABS = [
   { slug: 'validation', name: 'バリデーション' },
 ];
 
-const TEXTAREA_FIELDS = new Set(['body', 'template_text', 'content', 'qualification_rules', 'feature_variations']);
+const TEXTAREA_FIELDS = new Set(['body', 'template_text', 'content', 'qualification_rules', 'feature_variations', 'match_rules']);
 
 // Column name → Japanese label
 const FIELD_LABELS = {
@@ -410,7 +737,33 @@ const FIELD_LABELS = {
   age_min: '年齢下限',
   age_max: '年齢上限',
   qualification_rules: '資格ルール（JSON）',
+  display_name: '表示名',
+  target_description: '対象条件',
+  match_rules: 'マッチングルール',
 };
+
+// Pattern type color map (by base type)
+const PATTERN_COLORS = {
+  A: '#2563eb', B1: '#7c3aed', B2: '#7c3aed',
+  C: '#059669', D: '#059669',
+  E: '#d97706', F: '#d97706',
+  G: '#dc2626',
+};
+
+// Fallback guide (used when API data has no display_name/target_description)
+const PATTERN_GUIDE_FALLBACK = {
+  A:  { name: '豊富な経験への期待', target: '経験10年+ / 40代〜×経験6年+' },
+  B1: { name: '確かな経験×特色', target: '経験6〜9年' },
+  B2: { name: '経験×特色', target: '経験3〜5年' },
+  C:  { name: '経験とのフィット', target: '40代〜 × 経験1〜2年' },
+  D:  { name: '経験ある前提で評価', target: '40代〜 × 経験未入力' },
+  E:  { name: 'ポテンシャル+教育体制', target: '20〜30代 × 経験1〜2年' },
+  F:  { name: '教育体制+成長環境', target: '20〜30代 × 経験未入力' },
+  G:  { name: '教育体制メイン', target: '在学中' },
+};
+
+// Dynamic guide built from API data (populated on patterns tab load)
+let PATTERN_GUIDE = {};
 
 const FIELD_HINTS = {
   feature_variations: '| 区切り',
@@ -419,6 +772,24 @@ const FIELD_HINTS = {
   active: 'TRUE / FALSE',
   pattern_type: 'A / B1 / B2 / C / D / E / F / G',
   employment_variant: '就業中 / 離職中（空欄可）',
+  match_rules: 'JSON配列（例: [{"exp_min":6,"age_group":"40s+"}]）',
+};
+
+// Tab descriptions shown as guide text above the table
+const TAB_DESCRIPTIONS = {
+  templates: 'スカウト文の外枠。パート/正社員 × 初回/再送 の4パターン。{パーソナライズ文} 部分にAI生成 or 型はめの文章が挿入される。',
+  patterns: '経歴が少ない候補者（自己PR・職歴なし）に使う型はめ文。経験年数×年齢で自動的に型が選ばれる。',
+  qualifiers: '複数資格（看護師+保健師 等）を持つ候補者に、パターン文の冒頭を差し替える。',
+  prompts: 'AI生成パス（経歴あり候補者）で使われるプロンプトの構成パーツ。section_type ごとに分かれてsystem promptに結合される。',
+  job_offers: 'ジョブメドレーの求人。スカウト送信時に自動選択される。',
+  validation: 'スカウト対象外の条件（年齢制限・資格ルール）。',
+};
+
+const SECTION_TYPE_LABELS = {
+  station_features: '会社の特色（AI生成の参考情報）',
+  education: '教育体制（AI生成の参考情報）',
+  ai_guide: 'AI生成ルール（文体・表現の指示）',
+  pattern_generation: 'パターン一括生成プロンプト（AIで型文章を生成する時に使用）',
 };
 
 // --- State ---
@@ -514,15 +885,92 @@ async function loadData() {
 }
 
 // --- Table Rendering ---
+function buildPatternGuide() {
+  // Build PATTERN_GUIDE from loaded pattern rows (deduplicate by base pattern_type)
+  PATTERN_GUIDE = {};
+  for (const row of currentRows) {
+    const pt = row.pattern_type || '';
+    if (!pt || PATTERN_GUIDE[pt]) continue;
+    const fb = PATTERN_GUIDE_FALLBACK[pt] || {};
+    PATTERN_GUIDE[pt] = {
+      name: row.display_name || fb.name || pt,
+      target: row.target_description || fb.target || '',
+      color: PATTERN_COLORS[pt] || '#94a3b8',
+    };
+  }
+  // Ensure all fallback types are present
+  for (const [pt, fb] of Object.entries(PATTERN_GUIDE_FALLBACK)) {
+    if (!PATTERN_GUIDE[pt]) {
+      PATTERN_GUIDE[pt] = { name: fb.name, target: fb.target, color: PATTERN_COLORS[pt] || '#94a3b8' };
+    }
+  }
+}
+
+function renderPatternGuide() {
+  const isOpen = localStorage.getItem('pattern_guide_open') !== 'false';
+  let html = '<div class="pattern-guide">';
+  html += `<div class="pattern-guide-toggle" onclick="togglePatternGuide()">
+    <span class="arrow ${isOpen ? 'open' : ''}">&#9654;</span>
+    <span>型の一覧ガイド</span>
+  </div>`;
+  html += `<div class="pattern-guide-cards" style="display:${isOpen ? 'flex' : 'none'}">`;
+  for (const [type, info] of Object.entries(PATTERN_GUIDE)) {
+    html += `<div class="pattern-card" style="--card-color:${info.color}">
+      <div class="pattern-card-type" style="color:${info.color}">${type}</div>
+      <div class="pattern-card-name">${info.name}</div>
+      <div class="pattern-card-target">${info.target}</div>
+    </div>`;
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function togglePatternGuide() {
+  const cards = document.querySelector('.pattern-guide-cards');
+  const arrow = document.querySelector('.pattern-guide-toggle .arrow');
+  if (!cards) return;
+  const isOpen = cards.style.display !== 'none';
+  cards.style.display = isOpen ? 'none' : 'flex';
+  arrow.classList.toggle('open', !isOpen);
+  localStorage.setItem('pattern_guide_open', !isOpen);
+}
+
+function renderPatternBadge(type) {
+  const info = PATTERN_GUIDE[type];
+  if (!info) return escHtml(type);
+  return `<span class="pattern-badge" style="background:${info.color}" title="${info.name}&#10;${info.target}">${escHtml(type)}</span>`;
+}
+
+function renderTabDescription() {
+  const desc = TAB_DESCRIPTIONS[currentTab];
+  if (!desc) return '';
+  return `<div style="font-size:13px;color:#64748b;margin-bottom:12px;padding:8px 12px;background:#f1f5f9;border-radius:6px;line-height:1.6">${desc}</div>`;
+}
+
+function renderSectionTypeLabel(val) {
+  const label = SECTION_TYPE_LABELS[val];
+  if (!label) return escHtml(val);
+  return `<span title="${escHtml(label)}">${escHtml(val)}<br><span style="font-size:11px;color:#94a3b8">${escHtml(label)}</span></span>`;
+}
+
 function renderTable() {
   const tabName = TABS.find(t => t.slug === currentTab).name;
   const content = document.getElementById('content');
+  const isPatterns = currentTab === 'patterns';
+  const isPrompts = currentTab === 'prompts';
+
+  if (isPatterns) buildPatternGuide();
 
   if (currentRows.length === 0) {
     content.innerHTML = `
+      ${renderTabDescription()}
+      ${isPatterns ? renderPatternGuide() : ''}
       <div class="toolbar">
         <span class="toolbar-title">${tabName}</span>
-        <button class="btn btn-primary" onclick="openAddModal()">＋ 追加</button>
+        <div style="display:flex;gap:8px">
+          ${isPatterns ? '<button class="btn btn-secondary" onclick="openAiGenerate()">AIで一括生成</button>' : ''}
+          <button class="btn btn-primary" onclick="openAddModal()">＋ 追加</button>
+        </div>
       </div>
       <div class="table-wrap"><div class="empty-msg">データがありません</div></div>`;
     return;
@@ -531,9 +979,14 @@ function renderTable() {
   const displayHeaders = currentHeaders.filter(h => h !== '_row_index');
 
   let html = `
+    ${renderTabDescription()}
+    ${isPatterns ? renderPatternGuide() : ''}
     <div class="toolbar">
       <span class="toolbar-title">${tabName}（${currentRows.length}件）</span>
-      <button class="btn btn-primary" onclick="openAddModal()">＋ 追加</button>
+      <div style="display:flex;gap:8px">
+        ${isPatterns ? '<button class="btn btn-secondary" onclick="openAiGenerate()">AIで一括生成</button>' : ''}
+        <button class="btn btn-primary" onclick="openAddModal()">＋ 追加</button>
+      </div>
     </div>
     <div class="table-wrap">
       <table>
@@ -547,7 +1000,15 @@ function renderTable() {
     html += '<tr>';
     for (const h of displayHeaders) {
       const val = row[h] ?? '';
-      html += `<td title="${escHtml(String(val))}">${escHtml(String(val))}</td>`;
+      if (isPatterns && h === 'pattern_type') {
+        html += `<td>${renderPatternBadge(String(val))}</td>`;
+      } else if (isPrompts && h === 'section_type') {
+        html += `<td>${renderSectionTypeLabel(String(val))}</td>`;
+      } else if (h === 'qualification_rules' || h === 'match_rules') {
+        html += `<td><div class="cell-text">${formatJsonCell(String(val))}</div></td>`;
+      } else {
+        html += `<td><div class="cell-text">${formatCellText(String(val))}</div></td>`;
+      }
     }
     html += `<td><div class="actions-cell">
       <button class="btn btn-secondary btn-sm" onclick="openEditModal(${row._row_index})">編集</button>
@@ -557,10 +1018,49 @@ function renderTable() {
 
   html += '</tbody></table></div>';
   content.innerHTML = html;
+  initCellToggle();
 }
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatCellText(s) {
+  // Convert literal \n to actual line breaks for display
+  return escHtml(s).replace(/\\n/g, '<br>');
+}
+
+function formatJsonCell(s) {
+  try {
+    const data = JSON.parse(s);
+    // New format: { builtin: {...}, ai_conditions: [...] }
+    if (data && typeof data === 'object' && !Array.isArray(data) && data.builtin) {
+      let html = '';
+      const b = data.builtin;
+      const labels = { require_qualification: '資格不一致NG', reject_non_clinical: '臨床経験なしNG', reject_already_scouted: 'スカウト済みNG' };
+      for (const [k, label] of Object.entries(labels)) {
+        const on = b[k] !== false;
+        html += `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;margin:1px;background:${on ? '#dbeafe' : '#f1f5f9'};color:${on ? '#1e40af' : '#94a3b8'}">${on ? '✓' : '✗'} ${label}</span> `;
+      }
+      const ai = data.ai_conditions || [];
+      if (ai.length) {
+        html += '<br>';
+        ai.forEach(c => { html += `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;margin:1px;background:#fef3c7;color:#92400e">AI: ${escHtml(c)}</span> `; });
+      }
+      return html;
+    }
+    // Old format: array
+    if (Array.isArray(data)) {
+      return data.map(item => {
+        if (item.jobOfferId) {
+          const req = (item.required || []).join(', ');
+          return `<span style="font-size:11px">求人${escHtml(item.jobOfferId)}: ${escHtml(req)}</span>`;
+        }
+        return `<span style="font-size:11px">${escHtml(JSON.stringify(item))}</span>`;
+      }).join('<br>');
+    }
+  } catch {}
+  return formatCellText(s);
 }
 
 // --- Modal ---
@@ -576,6 +1076,14 @@ function openModal(title, fields, values, onSave) {
     const label = FIELD_LABELS[f] || f;
     let hint = FIELD_HINTS[f] ? `<span class="hint">${FIELD_HINTS[f]}</span>` : '';
     div.innerHTML = `<label>${label}${hint}</label>`;
+
+    // Use visual editor for qualification_rules
+    if (f === 'qualification_rules') {
+      const val = values[f] ?? '';
+      div.innerHTML += buildValidationEditor(val);
+      body.appendChild(div);
+      continue;
+    }
 
     let input;
     if (TEXTAREA_FIELDS.has(f)) {
@@ -616,6 +1124,10 @@ function openModal(title, fields, values, onSave) {
       }
       data[el.name] = v;
     });
+    // If validation editor is present, use its data
+    if (document.getElementById('validationEditor')) {
+      data['qualification_rules'] = getValidationEditorJson();
+    }
     onSave(data);
   });
 
@@ -669,6 +1181,279 @@ async function deleteRow(rowIndex) {
   }
 }
 
+// --- AI Pattern Generation ---
+let aiGeneratedPatterns = [];
+
+function openAiGenerate() {
+  document.getElementById('aiCompanyInfo').value = '';
+  document.getElementById('aiInputPhase').style.display = 'block';
+  document.getElementById('aiPreviewPhase').style.display = 'none';
+  document.getElementById('aiGenerateBtn').style.display = '';
+  document.getElementById('aiSaveBtn').style.display = 'none';
+  document.getElementById('aiGenerateOverlay').classList.add('open');
+  document.getElementById('aiCompanyInfo').focus();
+}
+
+function closeAiGenerate() {
+  document.getElementById('aiGenerateOverlay').classList.remove('open');
+}
+
+async function startAiGenerate() {
+  const info = document.getElementById('aiCompanyInfo').value.trim();
+  if (!info) { toast('会社情報を入力してください', true); return; }
+
+  const company = document.getElementById('companySelect').value;
+  const btn = document.getElementById('aiGenerateBtn');
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+
+  try {
+    const result = await api('POST', '/api/v1/admin/generate_patterns', {
+      company_id: company,
+      company_info: info,
+    });
+    aiGeneratedPatterns = result.patterns;
+    renderAiPreview(aiGeneratedPatterns);
+    document.getElementById('aiInputPhase').style.display = 'none';
+    document.getElementById('aiPreviewPhase').style.display = 'block';
+    document.getElementById('aiGenerateBtn').style.display = 'none';
+    document.getElementById('aiSaveBtn').style.display = '';
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '生成する';
+  }
+}
+
+function renderAiPreview(patterns) {
+  const container = document.getElementById('aiPreviewContent');
+  container.innerHTML = patterns.map(p => {
+    const color = PATTERN_COLORS[p.pattern_type] || '#94a3b8';
+    const variantLabel = p.employment_variant ? `（${p.employment_variant}）` : '';
+    const features = (p.feature_variations || []).map(f => `・${f}`).join('<br>');
+    return `<div class="ai-pattern-card">
+      <h4><span class="pattern-badge" style="background:${color}">${escHtml(p.pattern_type)}</span>${variantLabel}</h4>
+      <div class="text-preview">${escHtml(p.template_text || '')}</div>
+      <div class="features">${features}</div>
+    </div>`;
+  }).join('');
+}
+
+async function saveAiPatterns() {
+  const company = document.getElementById('companySelect').value;
+  const btn = document.getElementById('aiSaveBtn');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+
+  try {
+    // Match generated patterns to existing rows and update
+    let updated = 0;
+    for (const gen of aiGeneratedPatterns) {
+      // Find matching existing row
+      const match = currentRows.find(r =>
+        r.pattern_type === gen.pattern_type &&
+        (r.employment_variant || '') === (gen.employment_variant || '')
+      );
+      if (match) {
+        const features = (gen.feature_variations || []).join('|');
+        await api('PUT', `/api/v1/admin/patterns/${match._row_index}`, {
+          company: company,
+          job_category: match.job_category || 'nurse',
+          pattern_type: gen.pattern_type,
+          employment_variant: gen.employment_variant || '',
+          template_text: gen.template_text || '',
+          feature_variations: features,
+          display_name: match.display_name || '',
+          target_description: match.target_description || '',
+          match_rules: match.match_rules || '',
+        });
+        updated++;
+      } else {
+        // No existing row: append new
+        const features = (gen.feature_variations || []).join('|');
+        await api('POST', '/api/v1/admin/patterns', {
+          company: company,
+          job_category: 'nurse',
+          pattern_type: gen.pattern_type,
+          employment_variant: gen.employment_variant || '',
+          template_text: gen.template_text || '',
+          feature_variations: features,
+          display_name: '',
+          target_description: '',
+          match_rules: '',
+        });
+        updated++;
+      }
+    }
+
+    closeAiGenerate();
+    toast(`${updated}件のパターンを保存しました`);
+    loadData();
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存する';
+  }
+}
+
+// --- Validation Rules Editor ---
+let _validationData = { builtin: {}, ai_conditions: [] };
+
+function buildValidationEditor(jsonStr) {
+  // Parse: supports old format (array) and new format (dict with builtin/ai_conditions)
+  try {
+    const parsed = JSON.parse(jsonStr || '{}');
+    if (Array.isArray(parsed)) {
+      // Old format: convert to new
+      _validationData = {
+        builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true },
+        ai_conditions: [],
+      };
+    } else {
+      _validationData = {
+        builtin: parsed.builtin || { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true },
+        ai_conditions: parsed.ai_conditions || [],
+      };
+    }
+  } catch {
+    _validationData = { builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true }, ai_conditions: [] };
+  }
+  return renderValidationEditor();
+}
+
+const BUILTIN_LABELS = {
+  require_qualification: { label: '資格不一致NG', desc: '職種に必要な資格を持っていない候補者を除外' },
+  reject_non_clinical: { label: '臨床経験なしNG', desc: '非臨床職（事務・保育等）の経験のみの候補者を除外' },
+  reject_already_scouted: { label: 'スカウト済みNG', desc: '既にスカウト送信済みの候補者を除外' },
+};
+
+function renderValidationEditor() {
+  let html = '<div id="validationEditor">';
+
+  // Builtin toggles
+  html += '<div class="rule-section-label" style="font-weight:600;font-size:13px">基本フィルタ（ルールベース）</div>';
+  for (const [key, info] of Object.entries(BUILTIN_LABELS)) {
+    const checked = _validationData.builtin[key] !== false ? 'checked' : '';
+    html += `<label style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;cursor:pointer">
+      <input type="checkbox" ${checked} onchange="toggleBuiltin('${key}',this.checked)">
+      <span><strong>${info.label}</strong><br><span style="font-size:11px;color:#94a3b8">${info.desc}</span></span>
+    </label>`;
+  }
+
+  // AI conditions
+  html += '<div class="rule-section-label" style="font-weight:600;font-size:13px;margin-top:16px">追加NG条件（AI判定）</div>';
+  html += '<div style="font-size:11px;color:#94a3b8;margin-bottom:6px">日本語で条件を書くと、AIがプロフィールを見て判定します</div>';
+
+  _validationData.ai_conditions.forEach((cond, i) => {
+    html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <span style="flex:1;font-size:13px;padding:4px 8px;background:#fff;border:1px solid #e2e8f0;border-radius:4px">${escHtml(cond)}</span>
+      <button class="btn btn-danger btn-sm" onclick="removeAiCondition(${i})">×</button>
+    </div>`;
+  });
+
+  html += `<div style="display:flex;gap:6px;margin-top:6px">
+    <input type="text" id="newAiCondition" placeholder="例: 准看護師のみ（正看護師なし）はNG" style="flex:1;height:30px;border:1px solid #cbd5e1;border-radius:4px;padding:0 8px;font-size:12px;font-family:inherit">
+    <button class="btn btn-secondary btn-sm" onclick="addAiCondition()">追加</button>
+  </div>`;
+
+  html += '</div>';
+  return html;
+}
+
+function toggleBuiltin(key, val) {
+  _validationData.builtin[key] = val;
+}
+
+function addAiCondition() {
+  const input = document.getElementById('newAiCondition');
+  const val = input.value.trim();
+  if (!val) return;
+  _validationData.ai_conditions.push(val);
+  input.value = '';
+  document.getElementById('validationEditor').outerHTML = renderValidationEditor();
+}
+
+function removeAiCondition(i) {
+  _validationData.ai_conditions.splice(i, 1);
+  document.getElementById('validationEditor').outerHTML = renderValidationEditor();
+}
+
+function getValidationEditorJson() {
+  return JSON.stringify(_validationData);
+}
+
+// --- Prompt Preview ---
+function openPromptPreview() {
+  document.getElementById('promptPreviewOverlay').classList.add('open');
+  loadPromptPreview();
+}
+
+function closePromptPreview() {
+  document.getElementById('promptPreviewOverlay').classList.remove('open');
+}
+
+async function loadPromptPreview() {
+  const company = document.getElementById('companySelect').value;
+  const body = document.getElementById('promptPreviewBody');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  try {
+    const data = await api('GET', `/api/v1/admin/prompt_preview?company=${company}`);
+
+    let html = '';
+
+    // Flow steps
+    html += '<div class="preview-section"><h4>処理フロー</h4><div class="preview-flow">';
+    data.flow.forEach((step, i) => {
+      const active = step.includes('AI生成') || step.includes('型はめ') ? ' active' : '';
+      html += `<div class="preview-flow-step${active}">${escHtml(step)}</div>`;
+    });
+    html += '</div></div>';
+
+    // Sections breakdown
+    html += '<div class="preview-section"><h4>system prompt の構成パーツ <span class="label-tag">プロンプトタブで編集可能</span></h4>';
+    data.sections.forEach(sec => {
+      const stLabel = SECTION_TYPE_LABELS[sec.section_type] || sec.section_type;
+      html += `<div style="margin-bottom:6px"><span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:3px;font-size:11px">${escHtml(sec.section_type)}</span> <span style="font-size:12px;color:#64748b">${escHtml(stLabel)}</span></div>`;
+    });
+    html += '</div>';
+
+    // System prompt
+    html += '<div class="preview-section"><h4>system prompt（実際にAIに送られる全文）</h4>';
+    html += `<div class="preview-prompt-block">${escHtml(data.system_prompt)}</div>`;
+    html += '</div>';
+
+    // User prompt example
+    html += '<div class="preview-section"><h4>user prompt（候補者プロフィール例）</h4>';
+    html += `<div class="preview-prompt-block">${escHtml(data.user_prompt_example)}</div>`;
+    html += '</div>';
+
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = `<div class="empty-msg">${e.message}</div>`;
+  }
+}
+
+document.getElementById('promptPreviewOverlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closePromptPreview();
+});
+
+// --- Cell expand/collapse ---
+function initCellToggle() {
+  document.querySelectorAll('.cell-text').forEach(el => {
+    // Mark as clipped if content overflows
+    if (el.scrollHeight > el.clientHeight + 2) {
+      el.classList.add('clipped');
+    }
+    el.addEventListener('click', () => {
+      el.classList.toggle('expanded');
+      el.classList.toggle('clipped', !el.classList.contains('expanded') && el.scrollHeight > el.clientHeight + 2);
+    });
+  });
+}
+
 // --- Cache Reload ---
 async function reloadCache() {
   try {
@@ -696,6 +1481,60 @@ document.getElementById('modalOverlay').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) closeModal();
 });
 
+document.getElementById('aiGenerateOverlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeAiGenerate();
+});
+
+// --- Company List ---
+async function loadCompanies() {
+  const select = document.getElementById('companySelect');
+  try {
+    const data = await api('GET', '/api/v1/companies');
+    select.innerHTML = '';
+    for (const c of data.companies) {
+      const opt = document.createElement('option');
+      opt.value = c;
+      opt.textContent = c;
+      select.appendChild(opt);
+    }
+  } catch {
+    // API失敗時はフォールバック
+    if (select.options.length === 0) {
+      select.innerHTML = '<option value="ark-visiting-nurse">ark-visiting-nurse</option><option value="lcc-visiting-nurse">lcc-visiting-nurse</option>';
+    }
+  }
+}
+
+function showAddCompanyDialog() {
+  document.getElementById('newCompanyId').value = '';
+  document.getElementById('addCompanyDialog').classList.add('open');
+  document.getElementById('newCompanyId').focus();
+}
+
+function closeAddCompanyDialog() {
+  document.getElementById('addCompanyDialog').classList.remove('open');
+}
+
+async function addCompany() {
+  const companyId = document.getElementById('newCompanyId').value.trim();
+  if (!companyId) { toast('会社IDを入力してください', true); return; }
+  if (!/^[a-z0-9-]+$/.test(companyId)) { toast('英小文字・数字・ハイフンのみ使用可能です', true); return; }
+  try {
+    const result = await api('POST', '/api/v1/admin/init_company', { company_id: companyId });
+    closeAddCompanyDialog();
+    toast(`${companyId} を作成しました（${result.total_rows}行）`);
+    await loadCompanies();
+    document.getElementById('companySelect').value = companyId;
+    loadData();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+document.getElementById('newCompanyId').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') addCompany();
+});
+
 // --- Init ---
 document.getElementById('companySelect').addEventListener('change', loadData);
 renderTabs();
@@ -703,7 +1542,7 @@ renderTabs();
 if (!getApiKey()) {
   showApiKeyDialog();
 } else {
-  loadData();
+  loadCompanies().then(() => loadData());
 }
 </script>
 </body>

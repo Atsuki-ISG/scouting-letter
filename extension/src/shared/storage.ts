@@ -1,5 +1,15 @@
 import { CandidateItem, CandidateProfile, ConversationThread, FixRecord, ReplyRecord } from './types';
 import { STORAGE_KEYS, DEFAULT_COMPANY, JobOffer } from './constants';
+import type { CompanyConfig } from './api-client';
+
+/** キャッシュのTTL（ミリ秒）: 1時間 */
+const CONFIG_CACHE_TTL_MS = 60 * 60 * 1000;
+
+interface ConfigCache {
+  timestamp: number;
+  companies: string[];
+  configs: Record<string, CompanyConfig>;
+}
 
 /** chrome.storage.local ラッパー */
 export const storage = {
@@ -188,6 +198,20 @@ export const storage = {
 
   async setAPIKey(key: string): Promise<void> {
     await chrome.storage.local.set({ [STORAGE_KEYS.API_KEY]: key });
+  },
+
+  // --- 設定キャッシュ ---
+
+  async getConfigCache(): Promise<ConfigCache | null> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.CONFIG_CACHE);
+    const cache = result[STORAGE_KEYS.CONFIG_CACHE] as ConfigCache | undefined;
+    if (!cache) return null;
+    if (Date.now() - cache.timestamp > CONFIG_CACHE_TTL_MS) return null;
+    return cache;
+  },
+
+  async setConfigCache(cache: ConfigCache): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.CONFIG_CACHE]: cache });
   },
 
   async clear(): Promise<void> {

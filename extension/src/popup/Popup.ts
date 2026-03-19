@@ -1,16 +1,17 @@
 import { storage } from '../shared/storage';
 import { Message } from '../shared/types';
-import { COMPANY_JOB_OFFERS } from '../shared/constants';
+import { configProvider } from '../shared/config-provider';
 import { gasClient } from '../shared/gas-client';
 import { apiClient } from '../shared/api-client';
 
-function init(): void {
+async function init(): Promise<void> {
   const companySelect = document.getElementById('company') as HTMLSelectElement;
   const btnOpenPanel = document.getElementById('btn-open-panel') as HTMLButtonElement;
   const statusEl = document.getElementById('status') as HTMLElement;
 
-  // COMPANY_JOB_OFFERSから動的に会社リストを生成
-  for (const company of Object.keys(COMPANY_JOB_OFFERS)) {
+  // APIから会社リストを取得（フォールバック付き）
+  const companies = await configProvider.getCompanyList();
+  for (const company of companies) {
     const option = document.createElement('option');
     option.value = company;
     option.textContent = company;
@@ -18,9 +19,8 @@ function init(): void {
   }
 
   // 保存値を復元
-  storage.getCompany().then((company) => {
-    companySelect.value = company;
-  });
+  const savedCompany = await storage.getCompany();
+  companySelect.value = savedCompany;
 
   // 会社選択変更時に保存
   companySelect.addEventListener('change', async () => {

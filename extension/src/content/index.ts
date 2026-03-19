@@ -6,6 +6,7 @@ import { safeSendMessage } from './helpers';
 import { setupOverlayObserver } from './overlay-observer';
 import * as extraction from './extraction';
 import * as continuousSender from './continuous-sender';
+import { extractJobOffers } from './job-offer-extractor';
 
 /** メッセージリスナー */
 chrome.runtime.onMessage.addListener(
@@ -96,6 +97,10 @@ chrome.runtime.onMessage.addListener(
         continuousSender.resumeAfterJobOfferFix();
         sendResponse({ ok: true });
         return false;
+
+      case 'EXTRACT_JOB_OFFERS':
+        extractJobOffers().then(sendResponse);
+        return true;
 
       default:
         return false;

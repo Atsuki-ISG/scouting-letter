@@ -189,6 +189,74 @@ def _apply_qualification_modifier(
     return text
 
 
+def _match_rule(rule: dict, age_bracket: str, experience_years: int | None, employment_state: str) -> bool:
+    """Check if a single match rule matches the candidate's attributes."""
+    # Employment condition (e.g. 在学中)
+    if "employment" in rule:
+        if employment_state != rule["employment"]:
+            return False
+
+    # Age group condition
+    if "age_group" in rule and rule["age_group"] is not None:
+        if age_bracket != rule["age_group"]:
+            return False
+
+    # Experience years conditions
+    exp_min = rule.get("exp_min")
+    exp_max = rule.get("exp_max")
+
+    # Handle "exp_min": null → matches when experience_years is None (no data)
+    if "exp_min" in rule and exp_min is None and "exp_max" not in rule:
+        if experience_years is not None:
+            return False
+    else:
+        if exp_min is not None:
+            if experience_years is None or experience_years < exp_min:
+                return False
+        if exp_max is not None:
+            if experience_years is None:
+                return False
+            if experience_years > exp_max:
+                return False
+
+    return True
+
+
+def _select_pattern_type_from_rules(
+    patterns: list[dict],
+    age_bracket: str,
+    experience_years: int | None,
+    employment_state: str,
+) -> str | None:
+    """Try to select pattern type using match_rules from pattern definitions.
+
+    Returns pattern_type string or None if no rules match / no rules defined.
+    """
+    # Check if any pattern has match_rules
+    has_any_rules = any(p.get("match_rules") for p in patterns)
+    if not has_any_rules:
+        return None
+
+    # Group patterns by pattern_type (base type without employment variant suffix)
+    for p in patterns:
+        rules = p.get("match_rules", [])
+        if not rules:
+            continue
+        # OR logic: any rule matches → this pattern type matches
+        for rule in rules:
+            if _match_rule(rule, age_bracket, experience_years, employment_state):
+                pt = p["pattern_type"]
+                variant = p.get("employment_variant")
+                if variant:
+                    return f"{pt}_{variant}"
+                # For types D/F that need employment variant suffix
+                if employment_state in ("就業中", "離職中") and pt in ("D", "F"):
+                    return f"{pt}_{employment_state}"
+                return pt
+
+    return None
+
+
 def match_pattern(
     profile: CandidateProfile,
     patterns: list[dict],
@@ -200,7 +268,7 @@ def match_pattern(
     Args:
         profile: Candidate profile.
         patterns: List of pattern definitions with pattern_type, template_text,
-            feature_variations, and optional employment_variant.
+            feature_variations, and optional employment_variant and match_rules.
         qualification_modifiers: List of qualification-based text modifiers.
         feature_rotation_index: Index for rotating through feature variations.
 
@@ -215,7 +283,12 @@ def match_pattern(
     employment_state = _determine_employment_state(profile)
     age_bracket = _determine_age_bracket(age)
 
-    pattern_type = _select_pattern_type(age_bracket, experience_years, employment_state)
+    # Try rule-based selection first, fall back to hardcoded logic
+    pattern_type = _select_pattern_type_from_rules(
+        patterns, age_bracket, experience_years, employment_state
+    )
+    if pattern_type is None:
+        pattern_type = _select_pattern_type(age_bracket, experience_years, employment_state)
 
     debug_parts = [
         f"age={age}({age_bracket})",

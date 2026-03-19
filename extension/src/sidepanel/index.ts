@@ -7,7 +7,7 @@ import { DebugPanel } from './components/DebugPanel';
 import { ConfirmationPopup } from './components/ConfirmationPopup';
 import { storage } from '../shared/storage';
 import { CandidateItem, CandidateProfile, FixRecord, Message } from '../shared/types';
-import { COMPANY_JOB_OFFERS } from '../shared/constants';
+import { configProvider } from '../shared/config-provider';
 import { apiClient } from '../shared/api-client';
 import { gasClient } from '../shared/gas-client';
 
@@ -33,11 +33,11 @@ function setupTabs(): void {
 }
 
 /** 会社選択 */
-function setupCompanySelect(): void {
+async function setupCompanySelect(): Promise<void> {
   const select = document.getElementById('company') as HTMLSelectElement;
 
-  // COMPANY_JOB_OFFERSから動的に会社リストを生成
-  const companies = Object.keys(COMPANY_JOB_OFFERS);
+  // APIから会社リストを取得（フォールバック付き）
+  const companies = await configProvider.getCompanyList();
   for (const company of companies) {
     if (!select.querySelector(`option[value="${company}"]`)) {
       const option = document.createElement('option');
@@ -47,23 +47,22 @@ function setupCompanySelect(): void {
     }
   }
 
-  storage.getCompany().then((company) => {
-    select.value = company;
-    populateJobOffers(company);
-  });
+  const savedCompany = await storage.getCompany();
+  select.value = savedCompany;
+  await populateJobOffers(savedCompany);
 
-  select.addEventListener('change', () => {
-    storage.setCompany(select.value);
-    populateJobOffers(select.value);
+  select.addEventListener('change', async () => {
+    await storage.setCompany(select.value);
+    await populateJobOffers(select.value);
     // 会社変更時は求人選択をリセット
-    storage.setSelectedJobOffer(null);
+    await storage.setSelectedJobOffer(null);
   });
 }
 
 /** 求人ドロップダウンを会社に応じて更新 */
-function populateJobOffers(company: string): void {
+async function populateJobOffers(company: string): Promise<void> {
   const select = document.getElementById('job-offer') as HTMLSelectElement;
-  const offers = COMPANY_JOB_OFFERS[company] || [];
+  const offers = await configProvider.getJobOffers(company);
 
   // 既存の選択肢をクリア（プレースホルダー以外）
   while (select.options.length > 1) {
@@ -78,14 +77,13 @@ function populateJobOffers(company: string): void {
   }
 
   // 保存済みの選択を復元、なければ最初の求人を自動選択
-  storage.getSelectedJobOffer().then((saved) => {
-    if (saved && offers.some((o) => o.id === saved.id)) {
-      select.value = saved.id;
-    } else if (offers.length > 0) {
-      select.value = offers[0].id;
-      storage.setSelectedJobOffer(offers[0]);
-    }
-  });
+  const saved = await storage.getSelectedJobOffer();
+  if (saved && offers.some((o) => o.id === saved.id)) {
+    select.value = saved.id;
+  } else if (offers.length > 0) {
+    select.value = offers[0].id;
+    await storage.setSelectedJobOffer(offers[0]);
+  }
 }
 
 /** 求人選択 */
@@ -94,7 +92,7 @@ function setupJobOfferSelect(candidateList?: CandidateList): void {
 
   select.addEventListener('change', async () => {
     const company = await storage.getCompany();
-    const offers = COMPANY_JOB_OFFERS[company] || [];
+    const offers = await configProvider.getJobOffers(company);
     const selected = offers.find((o) => o.id === select.value);
     await storage.setSelectedJobOffer(selected || null);
     // 求人変更時にバリデーション再実行
@@ -324,10 +322,99 @@ function setupSettingsPanel(): void {
   });
 }
 
+/** 求人抽出・登録 */
+function setupJobOfferExtraction(): void {
+  const extractBtn = document.getElementById('btn-extract-job-offers');
+  const registerBtn = document.getElementById('btn-register-job-offers');
+  const listEl = document.getElementById('job-offers-extract-list')!;
+  const statusEl = document.getElementById('job-offers-extract-status')!;
+  const registerStatusEl = document.getElementById('job-offers-register-status')!;
+
+  let extractedOffers: Array<{ id: string; name: string }> = [];
+
+  extractBtn?.addEventListener('click', async () => {
+    statusEl.textContent = '抽出中...';
+    statusEl.style.color = '#6b7280';
+    listEl.innerHTML = '';
+    registerBtn?.classList.add('hidden');
+
+    chrome.runtime.sendMessage(
+      { type: 'EXTRACT_JOB_OFFERS' } satisfies Message,
+      (response: { success: boolean; offers: Array<{ id: string; name: string }>; error?: string }) => {
+        if (!response || !response.success) {
+          statusEl.textContent = `抽出失敗: ${response?.error || '不明なエラー'}`;
+          statusEl.style.color = '#ef4444';
+          return;
+        }
+
+        extractedOffers = response.offers;
+        statusEl.textContent = `${extractedOffers.length}件の求人を取得しました`;
+        statusEl.style.color = '#22c55e';
+
+        // チェックボックス付きリスト表示
+        listEl.innerHTML = extractedOffers.map((o, i) => `
+          <label style="display:block;padding:4px 0;font-size:12px;cursor:pointer;">
+            <input type="checkbox" checked data-index="${i}" style="margin-right:6px;">
+            <strong>${o.id || '(ID不明)'}</strong> ${o.name}
+          </label>
+        `).join('');
+
+        if (extractedOffers.length > 0) {
+          registerBtn?.classList.remove('hidden');
+        }
+      }
+    );
+  });
+
+  registerBtn?.addEventListener('click', async () => {
+    const company = await storage.getCompany();
+    const checkboxes = listEl.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    const selected = extractedOffers.filter((_, i) => checkboxes[i]?.checked);
+
+    if (selected.length === 0) {
+      registerStatusEl.textContent = '登録する求人を選択してください';
+      registerStatusEl.style.color = '#ef4444';
+      return;
+    }
+
+    registerStatusEl.textContent = `登録中... (0/${selected.length})`;
+    registerStatusEl.style.color = '#6b7280';
+
+    let registered = 0;
+    for (const offer of selected) {
+      try {
+        const endpoint = await storage.getAPIEndpoint();
+        const apiKey = await storage.getAPIKey();
+        const res = await fetch(`${endpoint}/api/v1/admin/job_offers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+          body: JSON.stringify({
+            company,
+            job_category: '',
+            id: offer.id,
+            name: offer.name,
+            label: offer.name.split(/\s+/).slice(-2).join(' '),
+            employment_type: offer.name.includes('パート') ? 'part' : 'full',
+            active: 'TRUE',
+          }),
+        });
+        if (res.ok) registered++;
+      } catch {
+        // continue with next
+      }
+      registerStatusEl.textContent = `登録中... (${registered}/${selected.length})`;
+    }
+
+    registerStatusEl.textContent = `${registered}件を登録しました`;
+    registerStatusEl.style.color = '#22c55e';
+    registerBtn?.classList.add('hidden');
+  });
+}
+
 /** 初期化 */
-function init(): void {
+async function init(): Promise<void> {
   setupTabs();
-  setupCompanySelect();
+  await setupCompanySelect();
   setupFixExport();
 
   // 各パネルのインスタンス生成
@@ -343,6 +430,7 @@ function init(): void {
 
   setupDebugControls(debugPanel);
   setupSettingsPanel();
+  setupJobOfferExtraction();
   setupMessageHandlers(debugPanel, confirmPopup, candidateList);
 
   // 確認ポップアップ内の停止ボタンから連続送信を停止

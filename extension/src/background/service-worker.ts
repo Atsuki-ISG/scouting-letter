@@ -59,6 +59,13 @@ chrome.runtime.onMessage.addListener(
         return true;
       }
 
+      // 求人抽出 → アクティブタブのContent Scriptに転送
+      case 'EXTRACT_JOB_OFFERS': {
+        forwardWithResponse(message, { success: false, offers: [], error: 'アクティブタブが見つかりません' })
+          .then(sendResponse);
+        return true;
+      }
+
       // overlay会員番号取得 → アクティブタブに転送
       case 'GET_OVERLAY_MEMBER_ID': {
         forwardWithResponse(message, { memberId: null })

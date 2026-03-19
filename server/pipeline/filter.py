@@ -107,7 +107,55 @@ def _parse_age(age_str: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def filter_candidate(
+def _parse_experience_years(exp_str: str | None) -> int | None:
+    """Parse experience years from string like '10年以上' → 10."""
+    if not exp_str or exp_str.strip() in ("", "未入力", "なし"):
+        return None
+    match = re.search(r"(\d+)", exp_str)
+    if not match:
+        return None
+    years = int(match.group(1))
+    if "未満" in exp_str and years <= 1:
+        return 0
+    return years
+
+
+def _get_builtin_settings(validation_config: dict) -> dict:
+    """Extract builtin on/off settings from qualification_rules.
+
+    Supports both old format (list of rules) and new format (dict with builtin key).
+    Old format = all builtin checks enabled (backward compatible).
+    """
+    qual_rules = validation_config.get("qualification_rules")
+    if isinstance(qual_rules, dict) and "builtin" in qual_rules:
+        return qual_rules.get("builtin", {})
+    # Old format or missing: all enabled
+    return {
+        "require_qualification": True,
+        "reject_non_clinical": True,
+        "reject_already_scouted": True,
+    }
+
+
+def _get_qualification_rules(validation_config: dict) -> list:
+    """Extract per-job qualification rules from validation config."""
+    qual_rules = validation_config.get("qualification_rules")
+    if isinstance(qual_rules, dict):
+        return qual_rules.get("qualification_rules", [])
+    if isinstance(qual_rules, list):
+        return qual_rules
+    return []
+
+
+def _get_custom_rules(validation_config: dict) -> list:
+    """Extract custom rules from validation config."""
+    qual_rules = validation_config.get("qualification_rules")
+    if isinstance(qual_rules, dict):
+        return qual_rules.get("custom_rules", [])
+    return []
+
+
+async def filter_candidate(
     profile: CandidateProfile,
     company_id: str,
     job_category: str,
@@ -124,17 +172,22 @@ def filter_candidate(
     Returns:
         None if candidate passes, or a filter_reason string if excluded.
     """
-    # Check 1: Qualification match
-    if not _has_qualifying_qualification(profile.qualifications or "", job_category):
-        return f"資格不一致: {job_category}に必要な資格がありません"
+    builtin = _get_builtin_settings(validation_config)
 
-    # Check 2: Non-clinical only exclusion
-    if _is_non_clinical_only(profile.experience_type or "", profile.employment_status or ""):
-        return "非臨床経験のみ: 臨床看護経験がありません"
+    # Check 1: Qualification match (builtin, can be disabled)
+    if builtin.get("require_qualification", True):
+        if not _has_qualifying_qualification(profile.qualifications or "", job_category):
+            return f"資格不一致: {job_category}に必要な資格がありません"
 
-    # Check 3: Already scouted
-    if profile.scout_sent_date and profile.scout_sent_date.strip():
-        return f"スカウト送信済み: {profile.scout_sent_date}"
+    # Check 2: Non-clinical only exclusion (builtin, can be disabled)
+    if builtin.get("reject_non_clinical", True):
+        if _is_non_clinical_only(profile.experience_type or "", profile.employment_status or ""):
+            return "非臨床経験のみ: 臨床看護経験がありません"
+
+    # Check 3: Already scouted (builtin, can be disabled)
+    if builtin.get("reject_already_scouted", True):
+        if profile.scout_sent_date and profile.scout_sent_date.strip():
+            return f"スカウト送信済み: {profile.scout_sent_date}"
 
     # Check 4: Age range
     min_age = validation_config.get("min_age")
@@ -146,5 +199,63 @@ def filter_candidate(
                 return f"年齢下限: {age}歳 (下限: {min_age}歳)"
             if max_age is not None and age > max_age:
                 return f"年齢上限: {age}歳 (上限: {max_age}歳)"
+
+    # Check 5: AI-based conditions
+    ai_conditions = _get_ai_conditions(validation_config)
+    if ai_conditions:
+        reason = await _check_ai_conditions(ai_conditions, profile)
+        if reason:
+            return reason
+
+    return None
+
+
+def _get_ai_conditions(validation_config: dict) -> list[str]:
+    """Extract AI condition strings from validation config."""
+    qual_rules = validation_config.get("qualification_rules")
+    if isinstance(qual_rules, dict):
+        return qual_rules.get("ai_conditions", [])
+    return []
+
+
+async def _check_ai_conditions(conditions: list[str], profile: CandidateProfile) -> str | None:
+    """Use AI to check if candidate violates any conditions."""
+    from pipeline.ai_generator import generate_personalized_text
+
+    conditions_text = "\n".join(f"- {c}" for c in conditions)
+
+    # Build a compact profile summary for AI
+    fields = []
+    for key in ["qualifications", "experience_type", "experience_years", "employment_status", "age", "self_pr", "work_history_summary"]:
+        val = getattr(profile, key, None)
+        if val and str(val).strip() not in ("", "未入力", "なし"):
+            fields.append(f"{key}: {val}")
+    profile_text = "\n".join(fields) if fields else "情報なし"
+
+    system = f"""あなたはスカウト対象の候補者をフィルタリングする判定者です。
+以下のNG条件に該当する候補者は除外してください。
+
+NG条件:
+{conditions_text}
+
+判定ルール:
+- 候補者のプロフィール情報を見て、いずれかのNG条件に該当するか判定する
+- 該当する場合: "NG: [該当する条件の要約]" と回答
+- 該当しない場合: "OK" とだけ回答
+- 情報が不足していて判定できない場合は "OK" とする（疑わしきは通す）
+- 回答は1行のみ。説明不要"""
+
+    try:
+        result = await generate_personalized_text(
+            system_prompt=system,
+            user_prompt=profile_text,
+            model_name=None,
+        )
+        result = result.strip()
+        if result.startswith("NG"):
+            return f"AI判定: {result[3:].strip()}" if len(result) > 3 else "AI判定: NG条件に該当"
+    except Exception:
+        # AI failure = don't filter (fail open)
+        pass
 
     return None

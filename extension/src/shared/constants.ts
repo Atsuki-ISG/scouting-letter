@@ -50,8 +50,8 @@ export function resolveJobOffer(templateType: string, jobOffers: JobOffer[]): Jo
   return undefined;
 }
 
-/** 会社別の求人リスト */
-export const COMPANY_JOB_OFFERS: Record<string, JobOffer[]> = {
+/** 会社別の求人リスト（API取得不可時のフォールバック） */
+export const FALLBACK_COMPANY_JOB_OFFERS: Record<string, JobOffer[]> = {
   'ark-visiting-nurse': [
     {
       id: '1550716',
@@ -99,12 +99,13 @@ export const STORAGE_KEYS = {
   AUTO_JOB_OFFER: 'scout_auto_job_offer',
   API_ENDPOINT: 'scout_api_endpoint',
   API_KEY: 'scout_api_key',
+  CONFIG_CACHE: 'scout_config_cache',
 } as const;
 
-/** 会社別バリデーション設定 */
+/** 会社別バリデーション設定（API取得不可時のフォールバック） */
 import { CompanyValidationConfig } from './types';
 
-export const COMPANY_VALIDATION_CONFIG: Record<string, CompanyValidationConfig> = {
+export const FALLBACK_VALIDATION_CONFIG: Record<string, CompanyValidationConfig> = {
   'ark-visiting-nurse': {
     ageRange: { min: 20, max: 59 },
     qualificationRules: [

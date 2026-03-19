@@ -189,4 +189,5 @@ export type Message =
   | { type: 'CONFIRM_RESPONSE'; result: 'ok' | 'ng' }
   | { type: 'JOB_OFFER_FAILED'; memberId?: string; error: string }
   | { type: 'RESUME_AFTER_JOB_OFFER' }
-  | { type: 'CONTINUOUS_SEND_COMPLETE' };
+  | { type: 'CONTINUOUS_SEND_COMPLETE' }
+  | { type: 'EXTRACT_JOB_OFFERS' };

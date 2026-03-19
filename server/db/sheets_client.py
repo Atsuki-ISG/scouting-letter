@@ -113,6 +113,17 @@ class SheetsClient:
         if not self._is_cache_valid():
             self.reload()
 
+    def get_company_list(self) -> list[str]:
+        """Return sorted list of unique company IDs across all sheets."""
+        self._ensure_cache()
+        companies: set[str] = set()
+        for rows in self._cache.values():
+            for row in rows:
+                c = row.get("company", "").strip()
+                if c:
+                    companies.add(c)
+        return sorted(companies)
+
     def get_company_config(self, company_id: str) -> dict[str, Any]:
         """Get all config for a company."""
         self._ensure_cache()
@@ -154,10 +165,22 @@ class SheetsClient:
                 "job_category": row.get("job_category", ""),
                 "template_text": row.get("template_text", "").replace("\\n", "\n"),
                 "feature_variations": features,
+                "display_name": row.get("display_name", ""),
+                "target_description": row.get("target_description", ""),
             }
             variant = row.get("employment_variant", "")
             if variant:
                 item["employment_variant"] = variant
+            # Parse match_rules JSON
+            rules_str = row.get("match_rules", "")
+            if rules_str:
+                import json
+                try:
+                    item["match_rules"] = json.loads(rules_str)
+                except (json.JSONDecodeError, TypeError):
+                    item["match_rules"] = []
+            else:
+                item["match_rules"] = []
             result.append(item)
         return result
 

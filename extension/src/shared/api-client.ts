@@ -30,11 +30,11 @@ export interface BatchGenerateResponse {
 }
 
 export interface CompanyConfig {
-  templates: Array<{ type: string; job_category: string; body: string }>;
+  templates: Record<string, { type: string; job_category: string; body: string }>;
   job_offers: Array<{ id: string; name: string; label: string; job_category: string; employment_type: string }>;
   validation_config: {
-    ageRange?: { min: number; max: number };
-    qualificationRules?: Array<{ jobOfferId: string; required: string[]; excluded: string[] }>;
+    age_range?: { min: number; max: number };
+    qualification_rules?: Record<string, unknown>;
   };
 }
 
@@ -109,6 +109,21 @@ export const apiClient = {
       throw new Error(formatApiError(res.status, text));
     }
     return res.json();
+  },
+
+  async getCompanies(): Promise<string[]> {
+    const endpoint = await this.getEndpoint();
+    const headers = await this.getHeaders();
+    const res = await fetchWithTimeout(`${endpoint}/api/v1/companies`, {
+      method: 'GET',
+      headers,
+    }, HEALTH_TIMEOUT_MS);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(formatApiError(res.status, text));
+    }
+    const data = await res.json();
+    return data.companies;
   },
 
   async getCompanyConfig(companyId: string): Promise<CompanyConfig> {

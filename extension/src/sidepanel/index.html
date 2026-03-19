@@ -12,10 +12,7 @@
       <h1>Scout Assistant</h1>
       <div class="company-select">
         <label for="company">会社:</label>
-        <select id="company">
-          <option value="ark-visiting-nurse">ark-visiting-nurse</option>
-          <option value="lcc-visiting-nurse">lcc-visiting-nurse</option>
-        </select>
+        <select id="company"></select>
       </div>
     </header>
 
@@ -216,6 +213,16 @@
       </div>
       <button id="btn-test-gas-settings" class="btn btn-secondary" style="margin-top:8px;">接続テスト</button>
       <div id="settings-gas-status" style="font-size:12px;margin-top:6px;"></div>
+
+      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
+
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">求人抽出・登録</h3>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">ジョブメドレーのスカウト画面から求人リストを抽出し、APIに登録します。</p>
+      <button id="btn-extract-job-offers" class="btn btn-primary" style="margin-bottom:8px;">求人を取得</button>
+      <div id="job-offers-extract-status" style="font-size:12px;margin-bottom:8px;"></div>
+      <div id="job-offers-extract-list" style="max-height:200px;overflow-y:auto;"></div>
+      <button id="btn-register-job-offers" class="btn btn-primary btn-block hidden" style="margin-top:8px;">選択した求人をAPIに登録</button>
+      <div id="job-offers-register-status" style="font-size:12px;margin-top:6px;"></div>
     </section>
 
     <div id="confirmation-popup" class="hidden"></div>

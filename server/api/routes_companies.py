@@ -6,6 +6,14 @@ from db.sheets_client import sheets_client
 router = APIRouter(tags=["companies"])
 
 
+@router.get("/companies")
+async def list_companies(
+    operator: dict = Depends(verify_api_key),
+):
+    """Return list of unique company IDs from all sheets."""
+    return {"companies": sheets_client.get_company_list()}
+
+
 @router.get("/companies/{company_id}/config")
 async def get_company_config(
     company_id: str,
