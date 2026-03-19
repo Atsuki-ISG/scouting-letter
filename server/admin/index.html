@@ -794,7 +794,7 @@ tbody tr:hover { background: #f8fafc; }
   background: #fff;
   border: 1.5px solid #e2e8f0;
   border-radius: 14px;
-  padding: 18px;
+  padding: 14px 18px;
   margin-bottom: 28px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
@@ -803,44 +803,44 @@ tbody tr:hover { background: #f8fafc; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .flow-test-header span {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #1e293b;
 }
 
 .flow-test-inputs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
 }
 
 .flow-test-inputs label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #64748b;
   display: block;
-  margin-bottom: 3px;
+  margin-bottom: 2px;
 }
 
 .flow-test-inputs input,
 .flow-test-inputs select,
 .flow-test-inputs textarea {
   width: 100%;
-  height: 32px;
+  height: 28px;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 0 8px;
-  font-size: 13px;
+  border-radius: 5px;
+  padding: 0 6px;
+  font-size: 12px;
   font-family: inherit;
 }
 
 .flow-test-inputs textarea {
-  height: 48px;
-  padding: 6px 8px;
+  height: 32px;
+  padding: 4px 6px;
   resize: none;
 }
 
@@ -942,10 +942,10 @@ tbody tr:hover { background: #f8fafc; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 32px;
-  padding: 4px 8px;
+  min-height: 28px;
+  padding: 2px 6px;
   border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border-radius: 5px;
   background: #fff;
   cursor: pointer;
   font-size: 13px;
@@ -1007,17 +1007,17 @@ tbody tr:hover { background: #f8fafc; }
 .multi-select-dropdown {
   display: none;
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 2px);
   left: 0;
   right: 0;
   background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.1);
   z-index: 50;
-  max-height: 240px;
+  max-height: 200px;
   overflow-y: auto;
-  padding: 4px;
+  padding: 3px;
 }
 
 .multi-select.open .multi-select-dropdown { display: block; }
@@ -1025,12 +1025,18 @@ tbody tr:hover { background: #f8fafc; }
 .multi-select-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 4px;
-  font-size: 13px;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 12px;
   cursor: pointer;
   transition: background 0.1s;
+}
+
+.multi-select-option input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
 }
 
 .multi-select-option:hover { background: #f1f5f9; }
@@ -1579,8 +1585,8 @@ function renderTestPanel() {
       <button class="btn btn-primary btn-sm" onclick="runPipelineTest()" id="testRunBtn">テスト実行</button>
     </div>
     <div class="flow-test-inputs">
-      <div style="grid-column:1/-1">
-        <label>資格（複数選択可）</label>
+      <div style="grid-column:span 2">
+        <label>資格</label>
         <div class="multi-select" id="qualMultiSelect">
           <div class="multi-select-trigger" onclick="toggleMultiSelect('qualMultiSelect')">
             <div class="multi-select-tags" id="qualSelectedTags"><span class="multi-select-tag">看護師 <button onclick="event.stopPropagation();uncheckQual('看護師')">×</button></span></div>
@@ -1589,10 +1595,8 @@ function renderTestPanel() {
           <div class="multi-select-dropdown" onclick="event.stopPropagation()">${qualOptions}</div>
         </div>
       </div>
-      <div><label>年齢</label><div style="display:flex;align-items:center;gap:4px"><input type="number" id="testAge" value="35" min="15" max="80" style="width:80px"><span style="font-size:13px;color:#64748b">歳</span></div></div>
-      <div><label>経験年数</label><div style="display:flex;align-items:center;gap:4px"><input type="number" id="testExp" value="5" min="0" max="50" style="width:80px"><span style="font-size:13px;color:#64748b">年</span></div></div>
-      <div><label>経歴タイプ</label><input type="text" id="testExpType" value="訪問看護" placeholder="訪問看護"></div>
-      <div><label>希望雇用（複数可）</label>
+      <div style="grid-column:span 2">
+        <label>希望雇用</label>
         <div class="multi-select" id="empTypeMultiSelect">
           <div class="multi-select-trigger" onclick="toggleMultiSelect('empTypeMultiSelect')">
             <div class="multi-select-tags" id="empTypeSelectedTags"><span class="multi-select-tag">パート <button onclick="event.stopPropagation();uncheckEmpType('パート')">×</button></span></div>
@@ -1606,8 +1610,11 @@ function renderTestPanel() {
           </div>
         </div>
       </div>
+      <div><label>年齢</label><div style="display:flex;align-items:center;gap:3px"><input type="number" id="testAge" value="35" min="15" max="80" style="width:60px"><span style="font-size:11px;color:#94a3b8">歳</span></div></div>
+      <div><label>経験年数</label><div style="display:flex;align-items:center;gap:3px"><input type="number" id="testExp" value="5" min="0" max="50" style="width:60px"><span style="font-size:11px;color:#94a3b8">年</span></div></div>
+      <div><label>経歴タイプ</label><input type="text" id="testExpType" value="訪問看護"></div>
       <div><label>就業状態</label><select id="testEmpStatus"><option value="就業中">就業中</option><option value="離職中">離職中</option><option value="在学中">在学中</option></select></div>
-      <div style="grid-column:span 2"><label>職務経歴（空=型はめパス）</label><textarea id="testHistory" placeholder="急性期病棟3年、回復期病棟2年"></textarea></div>
+      <div style="grid-column:span 2"><label>職務経歴（空=型はめ）</label><textarea id="testHistory" placeholder="急性期病棟3年、回復期病棟2年"></textarea></div>
       <div style="grid-column:span 2"><label>自己PR</label><textarea id="testPR" placeholder="患者様に寄り添った看護を..."></textarea></div>
     </div>
     <div class="flow-test-result" id="testResult"></div>
