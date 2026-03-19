@@ -1451,7 +1451,22 @@ const _flowResizeObserver = new ResizeObserver(() => {
 });
 
 // --- Test Panel ---
+const TEST_QUALIFICATIONS = [
+  '看護師', '准看護師', '保健師', '助産師',
+  '理学療法士', '作業療法士', '言語聴覚士',
+  '介護福祉士', 'ケアマネージャー', '社会福祉士', '精神保健福祉士',
+  '医療事務', '管理栄養士', '栄養士',
+  '歯科衛生士', '歯科助手',
+  '薬剤師', '柔道整復師', 'あん摩マッサージ指圧師', '鍼灸師',
+];
+
 function renderTestPanel() {
+  const qualCheckboxes = TEST_QUALIFICATIONS.map(q =>
+    `<label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer;padding:2px 0">
+      <input type="checkbox" class="testQualCb" value="${q}" ${q === '看護師' ? 'checked' : ''}> ${q}
+    </label>`
+  ).join(' ');
+
   return `<div class="flow-test-panel">
     <div class="flow-test-header">
       <span>パイプラインテスト</span>
@@ -1461,9 +1476,12 @@ function renderTestPanel() {
       <button class="btn btn-primary btn-sm" onclick="runPipelineTest()" id="testRunBtn">テスト実行</button>
     </div>
     <div class="flow-test-inputs">
-      <div><label>資格</label><input type="text" id="testQual" value="看護師" placeholder="看護師"></div>
-      <div><label>年齢</label><input type="text" id="testAge" value="35歳" placeholder="35歳"></div>
-      <div><label>経験年数</label><input type="text" id="testExp" value="5年" placeholder="5年"></div>
+      <div style="grid-column:1/-1">
+        <label>資格（複数選択可）</label>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 12px;padding:6px 0" id="testQualArea">${qualCheckboxes}</div>
+      </div>
+      <div><label>年齢</label><div style="display:flex;align-items:center;gap:4px"><input type="number" id="testAge" value="35" min="15" max="80" style="width:80px"><span style="font-size:13px;color:#64748b">歳</span></div></div>
+      <div><label>経験年数</label><div style="display:flex;align-items:center;gap:4px"><input type="number" id="testExp" value="5" min="0" max="50" style="width:80px"><span style="font-size:13px;color:#64748b">年</span></div></div>
       <div><label>経歴タイプ</label><input type="text" id="testExpType" value="訪問看護" placeholder="訪問看護"></div>
       <div><label>希望雇用</label><select id="testEmpType"><option value="パート">パート</option><option value="正社員">正社員</option></select></div>
       <div><label>就業状態</label><select id="testEmpStatus"><option value="就業中">就業中</option><option value="離職中">離職中</option><option value="在学中">在学中</option></select></div>
@@ -1491,11 +1509,16 @@ async function runPipelineTest() {
   const resultEl = document.getElementById('testResult');
   resultEl.classList.remove('visible', 'error');
 
+  // Collect checked qualifications
+  const checkedQuals = [...document.querySelectorAll('.testQualCb:checked')].map(cb => cb.value);
+  const ageVal = document.getElementById('testAge').value;
+  const expVal = document.getElementById('testExp').value;
+
   const profile = {
     member_id: 'TEST_' + Date.now(),
-    qualifications: document.getElementById('testQual').value,
-    age: document.getElementById('testAge').value,
-    experience_years: document.getElementById('testExp').value,
+    qualifications: checkedQuals.join('、'),
+    age: ageVal ? ageVal + '歳' : '',
+    experience_years: expVal ? expVal + '年' : '',
     experience_type: document.getElementById('testExpType').value,
     employment_status: document.getElementById('testEmpStatus').value,
     desired_employment_type: document.getElementById('testEmpType').value,
