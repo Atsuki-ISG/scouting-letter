@@ -8,6 +8,7 @@ from models.profile import CandidateProfile
 class GenerateOptions(BaseModel):
     is_resend: bool = False
     force_seishain: bool = False
+    mock_ai: bool = False
 
 
 class GenerateRequest(BaseModel):

@@ -1150,6 +1150,8 @@ function getFlowSummary(stepId) {
       if (qr && qr.builtin) {
         const on = Object.values(qr.builtin).filter(v => v !== false).length;
         parts.push(`ルール ${on}件ON`);
+      } else if (Array.isArray(qr) && qr.length) {
+        parts.push(`資格ルール ${qr.length}件`);
       }
       if (qr && qr.ai_conditions) parts.push(`AI条件 ${qr.ai_conditions.length}件`);
       return parts.join(' / ') || '未設定';
@@ -1276,11 +1278,21 @@ function renderFlowNodeBody(stepId) {
       const ar = vc.age_range;
       html += '<div class="flow-mini-card">';
       if (ar) html += `<div style="margin-bottom:6px;font-size:13px">年齢範囲: <strong>${ar.min}〜${ar.max}歳</strong></div>`;
+      // New format: { builtin: {...}, ai_conditions: [...] }
       if (qr.builtin) {
         const labels = { require_qualification: '資格不一致NG', reject_non_clinical: '臨床経験なしNG', reject_already_scouted: 'スカウト済みNG' };
         for (const [k, label] of Object.entries(labels)) {
           const on = qr.builtin[k] !== false;
           html += `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;margin:2px;background:${on ? '#dbeafe' : '#f1f5f9'};color:${on ? '#1e40af' : '#94a3b8'}">${on ? '✓' : '✗'} ${label}</span> `;
+        }
+      }
+      // Old format: array of { jobOfferId, required, excluded }
+      if (Array.isArray(qr) && qr.length) {
+        html += '<div style="margin-top:6px;font-size:12px;color:#64748b">求人別・資格ルール:</div>';
+        for (const rule of qr) {
+          const req = (rule.required || []).join(', ');
+          const exc = (rule.excluded || []).join(', ');
+          html += `<div style="font-size:12px;margin:2px 0">求人 ${escHtml(rule.jobOfferId || '?')}: 必須=<strong>${escHtml(req)}</strong>${exc ? ` / 除外=${escHtml(exc)}` : ''}</div>`;
         }
       }
       if (qr.ai_conditions && qr.ai_conditions.length) {
@@ -1443,6 +1455,9 @@ function renderTestPanel() {
   return `<div class="flow-test-panel">
     <div class="flow-test-header">
       <span>パイプラインテスト</span>
+      <label style="font-size:12px;display:flex;align-items:center;gap:6px;color:#64748b;cursor:pointer">
+        <input type="checkbox" id="testMockAI" checked> AI生成をスキップ（モック）
+      </label>
       <button class="btn btn-primary btn-sm" onclick="runPipelineTest()" id="testRunBtn">テスト実行</button>
     </div>
     <div class="flow-test-inputs">
@@ -1489,10 +1504,11 @@ async function runPipelineTest() {
   };
 
   try {
+    const mockAI = document.getElementById('testMockAI').checked;
     const result = await api('POST', '/api/v1/generate', {
       company_id: company,
       profile: profile,
-      options: {},
+      options: { mock_ai: mockAI },
     });
 
     // Animate step by step
@@ -1561,11 +1577,25 @@ async function runPipelineTest() {
     if (isPattern) setNodeResult('pattern', `型 ${result.pattern_type || '?'} マッチ`);
     if (result.job_offer_id) setNodeResult('job_offer', `求人ID: ${result.job_offer_id}`);
 
-    // Show full result
+    // Show result (truncated)
     if (result.full_scout_text) {
-      resultEl.textContent = result.full_scout_text;
+      const text = result.full_scout_text;
+      const preview = text.length > 300 ? text.substring(0, 300) + '...' : text;
+      const pathLabel = result.generation_path === 'ai' ? 'AI生成' : '型はめ';
+      resultEl.innerHTML = `<div style="font-size:12px;font-weight:600;color:#059669;margin-bottom:6px">生成結果（${pathLabel}）</div>` +
+        `<div id="testResultText">${escHtml(preview)}</div>` +
+        (text.length > 300 ? `<button class="btn btn-secondary btn-sm" style="margin-top:8px" id="showFullBtn">全文を表示</button>` : '');
       resultEl.classList.add('visible');
       resultEl.classList.remove('error');
+      // Store full text for expand button
+      window._testFullText = text;
+      const showBtn = document.getElementById('showFullBtn');
+      if (showBtn) {
+        showBtn.addEventListener('click', () => {
+          document.getElementById('testResultText').textContent = window._testFullText;
+          showBtn.remove();
+        });
+      }
     } else if (isFiltered) {
       resultEl.textContent = `フィルタ除外: ${result.filter_reason}`;
       resultEl.classList.add('visible', 'error');

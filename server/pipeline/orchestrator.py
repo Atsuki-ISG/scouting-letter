@@ -137,16 +137,23 @@ async def _process_candidate(
             use_pattern = False
 
     if not use_pattern:
-        system_prompt = build_system_prompt(
-            config["prompt_sections"],
-            template_body,
-            config["examples"],
-        )
-        user_prompt = build_user_prompt(profile, job_category)
-        personalized_text = await generate_personalized_text(system_prompt, user_prompt)
-        pattern_type = None
-        generation_path = "ai"
-        logger.info(f"[{profile.member_id}] ai: {len(personalized_text)} chars")
+        if options and options.mock_ai:
+            # Mock mode: skip AI call, return placeholder text
+            personalized_text = "【テストモード】AI生成をスキップしました。実際の運用ではここにGeminiが生成したパーソナライズ文が入ります。"
+            pattern_type = None
+            generation_path = "ai"
+            logger.info(f"[{profile.member_id}] ai: MOCK mode")
+        else:
+            system_prompt = build_system_prompt(
+                config["prompt_sections"],
+                template_body,
+                config["examples"],
+            )
+            user_prompt = build_user_prompt(profile, job_category)
+            personalized_text = await generate_personalized_text(system_prompt, user_prompt)
+            pattern_type = None
+            generation_path = "ai"
+            logger.info(f"[{profile.member_id}] ai: {len(personalized_text)} chars")
 
     # 6. Build full scout text
     full_scout_text = build_full_scout_text(template_body, personalized_text)
