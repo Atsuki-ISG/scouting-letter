@@ -1484,7 +1484,14 @@ function renderTestPanel() {
       <div><label>年齢</label><div style="display:flex;align-items:center;gap:4px"><input type="number" id="testAge" value="35" min="15" max="80" style="width:80px"><span style="font-size:13px;color:#64748b">歳</span></div></div>
       <div><label>経験年数</label><div style="display:flex;align-items:center;gap:4px"><input type="number" id="testExp" value="5" min="0" max="50" style="width:80px"><span style="font-size:13px;color:#64748b">年</span></div></div>
       <div><label>経歴タイプ</label><input type="text" id="testExpType" value="訪問看護" placeholder="訪問看護"></div>
-      <div><label>希望雇用</label><select id="testEmpType"><option value="パート">パート</option><option value="正社員">正社員</option></select></div>
+      <div><label>希望雇用（複数可）</label>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 10px;padding:4px 0">
+          <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" class="testEmpTypeCb" value="パート" checked> パート</label>
+          <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" class="testEmpTypeCb" value="正社員"> 正社員</label>
+          <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" class="testEmpTypeCb" value="契約社員"> 契約社員</label>
+          <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer"><input type="checkbox" class="testEmpTypeCb" value="業務委託"> 業務委託</label>
+        </div>
+      </div>
       <div><label>就業状態</label><select id="testEmpStatus"><option value="就業中">就業中</option><option value="離職中">離職中</option><option value="在学中">在学中</option></select></div>
       <div style="grid-column:span 2"><label>職務経歴（空=型はめパス）</label><textarea id="testHistory" placeholder="急性期病棟3年、回復期病棟2年"></textarea></div>
       <div style="grid-column:span 2"><label>自己PR</label><textarea id="testPR" placeholder="患者様に寄り添った看護を..."></textarea></div>
@@ -1522,7 +1529,7 @@ async function runPipelineTest() {
     experience_years: expVal ? expVal + '年' : '',
     experience_type: document.getElementById('testExpType').value,
     employment_status: document.getElementById('testEmpStatus').value,
-    desired_employment_type: document.getElementById('testEmpType').value,
+    desired_employment_type: [...document.querySelectorAll('.testEmpTypeCb:checked')].map(cb => cb.value).join('、'),
     work_history_summary: document.getElementById('testHistory').value,
     self_pr: document.getElementById('testPR').value,
   };
