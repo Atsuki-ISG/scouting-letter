@@ -68,6 +68,7 @@ export class GeneratePanel {
     this.progressSection.classList.remove('hidden');
     this.resultSummary.classList.add('hidden');
     this.progressFill.style.width = '0%';
+    this.progressFill.classList.add('active');
     this.progressText.textContent = `生成中... 0/${profiles.length}`;
 
     try {
@@ -127,6 +128,7 @@ export class GeneratePanel {
       this.resultSummary.innerHTML = `<div style="color:#dc2626;font-weight:600">⚠ ${displayMessage}</div>`;
     } finally {
       this.isGenerating = false;
+      this.progressFill.classList.remove('active');
       this.btnGenerate.disabled = false;
       this.btnGenerate.textContent = '一括生成';
     }

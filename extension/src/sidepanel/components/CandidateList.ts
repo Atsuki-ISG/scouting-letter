@@ -115,6 +115,7 @@ export class CandidateList {
     const stopBtn = document.getElementById('btn-stop-continuous');
 
     this.continuousSendActive = true;
+    this.sendProgressFill.classList.add('active');
     startBtn?.classList.add('hidden');
     skipBtn?.classList.remove('hidden');
     stopBtn?.classList.remove('hidden');
@@ -129,6 +130,7 @@ export class CandidateList {
     const toggle = document.getElementById('toggle-continuous') as HTMLInputElement | null;
 
     this.continuousSendActive = false;
+    this.sendProgressFill.classList.remove('active');
     stopBtn?.classList.add('hidden');
     skipBtn?.classList.add('hidden');
     startBtn?.classList.add('hidden');

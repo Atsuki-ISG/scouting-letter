@@ -77,6 +77,7 @@ export class ExtractionPanel {
     this.progressCurrent.textContent = '0';
     this.progressTotal.textContent = String(count);
     this.progressFill.style.width = '0%';
+    this.progressFill.classList.add('active');
     this.extractedList.innerHTML = '';
     this.btnDownload.classList.add('hidden');
 
@@ -99,6 +100,7 @@ export class ExtractionPanel {
 
   private onStopped(): void {
     this.extracting = false;
+    this.progressFill.classList.remove('active');
     this.btnStop.classList.add('hidden');
     this.btnStart.classList.remove('hidden');
     if (this.profiles.length > 0) {
