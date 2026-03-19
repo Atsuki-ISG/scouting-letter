@@ -600,6 +600,341 @@ tbody tr:hover { background: #f8fafc; }
 }
 .apikey-box input:focus { outline: none; border-color: #2563eb; }
 .apikey-box .btn-row { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ===== Flow View ===== */
+.flow-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+  position: relative;
+}
+
+.flow-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.flow-svg path {
+  fill: none;
+  stroke: #cbd5e1;
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke 0.4s, opacity 0.4s;
+}
+
+.flow-svg path.active { stroke: #22c55e; stroke-width: 2.5; }
+.flow-svg path.dimmed { opacity: 0.2; }
+
+.flow-svg marker path {
+  fill: #cbd5e1;
+  stroke: none;
+}
+
+/* Flow Nodes */
+.flow-node {
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  transition: border-color 0.3s, box-shadow 0.3s, opacity 0.4s, transform 0.3s;
+  overflow: hidden;
+}
+
+.flow-node:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  transform: translateY(-1px);
+}
+
+.flow-node.test-pass {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.15), 0 4px 16px rgba(0,0,0,0.06);
+}
+
+.flow-node.test-fail {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239,68,68,0.15);
+}
+
+.flow-node.test-dimmed {
+  opacity: 0.3;
+  filter: grayscale(0.6);
+  pointer-events: none;
+}
+
+.flow-node-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.flow-node-header:hover { background: #f8fafc; }
+
+.flow-node-num {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.flow-node-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+.flow-node-summary {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-left: auto;
+  text-align: right;
+  line-height: 1.4;
+  max-width: 350px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-node-expand {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  transition: transform 0.3s;
+  flex-shrink: 0;
+}
+
+.flow-node[data-state="expanded"] .flow-node-expand {
+  transform: rotate(180deg);
+}
+
+.flow-node-body {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.4s ease-out, opacity 0.3s ease-out, padding 0.3s;
+  padding: 0 18px;
+}
+
+.flow-node[data-state="expanded"] .flow-node-body {
+  max-height: 1200px;
+  opacity: 1;
+  padding: 0 18px 18px;
+}
+
+.flow-node-body-inner {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 14px;
+}
+
+/* Branch row */
+.flow-branch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.flow-branch .flow-node { margin-bottom: 0; }
+
+/* Branch label */
+.flow-branch-label {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.flow-branch-label span {
+  background: #f8fafc;
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+}
+
+/* Test result annotations */
+.flow-node-result {
+  display: none;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-top: 1px solid #f1f5f9;
+  color: #475569;
+  background: #f0fdf4;
+}
+
+.flow-node.test-pass .flow-node-result,
+.flow-node.test-fail .flow-node-result { display: block; }
+.flow-node.test-fail .flow-node-result { background: #fef2f2; color: #dc2626; }
+
+/* Test Panel */
+.flow-test-panel {
+  background: #fff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 28px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.flow-test-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.flow-test-header span {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.flow-test-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.flow-test-inputs label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  display: block;
+  margin-bottom: 3px;
+}
+
+.flow-test-inputs input,
+.flow-test-inputs select,
+.flow-test-inputs textarea {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.flow-test-inputs textarea {
+  height: 48px;
+  padding: 6px 8px;
+  resize: none;
+}
+
+.flow-test-result {
+  margin-top: 16px;
+  padding: 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  display: none;
+}
+
+.flow-test-result.error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.flow-test-result.visible { display: block; }
+
+/* View mode toggle */
+.view-toggle {
+  display: inline-flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  height: 36px;
+}
+
+.view-toggle button {
+  border: none;
+  background: #fff;
+  padding: 0 14px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  color: #64748b;
+  transition: background 0.15s, color 0.15s;
+}
+
+.view-toggle button.active {
+  background: #2563eb;
+  color: #fff;
+}
+
+.view-toggle button:not(.active):hover {
+  background: #f1f5f9;
+}
+
+/* Node body mini-cards */
+.flow-mini-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.flow-mini-card-title {
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flow-mini-card-body {
+  color: #64748b;
+  font-size: 12px;
+  max-height: 3.6em;
+  overflow: hidden;
+}
+
+.flow-mini-card .btn-sm { margin-top: 6px; }
+
+.flow-link {
+  display: inline-block;
+  font-size: 12px;
+  color: #2563eb;
+  margin-top: 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.flow-link:hover { text-decoration: underline; }
+
+/* Placeholder highlight in pattern text */
+.ph { background: #fef3c7; border-radius: 3px; padding: 0 3px; color: #92400e; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -608,8 +943,11 @@ tbody tr:hover { background: #f8fafc; }
   <span class="header-title">Scout Admin</span>
   <select id="companySelect"></select>
   <button class="btn btn-secondary btn-sm" onclick="showAddCompanyDialog()">＋ 新規会社</button>
+  <div class="view-toggle">
+    <button id="viewFlowBtn" class="active" onclick="setViewMode('flow')">フロー</button>
+    <button id="viewTableBtn" onclick="setViewMode('table')">テーブル</button>
+  </div>
   <div class="header-right">
-    <button class="btn btn-primary" onclick="openPromptPreview()">生成フロー確認</button>
     <button class="btn btn-secondary" onclick="reloadCache()">キャッシュ更新</button>
     <button class="btn btn-secondary" onclick="showApiKeyDialog()">APIキー設定</button>
   </div>
@@ -617,7 +955,23 @@ tbody tr:hover { background: #f8fafc; }
 
 <nav class="tabs" id="tabs"></nav>
 
-<main class="content" id="content"></main>
+<!-- Flow View -->
+<div id="flowView" class="flow-container">
+  <svg class="flow-svg" id="flowSvg">
+    <defs>
+      <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6" fill="#cbd5e1"/>
+      </marker>
+      <marker id="arrowhead-active" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6" fill="#22c55e"/>
+      </marker>
+    </defs>
+  </svg>
+  <div id="flowNodes"></div>
+</div>
+
+<!-- Table View -->
+<main class="content" id="content" style="display:none"></main>
 
 <!-- Edit Modal -->
 <div class="modal-overlay" id="modalOverlay">
@@ -705,12 +1059,530 @@ tbody tr:hover { background: #f8fafc; }
 // --- Config ---
 const TABS = [
   { slug: 'templates', name: 'テンプレート' },
-  { slug: 'patterns', name: 'パターン' },
-  { slug: 'qualifiers', name: '資格修飾' },
-  { slug: 'prompts', name: 'プロンプト' },
-  { slug: 'job_offers', name: '求人' },
   { slug: 'validation', name: 'バリデーション' },
+  { slug: 'prompts', name: 'AI生成設定', filter: r => (r.section_type || '') !== 'pattern_generation' },
+  { slug: 'patterns', name: '型はめ設定' },
+  { slug: 'qualifiers', name: '資格修飾', parentTab: 'patterns' },
+  { slug: 'job_offers', name: '求人' },
 ];
+
+// ===== Flow View =====
+let viewMode = 'flow';
+let flowConfig = null; // company config for flow view
+
+const FLOW_STEPS = [
+  { id: 'profile',   num: '1', title: 'プロフィール受信',  color: '#64748b', editable: false },
+  { id: 'job_cat',   num: '2', title: '職種カテゴリ判定',  color: '#8b5cf6', editable: false },
+  { id: 'template',  num: '3', title: 'テンプレート選択',  color: '#2563eb', tab: 'templates' },
+  { id: 'filter',    num: '4', title: 'バリデーション',    color: '#dc2626', tab: 'validation' },
+  { id: 'branch',    num: '',  title: '',                  color: '',        isBranch: true },
+  { id: 'ai_gen',    num: '5a', title: 'AI生成',          color: '#059669', tab: 'prompts' },
+  { id: 'pattern',   num: '5b', title: '型はめ',          color: '#d97706', tab: 'patterns' },
+  { id: 'assemble',  num: '6', title: 'テキスト組み立て',  color: '#0891b2', editable: false },
+  { id: 'job_offer', num: '7', title: '求人解決',          color: '#7c3aed', tab: 'job_offers' },
+];
+
+// Connections: [from_id, to_id]
+const FLOW_CONNECTIONS = [
+  ['profile', 'job_cat'],
+  ['job_cat', 'template'],
+  ['template', 'filter'],
+  ['filter', 'ai_gen'],
+  ['filter', 'pattern'],
+  ['ai_gen', 'assemble'],
+  ['pattern', 'assemble'],
+  ['assemble', 'job_offer'],
+];
+
+function setViewMode(mode) {
+  viewMode = mode;
+  document.getElementById('viewFlowBtn').classList.toggle('active', mode === 'flow');
+  document.getElementById('viewTableBtn').classList.toggle('active', mode === 'table');
+  document.getElementById('tabs').style.display = mode === 'table' ? 'flex' : 'none';
+  document.getElementById('content').style.display = mode === 'table' ? 'block' : 'none';
+  document.getElementById('flowView').style.display = mode === 'flow' ? 'block' : 'none';
+  if (mode === 'flow') {
+    loadFlowView();
+  } else {
+    loadData();
+  }
+}
+
+function switchToTableTab(slug) {
+  currentTab = slug;
+  setViewMode('table');
+  renderTabs();
+}
+
+async function loadFlowView() {
+  const company = document.getElementById('companySelect').value;
+  if (!company) return;
+  const nodesEl = document.getElementById('flowNodes');
+  nodesEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  try {
+    flowConfig = await api('GET', `/api/v1/companies/${company}/config`);
+    renderFlowNodes();
+    requestAnimationFrame(() => requestAnimationFrame(drawConnectors));
+  } catch (e) {
+    nodesEl.innerHTML = `<div class="empty-msg">${e.message}</div>`;
+  }
+}
+
+function getFlowSummary(stepId) {
+  if (!flowConfig) return '';
+  switch (stepId) {
+    case 'profile':
+      return 'Chrome拡張からプロフィール受信';
+    case 'job_cat':
+      return '資格 → nurse / pt / st / ot / medical_office';
+    case 'template': {
+      const tkeys = Object.keys(flowConfig.templates || {});
+      const configured = tkeys.filter(k => (flowConfig.templates[k].body || '').trim());
+      return `${configured.length}/${tkeys.length} テンプレート設定済`;
+    }
+    case 'filter': {
+      const vc = flowConfig.validation_config || {};
+      const ar = vc.age_range;
+      const parts = [];
+      if (ar) parts.push(`年齢 ${ar.min}〜${ar.max}歳`);
+      const qr = vc.qualification_rules;
+      if (qr && qr.builtin) {
+        const on = Object.values(qr.builtin).filter(v => v !== false).length;
+        parts.push(`ルール ${on}件ON`);
+      }
+      if (qr && qr.ai_conditions) parts.push(`AI条件 ${qr.ai_conditions.length}件`);
+      return parts.join(' / ') || '未設定';
+    }
+    case 'ai_gen': {
+      const secs = (flowConfig.prompt_sections || []).filter(s => s.section_type !== 'pattern_generation');
+      return `${secs.length} セクション`;
+    }
+    case 'pattern': {
+      const pats = flowConfig.patterns || [];
+      const types = [...new Set(pats.map(p => p.pattern_type))];
+      const qm = flowConfig.qualification_modifiers || [];
+      return `型 ${types.join(',')} / 資格修飾 ${qm.length}件`;
+    }
+    case 'assemble':
+      return 'テンプレート + {パーソナライズ文}';
+    case 'job_offer': {
+      const jo = flowConfig.job_offers || [];
+      return `${jo.length} 件の求人`;
+    }
+    default: return '';
+  }
+}
+
+function renderFlowNodes() {
+  const nodesEl = document.getElementById('flowNodes');
+  let html = '';
+
+  // Test panel
+  html += renderTestPanel();
+
+  for (const step of FLOW_STEPS) {
+    if (step.isBranch) {
+      html += '<div class="flow-branch-label"><span>経歴あり → AI生成 ／ 経歴なし → 型はめ</span></div>';
+      html += '<div class="flow-branch">';
+      // AI gen and Pattern nodes will follow
+      continue;
+    }
+    // Close branch div after pattern node
+    const prevStep = FLOW_STEPS[FLOW_STEPS.indexOf(step) - 1];
+    if (prevStep && prevStep.id === 'pattern') {
+      html += '</div>'; // close .flow-branch
+    }
+
+    const summary = getFlowSummary(step.id);
+    html += `<div class="flow-node" data-step="${step.id}" data-state="collapsed">
+      <div class="flow-node-header" onclick="toggleFlowNode('${step.id}')">
+        <span class="flow-node-num" style="background:${step.color}">${step.num}</span>
+        <span class="flow-node-title">${step.title}</span>
+        <span class="flow-node-summary">${escHtml(summary)}</span>
+        <button class="flow-node-expand">▾</button>
+      </div>
+      <div class="flow-node-body"><div class="flow-node-body-inner" id="flowBody_${step.id}"></div></div>
+      <div class="flow-node-result" id="flowResult_${step.id}"></div>
+    </div>`;
+  }
+
+  nodesEl.innerHTML = html;
+}
+
+function toggleFlowNode(stepId) {
+  const node = document.querySelector(`[data-step="${stepId}"]`);
+  if (!node) return;
+  const isExpanded = node.dataset.state === 'expanded';
+
+  // Collapse all others
+  document.querySelectorAll('.flow-node[data-state="expanded"]').forEach(n => {
+    n.dataset.state = 'collapsed';
+  });
+
+  if (!isExpanded) {
+    node.dataset.state = 'expanded';
+    renderFlowNodeBody(stepId);
+    setTimeout(() => {
+      node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      drawConnectors();
+    }, 50);
+  }
+
+  // Redraw connectors after transition
+  setTimeout(drawConnectors, 400);
+}
+
+function renderFlowNodeBody(stepId) {
+  const body = document.getElementById(`flowBody_${stepId}`);
+  if (!body || !flowConfig) return;
+  const step = FLOW_STEPS.find(s => s.id === stepId);
+
+  let html = '';
+
+  switch (stepId) {
+    case 'profile':
+      html = '<div class="flow-mini-card"><div class="flow-mini-card-body">資格、年齢、経験年数、経歴タイプ、自己PR、希望雇用形態、希望勤務地 等をChrome拡張が抽出</div></div>';
+      break;
+
+    case 'job_cat':
+      html = `<div class="flow-mini-card">
+        <div class="flow-mini-card-body">
+          看護師・准看護師 → <strong>nurse</strong><br>
+          理学療法士 → <strong>pt</strong><br>
+          言語聴覚士 → <strong>st</strong><br>
+          作業療法士 → <strong>ot</strong><br>
+          医療事務・受付 → <strong>medical_office</strong>
+        </div>
+      </div>`;
+      break;
+
+    case 'template': {
+      const tpls = flowConfig.templates || {};
+      for (const [type, tpl] of Object.entries(tpls)) {
+        const preview = (tpl.body || '').substring(0, 60).replace(/\n/g, ' ');
+        html += `<div class="flow-mini-card">
+          <div class="flow-mini-card-title"><span class="pattern-badge" style="background:#2563eb">${escHtml(type)}</span></div>
+          <div class="flow-mini-card-body">${escHtml(preview)}${preview.length >= 60 ? '...' : ''}</div>
+        </div>`;
+      }
+      html += `<span class="flow-link" onclick="switchToTableTab('templates')">テーブルで詳細編集 →</span>`;
+      break;
+    }
+
+    case 'filter': {
+      const vc = flowConfig.validation_config || {};
+      const qr = vc.qualification_rules || {};
+      const ar = vc.age_range;
+      html += '<div class="flow-mini-card">';
+      if (ar) html += `<div style="margin-bottom:6px;font-size:13px">年齢範囲: <strong>${ar.min}〜${ar.max}歳</strong></div>`;
+      if (qr.builtin) {
+        const labels = { require_qualification: '資格不一致NG', reject_non_clinical: '臨床経験なしNG', reject_already_scouted: 'スカウト済みNG' };
+        for (const [k, label] of Object.entries(labels)) {
+          const on = qr.builtin[k] !== false;
+          html += `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;margin:2px;background:${on ? '#dbeafe' : '#f1f5f9'};color:${on ? '#1e40af' : '#94a3b8'}">${on ? '✓' : '✗'} ${label}</span> `;
+        }
+      }
+      if (qr.ai_conditions && qr.ai_conditions.length) {
+        html += '<div style="margin-top:8px;font-size:12px;color:#64748b">AI判定条件:</div>';
+        qr.ai_conditions.forEach(c => {
+          html += `<div style="font-size:12px;padding:2px 8px;margin:2px 0;background:#fef3c7;border-radius:4px;color:#92400e">${escHtml(c)}</div>`;
+        });
+      }
+      html += '</div>';
+      html += `<span class="flow-link" onclick="switchToTableTab('validation')">テーブルで詳細編集 →</span>`;
+      break;
+    }
+
+    case 'ai_gen': {
+      const secs = (flowConfig.prompt_sections || []).filter(s => s.section_type !== 'pattern_generation');
+      if (secs.length === 0) {
+        html = '<div class="flow-mini-card"><div class="flow-mini-card-body" style="color:#94a3b8">プロンプトセクション未設定</div></div>';
+      } else {
+        for (const sec of secs) {
+          const label = SECTION_TYPE_LABELS[sec.section_type] || sec.section_type;
+          const preview = (sec.content || '').substring(0, 100).replace(/\n/g, ' ');
+          html += `<div class="flow-mini-card">
+            <div class="flow-mini-card-title">
+              <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:3px;font-size:11px">${escHtml(sec.section_type)}</span>
+              <span style="font-size:11px;color:#94a3b8;font-weight:400">${escHtml(label)}</span>
+            </div>
+            <div class="flow-mini-card-body">${escHtml(preview)}${preview.length >= 100 ? '...' : ''}</div>
+          </div>`;
+        }
+      }
+      html += `<div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-secondary btn-sm" onclick="openPromptPreview()">全文プレビュー</button>
+        <span class="flow-link" onclick="switchToTableTab('prompts')">テーブルで詳細編集 →</span>
+      </div>`;
+      break;
+    }
+
+    case 'pattern': {
+      const pats = flowConfig.patterns || [];
+      const grouped = {};
+      for (const p of pats) {
+        const key = p.pattern_type + (p.employment_variant ? `_${p.employment_variant}` : '');
+        grouped[key] = p;
+      }
+      for (const [key, p] of Object.entries(grouped)) {
+        const color = PATTERN_COLORS[p.pattern_type] || '#94a3b8';
+        const text = (p.template_text || '').substring(0, 80);
+        // Highlight placeholders
+        const highlighted = escHtml(text).replace(/\{([^}]+)\}/g, '<span class="ph">{$1}</span>');
+        const varLabel = p.employment_variant ? `（${p.employment_variant}）` : '';
+        html += `<div class="flow-mini-card">
+          <div class="flow-mini-card-title">
+            <span class="pattern-badge" style="background:${color}">${escHtml(p.pattern_type)}</span>
+            ${varLabel} <span style="font-size:11px;color:#94a3b8;font-weight:400">${escHtml(p.display_name || '')}</span>
+          </div>
+          <div class="flow-mini-card-body">${highlighted}${text.length >= 80 ? '...' : ''}</div>
+        </div>`;
+      }
+      // Qualification modifiers
+      const qm = flowConfig.qualification_modifiers || [];
+      if (qm.length) {
+        html += '<div style="margin-top:10px;font-size:12px;font-weight:600;color:#475569">資格修飾（複数資格時の差し替え）</div>';
+        for (const m of qm) {
+          const combo = (m.qualification_combo || []).join(' + ');
+          html += `<div class="flow-mini-card" style="padding:6px 10px">
+            <span style="font-size:12px"><strong>${escHtml(combo)}</strong> → ${escHtml((m.replacement_text || '').substring(0, 50))}</span>
+          </div>`;
+        }
+      }
+      html += `<div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-secondary btn-sm" onclick="switchToTableTab('patterns');setTimeout(openAiGenerate,300)">AIで一括生成</button>
+        <span class="flow-link" onclick="switchToTableTab('patterns')">テーブルで詳細編集 →</span>
+      </div>`;
+      break;
+    }
+
+    case 'assemble':
+      html = `<div class="flow-mini-card"><div class="flow-mini-card-body">
+        テンプレート本文の <span class="ph">{パーソナライズ文}</span> 部分に、AI生成 or 型はめの文章を挿入して完成文を組み立て
+      </div></div>`;
+      break;
+
+    case 'job_offer': {
+      const jo = flowConfig.job_offers || [];
+      if (jo.length === 0) {
+        html = '<div class="flow-mini-card"><div class="flow-mini-card-body" style="color:#94a3b8">求人未設定</div></div>';
+      } else {
+        html += '<div style="font-size:12px">';
+        for (const j of jo) {
+          html += `<div class="flow-mini-card" style="padding:6px 10px">
+            <span style="font-size:12px"><strong>${escHtml(j.id)}</strong> ${escHtml(j.name)} <span style="color:#94a3b8">${escHtml(j.employment_type)}</span></span>
+          </div>`;
+        }
+        html += '</div>';
+      }
+      html += `<span class="flow-link" onclick="switchToTableTab('job_offers')">テーブルで詳細編集 →</span>`;
+      break;
+    }
+  }
+
+  body.innerHTML = html;
+}
+
+// --- SVG Connectors ---
+function drawConnectors() {
+  const svg = document.getElementById('flowSvg');
+  const container = document.getElementById('flowView');
+  if (!svg || !container || viewMode !== 'flow') return;
+
+  const containerRect = container.getBoundingClientRect();
+
+  // Set SVG size
+  svg.style.height = container.scrollHeight + 'px';
+  svg.setAttribute('viewBox', `0 0 ${container.offsetWidth} ${container.scrollHeight}`);
+
+  // Clear existing paths (preserve defs)
+  svg.querySelectorAll('path.connector').forEach(p => p.remove());
+
+  for (const [fromId, toId] of FLOW_CONNECTIONS) {
+    const fromEl = container.querySelector(`[data-step="${fromId}"]`);
+    const toEl = container.querySelector(`[data-step="${toId}"]`);
+    if (!fromEl || !toEl) continue;
+
+    const fromRect = fromEl.getBoundingClientRect();
+    const toRect = toEl.getBoundingClientRect();
+
+    // Calculate points relative to container
+    let x1, y1, x2, y2;
+
+    // From bottom center of source
+    x1 = fromRect.left + fromRect.width / 2 - containerRect.left;
+    y1 = fromRect.bottom - containerRect.top;
+
+    // To top center of target
+    x2 = toRect.left + toRect.width / 2 - containerRect.left;
+    y2 = toRect.top - containerRect.top;
+
+    // Cubic bezier for smooth curve
+    const dy = y2 - y1;
+    const cp1y = y1 + dy * 0.4;
+    const cp2y = y2 - dy * 0.4;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', `M${x1},${y1} C${x1},${cp1y} ${x2},${cp2y} ${x2},${y2}`);
+    path.setAttribute('class', 'connector');
+    path.setAttribute('marker-end', 'url(#arrowhead)');
+    path.dataset.from = fromId;
+    path.dataset.to = toId;
+    svg.appendChild(path);
+  }
+}
+
+// Redraw on resize
+const _flowResizeObserver = new ResizeObserver(() => {
+  if (viewMode === 'flow') requestAnimationFrame(drawConnectors);
+});
+
+// --- Test Panel ---
+function renderTestPanel() {
+  return `<div class="flow-test-panel">
+    <div class="flow-test-header">
+      <span>パイプラインテスト</span>
+      <button class="btn btn-primary btn-sm" onclick="runPipelineTest()" id="testRunBtn">テスト実行</button>
+    </div>
+    <div class="flow-test-inputs">
+      <div><label>資格</label><input type="text" id="testQual" value="看護師" placeholder="看護師"></div>
+      <div><label>年齢</label><input type="text" id="testAge" value="35歳" placeholder="35歳"></div>
+      <div><label>経験年数</label><input type="text" id="testExp" value="5年" placeholder="5年"></div>
+      <div><label>経歴タイプ</label><input type="text" id="testExpType" value="訪問看護" placeholder="訪問看護"></div>
+      <div><label>希望雇用</label><select id="testEmpType"><option value="パート">パート</option><option value="正社員">正社員</option></select></div>
+      <div><label>就業状態</label><select id="testEmpStatus"><option value="就業中">就業中</option><option value="離職中">離職中</option><option value="在学中">在学中</option></select></div>
+      <div style="grid-column:span 2"><label>職務経歴（空=型はめパス）</label><textarea id="testHistory" placeholder="急性期病棟3年、回復期病棟2年"></textarea></div>
+      <div style="grid-column:span 2"><label>自己PR</label><textarea id="testPR" placeholder="患者様に寄り添った看護を..."></textarea></div>
+    </div>
+    <div class="flow-test-result" id="testResult"></div>
+  </div>`;
+}
+
+async function runPipelineTest() {
+  const company = document.getElementById('companySelect').value;
+  const btn = document.getElementById('testRunBtn');
+  btn.disabled = true;
+  btn.textContent = '実行中...';
+
+  // Clear previous results
+  document.querySelectorAll('.flow-node').forEach(n => {
+    n.classList.remove('test-pass', 'test-fail', 'test-dimmed');
+  });
+  document.querySelectorAll('.flow-svg path.connector').forEach(p => {
+    p.classList.remove('active', 'dimmed');
+    p.setAttribute('marker-end', 'url(#arrowhead)');
+  });
+  const resultEl = document.getElementById('testResult');
+  resultEl.classList.remove('visible', 'error');
+
+  const profile = {
+    member_id: 'TEST_' + Date.now(),
+    qualifications: document.getElementById('testQual').value,
+    age: document.getElementById('testAge').value,
+    experience_years: document.getElementById('testExp').value,
+    experience_type: document.getElementById('testExpType').value,
+    employment_status: document.getElementById('testEmpStatus').value,
+    desired_employment_type: document.getElementById('testEmpType').value,
+    work_history_summary: document.getElementById('testHistory').value,
+    self_pr: document.getElementById('testPR').value,
+  };
+
+  try {
+    const result = await api('POST', '/api/v1/generate', {
+      company_id: company,
+      profile: profile,
+      options: {},
+    });
+
+    // Animate step by step
+    const steps = ['profile', 'job_cat', 'template', 'filter'];
+    const isFiltered = result.generation_path === 'filtered_out';
+    const isAI = result.generation_path === 'ai';
+    const isPattern = result.generation_path === 'pattern';
+
+    if (!isFiltered) {
+      steps.push(isAI ? 'ai_gen' : 'pattern');
+      steps.push('assemble', 'job_offer');
+    }
+
+    // Highlight steps sequentially
+    for (let i = 0; i < steps.length; i++) {
+      await new Promise(r => setTimeout(r, 150));
+      const sid = steps[i];
+      const node = document.querySelector(`[data-step="${sid}"]`);
+      if (node) {
+        node.classList.add(isFiltered && sid === 'filter' ? 'test-fail' : 'test-pass');
+        node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    // Dim inactive branch
+    if (!isFiltered) {
+      const dimId = isAI ? 'pattern' : 'ai_gen';
+      const dimNode = document.querySelector(`[data-step="${dimId}"]`);
+      if (dimNode) dimNode.classList.add('test-dimmed');
+
+      // Highlight active connectors
+      document.querySelectorAll('.flow-svg path.connector').forEach(p => {
+        const from = p.dataset.from;
+        const to = p.dataset.to;
+        const isActivePath =
+          (from === 'filter' && to === (isAI ? 'ai_gen' : 'pattern')) ||
+          ((isAI ? 'ai_gen' : 'pattern') === from && to === 'assemble');
+        const isDimPath =
+          (from === 'filter' && to === (isAI ? 'pattern' : 'ai_gen')) ||
+          ((isAI ? 'pattern' : 'ai_gen') === from && to === 'assemble');
+
+        if (isActivePath) {
+          p.classList.add('active');
+          p.setAttribute('marker-end', 'url(#arrowhead-active)');
+        } else if (isDimPath) {
+          p.classList.add('dimmed');
+        }
+      });
+    } else {
+      // Dim everything after filter
+      ['ai_gen', 'pattern', 'assemble', 'job_offer'].forEach(id => {
+        const n = document.querySelector(`[data-step="${id}"]`);
+        if (n) n.classList.add('test-dimmed');
+      });
+    }
+
+    // Set result annotations on nodes
+    setNodeResult('job_cat', `→ ${result.job_category || '不明'}`);
+    setNodeResult('template', `→ ${result.template_type || '不明'}`);
+    if (isFiltered) {
+      setNodeResult('filter', `除外: ${result.filter_reason || '不明'}`);
+    } else {
+      setNodeResult('filter', '通過');
+    }
+    if (isAI) setNodeResult('ai_gen', 'AI生成完了');
+    if (isPattern) setNodeResult('pattern', `型 ${result.pattern_type || '?'} マッチ`);
+    if (result.job_offer_id) setNodeResult('job_offer', `求人ID: ${result.job_offer_id}`);
+
+    // Show full result
+    if (result.full_scout_text) {
+      resultEl.textContent = result.full_scout_text;
+      resultEl.classList.add('visible');
+      resultEl.classList.remove('error');
+    } else if (isFiltered) {
+      resultEl.textContent = `フィルタ除外: ${result.filter_reason}`;
+      resultEl.classList.add('visible', 'error');
+    }
+  } catch (e) {
+    resultEl.textContent = `エラー: ${e.message}`;
+    resultEl.classList.add('visible', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'テスト実行';
+  }
+}
+
+function setNodeResult(stepId, text) {
+  const el = document.getElementById(`flowResult_${stepId}`);
+  if (el) el.textContent = text;
+}
 
 const TEXTAREA_FIELDS = new Set(['body', 'template_text', 'content', 'qualification_rules', 'feature_variations', 'match_rules']);
 
@@ -857,7 +1729,9 @@ function toast(msg, isError) {
 // --- Tabs ---
 function renderTabs() {
   const nav = document.getElementById('tabs');
-  nav.innerHTML = TABS.map(t =>
+  // Hide tabs that are sub-tabs (parentTab set)
+  const visibleTabs = TABS.filter(t => !t.parentTab);
+  nav.innerHTML = visibleTabs.map(t =>
     `<div class="tab ${t.slug === currentTab ? 'active' : ''}" data-slug="${t.slug}">${t.name}</div>`
   ).join('');
   nav.querySelectorAll('.tab').forEach(el => {
@@ -874,14 +1748,60 @@ async function loadData() {
   const company = document.getElementById('companySelect').value;
   const content = document.getElementById('content');
   content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  // Resolve actual sheet slug (ai_prompts → prompts)
+  const tabDef = TABS.find(t => t.slug === currentTab);
+  const sheetSlug = currentTab === 'ai_prompts' ? 'prompts' : currentTab;
+
   try {
-    const data = await api('GET', `/api/v1/admin/${currentTab}?company=${company}`);
+    const data = await api('GET', `/api/v1/admin/${sheetSlug}?company=${company}`);
     currentHeaders = data.headers;
     currentRows = data.rows;
+
+    // Apply row filter if tab has one (e.g., AI生成設定 excludes pattern_generation)
+    if (tabDef && tabDef.filter) {
+      currentRows = currentRows.filter(tabDef.filter);
+    }
+
     renderTable();
+
+    // If on patterns tab, also load qualifiers below
+    if (currentTab === 'patterns') {
+      try {
+        const qData = await api('GET', `/api/v1/admin/qualifiers?company=${company}`);
+        if (qData.rows.length > 0) {
+          renderQualifiersSection(qData);
+        }
+      } catch {}
+    }
   } catch (e) {
     content.innerHTML = `<div class="empty-msg">${e.message}</div>`;
   }
+}
+
+function renderQualifiersSection(qData) {
+  const content = document.getElementById('content');
+  let html = '<div style="margin-top:32px;border-top:2px solid #e2e8f0;padding-top:24px">';
+  html += '<div class="toolbar"><span class="toolbar-title">資格修飾（${qData.rows.length}件）</span>';
+  html += '<button class="btn btn-primary btn-sm" onclick="currentTab=\'qualifiers\';openAddModal();currentTab=\'patterns\'">＋ 追加</button></div>';
+  html += '<div class="table-wrap"><table><thead><tr>';
+  const qHeaders = qData.headers.filter(h => h !== '_row_index');
+  qHeaders.forEach(h => { html += `<th>${FIELD_LABELS[h] || h}</th>`; });
+  html += '<th>操作</th></tr></thead><tbody>';
+  for (const row of qData.rows) {
+    html += '<tr>';
+    for (const h of qHeaders) {
+      html += `<td><div class="cell-text">${formatCellText(String(row[h] ?? ''))}</div></td>`;
+    }
+    html += `<td><div class="actions-cell">
+      <button class="btn btn-secondary btn-sm" onclick="currentTab='qualifiers';openEditModal(${row._row_index});currentTab='patterns'">編集</button>
+      <button class="btn btn-danger btn-sm" onclick="currentTab='qualifiers';deleteRow(${row._row_index});currentTab='patterns'">削除</button>
+    </div></td></tr>`;
+  }
+  html += '</tbody></table></div></div>';
+  content.innerHTML += html;
+  // Re-init cell toggle for new elements
+  initCellToggle();
 }
 
 // --- Table Rendering ---
@@ -1536,14 +2456,25 @@ document.getElementById('newCompanyId').addEventListener('keydown', (e) => {
 });
 
 // --- Init ---
-document.getElementById('companySelect').addEventListener('change', loadData);
+document.getElementById('companySelect').addEventListener('change', () => {
+  if (viewMode === 'flow') loadFlowView();
+  else loadData();
+});
 renderTabs();
 
 if (!getApiKey()) {
   showApiKeyDialog();
 } else {
-  loadCompanies().then(() => loadData());
+  loadCompanies().then(() => {
+    setViewMode('flow');
+  });
 }
+
+// Observe flow container for resize
+setTimeout(() => {
+  const flowView = document.getElementById('flowView');
+  if (flowView) _flowResizeObserver.observe(flowView);
+}, 100);
 </script>
 </body>
 </html>
