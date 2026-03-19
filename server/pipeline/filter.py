@@ -190,8 +190,9 @@ async def filter_candidate(
             return f"スカウト送信済み: {profile.scout_sent_date}"
 
     # Check 4: Age range
-    min_age = validation_config.get("min_age")
-    max_age = validation_config.get("max_age")
+    age_range = validation_config.get("age_range", {})
+    min_age = age_range.get("min") if age_range else validation_config.get("min_age")
+    max_age = age_range.get("max") if age_range else validation_config.get("max_age")
     if min_age is not None or max_age is not None:
         age = _parse_age(profile.age)
         if age is not None:
