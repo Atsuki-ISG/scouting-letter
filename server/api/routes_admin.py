@@ -107,7 +107,8 @@ async def list_rows(sheet_slug: str, company: Optional[str] = None, operator=Dep
         item = {}
         for j, h in enumerate(headers):
             item[h.strip()] = row[j].strip() if j < len(row) else ""
-        if company and item.get("company") != company:
+        item_company = item.get("company", "")
+        if company and item_company and item_company != company:
             continue
         item["_row_index"] = i  # actual sheet row number
         data_rows.append(item)

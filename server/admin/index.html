@@ -738,7 +738,7 @@ tbody tr:hover { background: #f8fafc; }
 }
 
 .flow-node[data-state="expanded"] .flow-node-body {
-  max-height: 1200px;
+  max-height: 5000px;
   opacity: 1;
   padding: 0 18px 18px;
 }
@@ -916,8 +916,7 @@ tbody tr:hover { background: #f8fafc; }
 .flow-mini-card-body {
   color: #64748b;
   font-size: 12px;
-  max-height: 3.6em;
-  overflow: hidden;
+  line-height: 1.6;
 }
 
 .flow-mini-card .btn-sm { margin-top: 6px; }
@@ -1262,10 +1261,11 @@ function renderFlowNodeBody(stepId) {
     case 'template': {
       const tpls = flowConfig.templates || {};
       for (const [type, tpl] of Object.entries(tpls)) {
-        const preview = (tpl.body || '').substring(0, 60).replace(/\n/g, ' ');
+        const body = (tpl.body || '');
+        const preview = body.substring(0, 200).replace(/\n/g, ' ');
         html += `<div class="flow-mini-card">
           <div class="flow-mini-card-title"><span class="pattern-badge" style="background:#2563eb">${escHtml(type)}</span></div>
-          <div class="flow-mini-card-body">${escHtml(preview)}${preview.length >= 60 ? '...' : ''}</div>
+          <div class="flow-mini-card-body">${escHtml(preview)}${body.length > 200 ? '...' : ''}</div>
         </div>`;
       }
       html += `<span class="flow-link" onclick="switchToTableTab('templates')">テーブルで詳細編集 →</span>`;
@@ -1313,13 +1313,13 @@ function renderFlowNodeBody(stepId) {
       } else {
         for (const sec of secs) {
           const label = SECTION_TYPE_LABELS[sec.section_type] || sec.section_type;
-          const preview = (sec.content || '').substring(0, 100).replace(/\n/g, ' ');
+          const preview = (sec.content || '').replace(/\n/g, '<br>');
           html += `<div class="flow-mini-card">
             <div class="flow-mini-card-title">
               <span style="background:#dbeafe;color:#1e40af;padding:1px 6px;border-radius:3px;font-size:11px">${escHtml(sec.section_type)}</span>
               <span style="font-size:11px;color:#94a3b8;font-weight:400">${escHtml(label)}</span>
             </div>
-            <div class="flow-mini-card-body">${escHtml(preview)}${preview.length >= 100 ? '...' : ''}</div>
+            <div class="flow-mini-card-body">${preview}</div>
           </div>`;
         }
       }
@@ -1339,7 +1339,7 @@ function renderFlowNodeBody(stepId) {
       }
       for (const [key, p] of Object.entries(grouped)) {
         const color = PATTERN_COLORS[p.pattern_type] || '#94a3b8';
-        const text = (p.template_text || '').substring(0, 80);
+        const text = (p.template_text || '');
         // Highlight placeholders
         const highlighted = escHtml(text).replace(/\{([^}]+)\}/g, '<span class="ph">{$1}</span>');
         const varLabel = p.employment_variant ? `（${p.employment_variant}）` : '';
@@ -1348,7 +1348,7 @@ function renderFlowNodeBody(stepId) {
             <span class="pattern-badge" style="background:${color}">${escHtml(p.pattern_type)}</span>
             ${varLabel} <span style="font-size:11px;color:#94a3b8;font-weight:400">${escHtml(p.display_name || '')}</span>
           </div>
-          <div class="flow-mini-card-body">${highlighted}${text.length >= 80 ? '...' : ''}</div>
+          <div class="flow-mini-card-body">${highlighted}</div>
         </div>`;
       }
       // Qualification modifiers
@@ -1698,6 +1698,7 @@ const SECTION_TYPE_LABELS = {
 let currentTab = TABS[0].slug;
 let currentHeaders = [];
 let currentRows = [];
+let _globalEditUnlocked = false;
 
 // --- API ---
 function getApiKey() {
@@ -1933,7 +1934,8 @@ function renderTable() {
     ${isPatterns ? renderPatternGuide() : ''}
     <div class="toolbar">
       <span class="toolbar-title">${tabName}（${currentRows.length}件）</span>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-secondary btn-sm" onclick="toggleGlobalLock()" title="${_globalEditUnlocked ? '全社共通行をロック' : '全社共通行のロック解除'}">${_globalEditUnlocked ? '🔓 ロック' : '🔒 ロック解除'}</button>
         ${isPatterns ? '<button class="btn btn-secondary" onclick="openAiGenerate()">AIで一括生成</button>' : ''}
         <button class="btn btn-primary" onclick="openAddModal()">＋ 追加</button>
       </div>
@@ -1950,7 +1952,9 @@ function renderTable() {
     html += '<tr>';
     for (const h of displayHeaders) {
       const val = row[h] ?? '';
-      if (isPatterns && h === 'pattern_type') {
+      if (h === 'company' && !val.trim()) {
+        html += `<td><span style="font-size:11px;padding:2px 6px;border-radius:3px;background:#f0fdf4;color:#059669;font-weight:600">全社共通</span></td>`;
+      } else if (isPatterns && h === 'pattern_type') {
         html += `<td>${renderPatternBadge(String(val))}</td>`;
       } else if (isPrompts && h === 'section_type') {
         html += `<td>${renderSectionTypeLabel(String(val))}</td>`;
@@ -1960,10 +1964,18 @@ function renderTable() {
         html += `<td><div class="cell-text">${formatCellText(String(val))}</div></td>`;
       }
     }
-    html += `<td><div class="actions-cell">
-      <button class="btn btn-secondary btn-sm" onclick="openEditModal(${row._row_index})">編集</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteRow(${row._row_index})">削除</button>
-    </div></td></tr>`;
+    const isGlobal = !(row.company || '').trim();
+    if (isGlobal && !_globalEditUnlocked) {
+      html += `<td><div class="actions-cell">
+        <button class="btn btn-secondary btn-sm" disabled title="全社共通行はロック中。右上の🔓で解除">編集</button>
+        <button class="btn btn-danger btn-sm" disabled title="全社共通行はロック中">削除</button>
+      </div></td></tr>`;
+    } else {
+      html += `<td><div class="actions-cell">
+        <button class="btn btn-secondary btn-sm" onclick="openEditModal(${row._row_index})">編集</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmDelete(${row._row_index}, ${isGlobal})">削除</button>
+      </div></td></tr>`;
+    }
   }
 
   html += '</tbody></table></div>';
@@ -2120,8 +2132,18 @@ function openEditModal(rowIndex) {
   });
 }
 
+function confirmDelete(rowIndex, isGlobal) {
+  const row = currentRows.find(r => r._row_index === rowIndex);
+  const preview = row ? Object.values(row).filter(v => v && v !== String(rowIndex)).slice(0, 3).join(' / ') : '';
+  const msg = isGlobal
+    ? `⚠️ 全社共通の行を削除します。全会社に影響します。\n\n${preview}\n\n本当に削除しますか？`
+    : `この行を削除しますか？\n\n${preview}`;
+  if (!confirm(msg)) return;
+  if (isGlobal && !confirm('最終確認: この操作は取り消せません。本当に削除しますか？')) return;
+  deleteRow(rowIndex);
+}
+
 async function deleteRow(rowIndex) {
-  if (!confirm('この行を削除しますか？')) return;
   try {
     await api('DELETE', `/api/v1/admin/${currentTab}/${rowIndex}`);
     toast('削除しました');
@@ -2129,6 +2151,12 @@ async function deleteRow(rowIndex) {
   } catch (e) {
     toast(e.message, true);
   }
+}
+
+function toggleGlobalLock() {
+  _globalEditUnlocked = !_globalEditUnlocked;
+  toast(_globalEditUnlocked ? '全社共通行のロックを解除しました' : '全社共通行をロックしました');
+  renderTable();
 }
 
 // --- AI Pattern Generation ---
