@@ -11,9 +11,8 @@ CORS_ORIGINS: str = os.environ.get("CORS_ORIGINS", "*")
 # Google Sheets
 SPREADSHEET_ID: str = os.environ.get("SPREADSHEET_ID", "")
 
-# API Keys (comma-separated valid keys)
-API_KEYS: str = os.environ.get("API_KEYS", "")
-API_KEY_DEV: str = os.environ.get("API_KEY_DEV", "")
+# Authentication
+ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "")
 
 # Cache TTL (seconds). 0 = manual reload only via /api/v1/reload
 CACHE_TTL_SECONDS: int = int(os.environ.get("CACHE_TTL_SECONDS", "0"))

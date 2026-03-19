@@ -1224,39 +1224,51 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
     <p style="font-size:13px;color:var(--c-text-secondary);margin-bottom:16px;">パスワードを入力してください</p>
     <input type="password" id="gatePassword" placeholder="パスワード" onkeydown="if(event.key==='Enter')checkPassword()">
     <div id="gateError" style="color:var(--c-danger);font-size:12px;margin:-12px 0 12px;display:none;">パスワードが違います</div>
-    <button class="btn btn-primary" style="width:100%;" onclick="checkPassword()">ログイン</button>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="checkPassword()">ログイン</button>
   </div>
 </div>
 
 <script>
 (function() {
-  const PASS = 'anycare';
-  const KEY = 'scout_admin_auth';
-  const gate = document.getElementById('passwordGate');
-  const app = document.getElementById('appMain');
-  if (localStorage.getItem(KEY) === PASS) {
+  var STORAGE_KEY = 'scout_admin_password';
+  var gate = document.getElementById('passwordGate');
+  var saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
     gate.style.display = 'none';
-    app.style.display = '';
   } else {
     gate.style.display = 'flex';
-    app.style.display = 'none';
   }
   window.checkPassword = function() {
-    const input = document.getElementById('gatePassword').value;
-    if (input === PASS) {
-      localStorage.setItem(KEY, PASS);
-      gate.style.display = 'none';
-      app.style.display = '';
-    } else {
+    var input = document.getElementById('gatePassword').value;
+    if (!input) return;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/v1/companies', true);
+    xhr.setRequestHeader('X-API-Key', input);
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        localStorage.setItem(STORAGE_KEY, input);
+        gate.style.display = 'none';
+        var app = document.getElementById('appMain');
+        if (app) app.style.display = '';
+        location.reload();
+      } else {
+        document.getElementById('gateError').style.display = 'block';
+        document.getElementById('gatePassword').value = '';
+        document.getElementById('gatePassword').focus();
+      }
+    };
+    xhr.onerror = function() {
       document.getElementById('gateError').style.display = 'block';
       document.getElementById('gatePassword').value = '';
       document.getElementById('gatePassword').focus();
-    }
+    };
+    xhr.send();
   };
 })();
 </script>
 
-<div id="appMain">
+<div id="appMain" style="display:none;">
+<script>if(localStorage.getItem('scout_admin_password'))document.getElementById('appMain').style.display='';</script>
 <header class="header">
   <span class="header-title">Scout Admin</span>
   <select id="companySelect"></select>
@@ -1267,7 +1279,7 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   </div>
   <div class="header-right">
     <button class="btn btn-secondary" onclick="reloadCache()">キャッシュ更新</button>
-    <button class="btn btn-secondary" onclick="showApiKeyDialog()">APIキー設定</button>
+    <button class="btn btn-secondary" onclick="showApiKeyDialog()">パスワード設定</button>
   </div>
 </header>
 
@@ -1364,8 +1376,8 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 <!-- API Key Dialog -->
 <div class="apikey-dialog" id="apikeyDialog">
   <div class="apikey-box">
-    <h3>APIキーを入力</h3>
-    <input type="password" id="apikeyInput" placeholder="APIキー">
+    <h3>パスワードを入力</h3>
+    <input type="password" id="apikeyInput" placeholder="パスワード">
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="closeApiKeyDialog()">キャンセル</button>
       <button class="btn btn-primary" onclick="saveApiKey()">保存</button>
@@ -2117,14 +2129,14 @@ let _globalEditUnlocked = false;
 
 // --- API ---
 function getApiKey() {
-  return localStorage.getItem('scout_admin_api_key') || '';
+  return localStorage.getItem('scout_admin_password') || '';
 }
 
 async function api(method, path, body) {
   const key = getApiKey();
   if (!key) {
     showApiKeyDialog();
-    throw new Error('APIキーが設定されていません');
+    throw new Error('パスワードが設定されていません');
   }
   const opts = {
     method,
@@ -2156,9 +2168,9 @@ function closeApiKeyDialog() {
 function saveApiKey() {
   const key = document.getElementById('apikeyInput').value.trim();
   if (key) {
-    localStorage.setItem('scout_admin_api_key', key);
+    localStorage.setItem('scout_admin_password', key);
     closeApiKeyDialog();
-    toast('APIキーを保存しました');
+    toast('パスワードを保存しました');
     loadData();
   }
 }

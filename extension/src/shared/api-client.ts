@@ -148,7 +148,7 @@ export const apiClient = {
       }
       const apiKey = await storage.getAPIKey();
       if (!apiKey) {
-        return { success: false, error: 'APIキーが設定されていません' };
+        return { success: false, error: 'パスワードが設定されていません' };
       }
       const headers = await this.getHeaders();
       const res = await fetchWithTimeout(`${endpoint}/health`, { headers }, HEALTH_TIMEOUT_MS);
