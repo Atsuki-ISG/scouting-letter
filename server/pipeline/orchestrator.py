@@ -284,8 +284,8 @@ async def generate_batch(
         "filtered_out": sum(1 for r in results if r.generation_path == "filtered_out"),
     }
 
-    # Write generation logs to Sheets (non-blocking)
-    asyncio.get_event_loop().run_in_executor(
+    # Write generation logs to Sheets (must await before response on Cloud Run)
+    await asyncio.get_event_loop().run_in_executor(
         None,
         _write_generation_logs,
         request.company_id,
