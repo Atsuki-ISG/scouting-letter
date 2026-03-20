@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from datetime import datetime, timezone, timedelta
 
 from models.generation import (
     GenerateRequest,
@@ -19,6 +21,54 @@ from pipeline.ai_generator import generate_personalized_text
 from pipeline.text_builder import build_full_scout_text
 
 logger = logging.getLogger(__name__)
+
+JST = timezone(timedelta(hours=9))
+
+LOG_SHEET = "生成ログ"
+LOG_HEADERS = [
+    "timestamp", "company", "member_id", "job_category",
+    "template_type", "generation_path", "pattern_type",
+    "status", "detail", "personalized_text_preview",
+]
+
+
+def _write_generation_logs(
+    company_id: str,
+    results: list[GenerateResponse],
+    durations: dict[str, float],
+) -> None:
+    """Write generation results to the log sheet (fire-and-forget)."""
+    try:
+        from db.sheets_writer import sheets_writer
+        sheets_writer.ensure_sheet_exists(LOG_SHEET, LOG_HEADERS)
+
+        now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+        rows = []
+        for r in results:
+            is_error = r.generation_path == "filtered_out" and (
+                r.filter_reason or ""
+            ).startswith("生成エラー")
+            status = "エラー" if is_error else (
+                "除外" if r.generation_path == "filtered_out" else "成功"
+            )
+            detail = r.filter_reason or ""
+            preview = (r.personalized_text or "")[:200]
+            rows.append([
+                now,
+                company_id,
+                r.member_id,
+                r.job_category or "",
+                r.template_type or "",
+                r.generation_path or "",
+                r.pattern_type or "",
+                status,
+                detail,
+                preview,
+            ])
+        sheets_writer.append_rows(LOG_SHEET, rows)
+        logger.info(f"Wrote {len(rows)} log entries to '{LOG_SHEET}'")
+    except Exception as e:
+        logger.warning(f"Failed to write generation logs: {e}")
 
 
 def _resolve_job_offer_id(
@@ -233,5 +283,14 @@ async def generate_batch(
         "pattern_matched": sum(1 for r in results if r.generation_path == "pattern"),
         "filtered_out": sum(1 for r in results if r.generation_path == "filtered_out"),
     }
+
+    # Write generation logs to Sheets (non-blocking)
+    asyncio.get_event_loop().run_in_executor(
+        None,
+        _write_generation_logs,
+        request.company_id,
+        list(results),
+        {},
+    )
 
     return BatchGenerateResponse(results=list(results), summary=summary)

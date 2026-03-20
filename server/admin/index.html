@@ -1527,6 +1527,7 @@ const TABS = [
   { slug: 'prompts', name: 'AI生成設定', filter: r => (r.section_type || '') !== 'pattern_generation' },
   { slug: 'patterns', name: '型はめ設定' },
   { slug: 'job_offers', name: '求人' },
+  { slug: 'logs', name: '生成ログ', readOnly: true },
 ];
 
 // ===== Flow View =====
@@ -1747,7 +1748,13 @@ function renderFlowNodeBody(stepId) {
         const labels = { require_qualification: '資格不一致NG', reject_non_clinical: '臨床経験なしNG', reject_already_scouted: 'スカウト済みNG' };
         for (const [k, label] of Object.entries(labels)) {
           const on = qr.builtin[k] !== false;
-          html += `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;margin:2px;background:${on ? '#dbeafe' : '#f1f5f9'};color:${on ? '#1e40af' : '#94a3b8'}">${on ? '✓' : '✗'} ${label}</span> `;
+          let extra = '';
+          if (k === 'reject_already_scouted' && on) {
+            const mc = qr.builtin.max_scout_count ?? 2;
+            const ri = qr.builtin.resend_interval_days ?? 7;
+            extra = ` (${mc}回以上/${ri}日以内)`;
+          }
+          html += `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;margin:2px;background:${on ? '#dbeafe' : '#f1f5f9'};color:${on ? '#1e40af' : '#94a3b8'}">${on ? '✓' : '✗'} ${label}${extra}</span> `;
         }
       }
       // Old format: array of { jobOfferId, required, excluded }
@@ -2202,6 +2209,14 @@ const FIELD_LABELS = {
   display_name: '表示名',
   target_description: '対象条件',
   match_rules: 'マッチングルール',
+  timestamp: '日時',
+  member_id: '会員ID',
+  template_type: 'テンプレート種別',
+  generation_path: '生成方式',
+  pattern_type_log: 'パターン型',
+  status: 'ステータス',
+  detail: '詳細',
+  personalized_text_preview: 'パーソナライズ文',
 };
 
 // Pattern type color map (by base type)
@@ -2504,11 +2519,32 @@ function renderSectionTypeLabel(val) {
   return `<span title="${escHtml(label)}">${escHtml(val)}<br><span style="font-size:11px;color:#94a3b8">${escHtml(label)}</span></span>`;
 }
 
+function renderLogStatusBadge(status) {
+  const colors = {
+    '成功': { bg: '#dcfce7', fg: '#166534' },
+    '除外': { bg: '#fef9c3', fg: '#854d0e' },
+    'エラー': { bg: '#fee2e2', fg: '#991b1b' },
+  };
+  const c = colors[status] || { bg: '#f1f5f9', fg: '#475569' };
+  return `<span style="font-size:11px;padding:2px 8px;border-radius:var(--radius-sm);background:${c.bg};color:${c.fg};font-weight:600">${escHtml(status)}</span>`;
+}
+
+function renderLogPathBadge(path) {
+  const labels = { 'ai': 'AI生成', 'pattern': '型はめ', 'filtered_out': '除外' };
+  const colors = { 'ai': '#059669', 'pattern': '#d97706', 'filtered_out': '#94a3b8' };
+  const label = labels[path] || path;
+  const color = colors[path] || '#64748b';
+  return `<span style="font-size:11px;padding:2px 8px;border-radius:var(--radius-sm);background:${color}18;color:${color};font-weight:600">${escHtml(label)}</span>`;
+}
+
 function renderTable() {
-  const tabName = TABS.find(t => t.slug === currentTab).name;
+  const tabDef = TABS.find(t => t.slug === currentTab);
+  const tabName = tabDef.name;
   const content = document.getElementById('content');
   const isPatterns = currentTab === 'patterns';
   const isPrompts = currentTab === 'prompts';
+  const isLogs = currentTab === 'logs';
+  const isReadOnly = tabDef.readOnly;
 
   if (isPatterns) buildPatternGuide();
 
@@ -2518,33 +2554,50 @@ function renderTable() {
       ${isPatterns ? renderPatternGuide() : ''}
       <div class="toolbar">
         <span class="toolbar-title">${tabName}</span>
-        <div style="display:flex;gap:8px">
+        ${!isReadOnly ? `<div style="display:flex;gap:8px">
           ${isPatterns ? '<button class="btn btn-secondary" onclick="openAiGenerate()">AIで一括生成</button>' : ''}
           <button class="btn btn-primary" onclick="openAddModal()">＋ 追加</button>
-        </div>
+        </div>` : ''}
       </div>
-      <div class="table-wrap"><div class="empty-msg">データがありません</div></div>`;
+      <div class="table-wrap"><div class="empty-msg">${isLogs ? 'ログがありません。API生成を実行すると記録されます。' : 'データがありません'}</div></div>`;
     return;
   }
 
-  const displayHeaders = currentHeaders.filter(h => h !== '_row_index');
+  // For logs, hide _row_index and personalized_text_preview from main columns
+  const hideColumns = isLogs ? ['_row_index', 'personalized_text_preview'] : ['_row_index'];
+  const displayHeaders = currentHeaders.filter(h => !hideColumns.includes(h));
+
+  // Log stats summary
+  let logStats = '';
+  if (isLogs) {
+    const total = currentRows.length;
+    const success = currentRows.filter(r => r.status === '成功').length;
+    const filtered = currentRows.filter(r => r.status === '除外').length;
+    const errors = currentRows.filter(r => r.status === 'エラー').length;
+    logStats = `<div style="font-size:13px;color:var(--c-text-secondary);margin-bottom:12px;padding:10px 14px;background:var(--c-surface-alt);border-radius:var(--radius-md);border:1px solid var(--c-border-light)">
+      直近${total}件: <span style="color:#166534;font-weight:600">成功 ${success}</span> / <span style="color:#854d0e;font-weight:600">除外 ${filtered}</span> / <span style="color:#991b1b;font-weight:600">エラー ${errors}</span>
+    </div>`;
+  }
 
   let html = `
     ${renderTabDescription()}
     ${isPatterns ? renderPatternGuide() : ''}
+    ${logStats}
     <div class="toolbar">
       <span class="toolbar-title">${tabName}（${currentRows.length}件）</span>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-secondary btn-sm" onclick="toggleGlobalLock()" title="${_globalEditUnlocked ? '全社共通行をロック' : '全社共通行のロック解除'}">${_globalEditUnlocked ? '🔓 ロック' : '🔒 ロック解除'}</button>
-        ${isPatterns ? '<button class="btn btn-secondary" onclick="openAiGenerate()">AIで一括生成</button>' : ''}
-        <button class="btn btn-primary" onclick="openAddModal()">＋ 追加</button>
+        ${!isReadOnly ? `
+          <button class="btn btn-secondary btn-sm" onclick="toggleGlobalLock()" title="${_globalEditUnlocked ? '全社共通行をロック' : '全社共通行のロック解除'}">${_globalEditUnlocked ? '🔓 ロック' : '🔒 ロック解除'}</button>
+          ${isPatterns ? '<button class="btn btn-secondary" onclick="openAiGenerate()">AIで一括生成</button>' : ''}
+          <button class="btn btn-primary" onclick="openAddModal()">＋ 追加</button>
+        ` : ''}
       </div>
     </div>
     <div class="table-wrap">
       <table>
         <thead><tr>
           ${displayHeaders.map(h => `<th>${FIELD_LABELS[h] || h}</th>`).join('')}
-          <th>操作</th>
+          ${!isReadOnly ? '<th>操作</th>' : ''}
         </tr></thead>
         <tbody>`;
 
@@ -2554,6 +2607,12 @@ function renderTable() {
       const val = row[h] ?? '';
       if (h === 'company' && !val.trim()) {
         html += `<td><span style="font-size:11px;padding:3px 8px;border-radius:var(--radius-sm);background:var(--c-primary-bg);color:var(--c-primary-dark);font-weight:600">全社共通</span></td>`;
+      } else if (isLogs && h === 'status') {
+        html += `<td>${renderLogStatusBadge(String(val))}</td>`;
+      } else if (isLogs && h === 'generation_path') {
+        html += `<td>${renderLogPathBadge(String(val))}</td>`;
+      } else if (isLogs && h === 'detail' && val) {
+        html += `<td><div class="cell-text" style="max-width:300px" title="${escHtml(val)}">${formatCellText(String(val))}</div></td>`;
       } else if (isPatterns && h === 'pattern_type') {
         html += `<td>${renderPatternBadge(String(val))}</td>`;
       } else if (isPrompts && h === 'section_type') {
@@ -2564,18 +2623,21 @@ function renderTable() {
         html += `<td><div class="cell-text">${formatCellText(String(val))}</div></td>`;
       }
     }
-    const isGlobal = !(row.company || '').trim();
-    if (isGlobal && !_globalEditUnlocked) {
-      html += `<td><div class="actions-cell">
-        <button class="btn btn-secondary btn-sm" disabled title="全社共通行はロック中。右上の🔓で解除">編集</button>
-        <button class="btn btn-danger btn-sm" disabled title="全社共通行はロック中">削除</button>
-      </div></td></tr>`;
-    } else {
-      html += `<td><div class="actions-cell">
-        <button class="btn btn-secondary btn-sm" onclick="openEditModal(${row._row_index})">編集</button>
-        <button class="btn btn-danger btn-sm" onclick="confirmDelete(${row._row_index}, ${isGlobal})">削除</button>
-      </div></td></tr>`;
+    if (!isReadOnly) {
+      const isGlobal = !(row.company || '').trim();
+      if (isGlobal && !_globalEditUnlocked) {
+        html += `<td><div class="actions-cell">
+          <button class="btn btn-secondary btn-sm" disabled title="全社共通行はロック中。右上の🔓で解除">編集</button>
+          <button class="btn btn-danger btn-sm" disabled title="全社共通行はロック中">削除</button>
+        </div></td>`;
+      } else {
+        html += `<td><div class="actions-cell">
+          <button class="btn btn-secondary btn-sm" onclick="openEditModal(${row._row_index})">編集</button>
+          <button class="btn btn-danger btn-sm" onclick="confirmDelete(${row._row_index}, ${isGlobal})">削除</button>
+        </div></td>`;
+      }
     }
+    html += '</tr>';
   }
 
   html += '</tbody></table></div>';
@@ -2602,7 +2664,13 @@ function formatJsonCell(s) {
       const labels = { require_qualification: '資格不一致NG', reject_non_clinical: '臨床経験なしNG', reject_already_scouted: 'スカウト済みNG' };
       for (const [k, label] of Object.entries(labels)) {
         const on = b[k] !== false;
-        html += `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;margin:1px;background:${on ? '#dbeafe' : '#f1f5f9'};color:${on ? '#1e40af' : '#94a3b8'}">${on ? '✓' : '✗'} ${label}</span> `;
+        let extra = '';
+        if (k === 'reject_already_scouted' && on) {
+          const mc = b.max_scout_count ?? 2;
+          const ri = b.resend_interval_days ?? 7;
+          extra = ` (${mc}回/${ri}日)`;
+        }
+        html += `<span style="display:inline-block;padding:1px 6px;border-radius:3px;font-size:11px;margin:1px;background:${on ? '#dbeafe' : '#f1f5f9'};color:${on ? '#1e40af' : '#94a3b8'}">${on ? '✓' : '✗'} ${label}${extra}</span> `;
       }
       const ai = data.ai_conditions || [];
       if (ai.length) {
@@ -2888,19 +2956,20 @@ function buildValidationEditor(jsonStr) {
     if (Array.isArray(parsed)) {
       // Old format: array of { jobOfferId, required, excluded }
       _validationData = {
-        builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true },
+        builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true, max_scout_count: 2, resend_interval_days: 7 },
         ai_conditions: [],
         qual_rules: parsed,
       };
     } else {
+      const builtinDefaults = { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true, max_scout_count: 2, resend_interval_days: 7 };
       _validationData = {
-        builtin: parsed.builtin || { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true },
+        builtin: { ...builtinDefaults, ...(parsed.builtin || {}) },
         ai_conditions: parsed.ai_conditions || [],
         qual_rules: parsed.qual_rules || [],
       };
     }
   } catch {
-    _validationData = { builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true }, ai_conditions: [], qual_rules: [] };
+    _validationData = { builtin: { require_qualification: true, reject_non_clinical: true, reject_already_scouted: true, max_scout_count: 2, resend_interval_days: 7 }, ai_conditions: [], qual_rules: [] };
   }
   return renderValidationEditor();
 }
@@ -2908,8 +2977,10 @@ function buildValidationEditor(jsonStr) {
 const BUILTIN_LABELS = {
   require_qualification: { label: '資格不一致NG', desc: '職種に必要な資格を持っていない候補者を除外' },
   reject_non_clinical: { label: '臨床経験なしNG', desc: '非臨床職（事務・保育等）の経験のみの候補者を除外' },
-  reject_already_scouted: { label: 'スカウト済みNG', desc: '既にスカウト送信済みの候補者を除外' },
+  reject_already_scouted: { label: 'スカウト済みNG', desc: '送信回数・間隔に基づいてスカウト済み候補者を除外' },
 };
+
+const SCOUT_LIMIT_DEFAULTS = { max_scout_count: 2, resend_interval_days: 7 };
 
 function renderValidationEditor() {
   let html = '<div id="validationEditor">';
@@ -2922,6 +2993,28 @@ function renderValidationEditor() {
       <input type="checkbox" ${checked} onchange="toggleBuiltin('${key}',this.checked)">
       <span><strong>${info.label}</strong><br><span style="font-size:11px;color:#94a3b8">${info.desc}</span></span>
     </label>`;
+    // スカウト済みNGの詳細設定
+    if (key === 'reject_already_scouted') {
+      const disabled = _validationData.builtin[key] === false ? 'disabled' : '';
+      const maxCount = _validationData.builtin.max_scout_count ?? SCOUT_LIMIT_DEFAULTS.max_scout_count;
+      const intervalDays = _validationData.builtin.resend_interval_days ?? SCOUT_LIMIT_DEFAULTS.resend_interval_days;
+      html += `<div id="scoutLimitSettings" style="margin-left:28px;padding:8px 12px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;display:flex;flex-direction:column;gap:6px;${_validationData.builtin[key] === false ? 'opacity:0.5' : ''}">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+          <span style="white-space:nowrap">最大送信回数</span>
+          <input type="number" min="1" max="10" value="${maxCount}" ${disabled}
+            style="width:60px;height:28px;border:1px solid #cbd5e1;border-radius:4px;padding:0 6px;font-size:12px;font-family:inherit;text-align:center"
+            onchange="updateScoutLimit('max_scout_count',parseInt(this.value))">
+          <span style="color:#94a3b8">回以上で除外</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+          <span style="white-space:nowrap">再送間隔</span>
+          <input type="number" min="0" max="90" value="${intervalDays}" ${disabled}
+            style="width:60px;height:28px;border:1px solid #cbd5e1;border-radius:4px;padding:0 6px;font-size:12px;font-family:inherit;text-align:center"
+            onchange="updateScoutLimit('resend_interval_days',parseInt(this.value))">
+          <span style="color:#94a3b8">日以内に送信済みなら除外</span>
+        </div>
+      </div>`;
+    }
   }
 
   // Qualification rules (per job offer)
@@ -2982,6 +3075,19 @@ function renderValidationEditor() {
 }
 
 function toggleBuiltin(key, val) {
+  _validationData.builtin[key] = val;
+  // スカウト済みNGのトグル時にサブ設定の表示を更新
+  if (key === 'reject_already_scouted') {
+    const settings = document.getElementById('scoutLimitSettings');
+    if (settings) {
+      settings.style.opacity = val ? '1' : '0.5';
+      settings.querySelectorAll('input').forEach(inp => inp.disabled = !val);
+    }
+  }
+}
+
+function updateScoutLimit(key, val) {
+  if (isNaN(val) || val < 0) return;
   _validationData.builtin[key] = val;
 }
 

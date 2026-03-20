@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta
 
 from models.profile import CandidateProfile
 
@@ -120,21 +121,84 @@ def _parse_experience_years(exp_str: str | None) -> int | None:
     return years
 
 
+_DATE_PATTERNS = [
+    r"\d{4}/\d{1,2}/\d{1,2}",   # 2026/3/1 or 2026/03/01
+    r"\d{4}-\d{1,2}-\d{1,2}",   # 2026-03-01
+    r"\d{4}年\d{1,2}月\d{1,2}日",  # 2026年3月1日
+]
+_DATE_RE = re.compile("|".join(_DATE_PATTERNS))
+
+_DATE_FORMATS = ["%Y/%m/%d", "%Y-%m-%d", "%Y年%m月%d日"]
+
+# 相対時間パターン: "1時間前", "3日前", "30分前" など
+_RELATIVE_RE = re.compile(r"(\d+)\s*(分|時間|日|週間|ヶ月|ヵ月|か月)\s*前")
+
+_RELATIVE_UNITS: dict[str, str] = {
+    "分": "minutes",
+    "時間": "hours",
+    "日": "days",
+    "週間": "weeks",
+    "ヶ月": "months",
+    "ヵ月": "months",
+    "か月": "months",
+}
+
+
+def _parse_scout_dates(scout_sent_date: str) -> list[datetime]:
+    """Parse comma/newline-separated scout dates into a sorted list (oldest first).
+
+    Supports absolute dates (2026/03/01, 2026-03-01, 2026年3月1日)
+    and relative times (1時間前, 3日前, 30分前).
+    """
+    if not scout_sent_date or not scout_sent_date.strip():
+        return []
+    now = datetime.now()
+    dates: list[datetime] = []
+
+    # Parse absolute dates
+    for m in _DATE_RE.findall(scout_sent_date):
+        for fmt in _DATE_FORMATS:
+            try:
+                dates.append(datetime.strptime(m, fmt))
+                break
+            except ValueError:
+                continue
+
+    # Parse relative times
+    for m in _RELATIVE_RE.finditer(scout_sent_date):
+        num = int(m.group(1))
+        unit_ja = m.group(2)
+        unit = _RELATIVE_UNITS.get(unit_ja)
+        if unit == "months":
+            dates.append(now - timedelta(days=num * 30))
+        elif unit == "weeks":
+            dates.append(now - timedelta(weeks=num))
+        elif unit:
+            dates.append(now - timedelta(**{unit: num}))
+
+    dates.sort()
+    return dates
+
+
 def _get_builtin_settings(validation_config: dict) -> dict:
     """Extract builtin on/off settings from qualification_rules.
 
     Supports both old format (list of rules) and new format (dict with builtin key).
     Old format = all builtin checks enabled (backward compatible).
     """
-    qual_rules = validation_config.get("qualification_rules")
-    if isinstance(qual_rules, dict) and "builtin" in qual_rules:
-        return qual_rules.get("builtin", {})
-    # Old format or missing: all enabled
-    return {
+    defaults = {
         "require_qualification": True,
         "reject_non_clinical": True,
         "reject_already_scouted": True,
+        "max_scout_count": 2,
+        "resend_interval_days": 7,
     }
+    qual_rules = validation_config.get("qualification_rules")
+    if isinstance(qual_rules, dict) and "builtin" in qual_rules:
+        merged = {**defaults, **qual_rules.get("builtin", {})}
+        return merged
+    # Old format or missing: all enabled with defaults
+    return defaults
 
 
 def _get_qualification_rules(validation_config: dict) -> list:
@@ -186,8 +250,18 @@ async def filter_candidate(
 
     # Check 3: Already scouted (builtin, can be disabled)
     if builtin.get("reject_already_scouted", True):
-        if profile.scout_sent_date and profile.scout_sent_date.strip():
-            return f"スカウト送信済み: {profile.scout_sent_date}"
+        scout_dates = _parse_scout_dates(profile.scout_sent_date or "")
+        if scout_dates:
+            max_count = builtin.get("max_scout_count", 2)
+            interval_days = builtin.get("resend_interval_days", 7)
+            # 送信回数が上限以上 → 除外
+            if len(scout_dates) >= max_count:
+                return f"スカウト送信済み({len(scout_dates)}回): {profile.scout_sent_date}"
+            # 直近の送信が間隔日数以内 → 除外
+            latest = scout_dates[-1]
+            days_since = (datetime.now() - latest).days
+            if days_since < interval_days:
+                return f"スカウト送信から{days_since}日({interval_days}日未満): {profile.scout_sent_date}"
 
     # Check 4: Age range
     age_range = validation_config.get("age_range", {})

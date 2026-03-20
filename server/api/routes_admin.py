@@ -16,6 +16,7 @@ SHEET_MAP = {
     "prompts": "プロンプト",
     "job_offers": "求人",
     "validation": "バリデーション",
+    "logs": "生成ログ",
 }
 
 # Column order for each sheet (must match header row)
@@ -26,6 +27,7 @@ COLUMNS = {
     "prompts": ["company", "section_type", "job_category", "order", "content"],
     "job_offers": ["company", "job_category", "id", "name", "label", "employment_type", "active"],
     "validation": ["company", "age_min", "age_max", "qualification_rules"],
+    "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview"],
 }
 
 
@@ -125,6 +127,10 @@ async def list_rows(sheet_slug: str, company: Optional[str] = None, operator=Dep
             continue
         item["_row_index"] = i  # actual sheet row number
         data_rows.append(item)
+
+    # Logs: newest first, limit to 200 rows
+    if sheet_slug == "logs":
+        data_rows = list(reversed(data_rows))[:200]
 
     return {"headers": [h.strip() for h in headers], "rows": data_rows}
 

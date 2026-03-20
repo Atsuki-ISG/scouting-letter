@@ -89,7 +89,7 @@ export class GeneratePanel {
       this.resultSummary.innerHTML = `
         <div class="summary-stats">
           合計: ${s.total} / AI生成: ${s.ai_generated} / 型はめ: ${s.pattern_matched} / 除外: ${s.filtered_out}
-          ${errorResults.length > 0 ? `<br><span style="color:#dc2626">⚠ ${errorResults.length}件でエラー発生</span>` : ''}
+          ${errorResults.length > 0 ? `<br><span style="color:#b45309">⚠ うち${errorResults.length}件は生成できませんでした</span>` : ''}
         </div>
       `;
 
