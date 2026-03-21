@@ -138,16 +138,19 @@ class SheetsClient:
         }
 
     def _get_templates(self, company_id: str) -> dict[str, dict]:
-        """Return templates keyed by type."""
+        """Return templates keyed by 'job_category:type' (or just 'type' if no job_category)."""
         rows = self._cache.get(SHEET_TEMPLATES, [])
         result = {}
         for row in rows:
             if row.get("company") != company_id:
                 continue
             ttype = row.get("type", "")
-            result[ttype] = {
+            jc = row.get("job_category", "").strip()
+            # Key with job_category prefix when present
+            key = f"{jc}:{ttype}" if jc else ttype
+            result[key] = {
                 "type": ttype,
-                "job_category": row.get("job_category", ""),
+                "job_category": jc,
                 "body": row.get("body", "").replace("\\n", "\n"),
             }
         return result

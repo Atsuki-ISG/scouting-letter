@@ -1122,6 +1122,57 @@ body {
   color: #065f46;
 }
 
+/* ===== Generate Settings Modal ===== */
+#generate-settings-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.gen-settings-row {
+  margin-bottom: 10px;
+}
+
+.gen-settings-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-text-secondary);
+  margin-bottom: 4px;
+}
+
+.gen-settings-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  background: var(--c-surface);
+  transition: all var(--transition);
+}
+
+.gen-settings-select:focus {
+  outline: none;
+  border-color: var(--c-primary);
+  box-shadow: var(--shadow-glow);
+}
+
+.gen-settings-info {
+  font-size: 12px;
+  color: var(--c-text-secondary);
+  padding: 8px 10px;
+  background: var(--c-surface-alt);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.gen-settings-prev {
+  font-size: 11px;
+  color: var(--c-primary-dark);
+  margin-top: 6px;
+  text-align: center;
+}
+
 /* ===== Auto Job Offer Controls ===== */
 .auto-job-offer-controls {
   margin-bottom: 8px;

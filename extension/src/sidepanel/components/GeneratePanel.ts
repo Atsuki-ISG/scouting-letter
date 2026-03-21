@@ -1,37 +1,53 @@
 import { storage } from '../../shared/storage';
 import { apiClient, GenerateOptions, GenerateResponse } from '../../shared/api-client';
 import { CandidateList } from './CandidateList';
-import { CandidateProfile, CandidateItem } from '../../shared/types';
+import { CandidateItem } from '../../shared/types';
 
 export class GeneratePanel {
   private candidateList: CandidateList;
-  private container: HTMLElement;
   private btnGenerate: HTMLButtonElement;
-  private optionResend: HTMLInputElement;
-  private optionSeishain: HTMLInputElement;
   private progressSection: HTMLElement;
   private progressText: HTMLElement;
   private progressFill: HTMLElement;
   private resultSummary: HTMLElement;
   private isGenerating = false;
 
+  // Modal elements
+  private modal: HTMLElement;
+  private modalCompany: HTMLSelectElement;
+  private modalEmployment: HTMLSelectElement;
+  private modalJobCategory: HTMLSelectElement;
+  private modalSendType: HTMLSelectElement;
+  private modalProfileCount: HTMLElement;
+  private modalPrevNotice: HTMLElement;
+
   constructor(candidateList: CandidateList) {
     this.candidateList = candidateList;
-    this.container = document.getElementById('panel-generate') as HTMLElement;
     this.btnGenerate = document.getElementById('btn-api-generate') as HTMLButtonElement;
-    this.optionResend = document.getElementById('option-resend') as HTMLInputElement;
-    this.optionSeishain = document.getElementById('option-seishain') as HTMLInputElement;
     this.progressSection = document.getElementById('generate-progress') as HTMLElement;
     this.progressText = document.getElementById('generate-progress-text') as HTMLElement;
     this.progressFill = document.getElementById('generate-progress-fill') as HTMLElement;
     this.resultSummary = document.getElementById('generate-result-summary') as HTMLElement;
 
-    this.btnGenerate.addEventListener('click', () => this.generate());
+    // Modal
+    this.modal = document.getElementById('generate-settings-modal') as HTMLElement;
+    this.modalCompany = document.getElementById('gen-setting-company') as HTMLSelectElement;
+    this.modalEmployment = document.getElementById('gen-setting-employment') as HTMLSelectElement;
+    this.modalJobCategory = document.getElementById('gen-setting-job-category') as HTMLSelectElement;
+    this.modalSendType = document.getElementById('gen-setting-send-type') as HTMLSelectElement;
+    this.modalProfileCount = document.getElementById('gen-setting-profile-count') as HTMLElement;
+    this.modalPrevNotice = document.getElementById('gen-settings-prev') as HTMLElement;
+
+    this.btnGenerate.addEventListener('click', () => this.showModal());
+    document.getElementById('gen-setting-cancel')!.addEventListener('click', () => this.hideModal());
+    document.getElementById('gen-setting-start')!.addEventListener('click', () => this.confirmAndGenerate());
+    // Close on backdrop click
+    this.modal.querySelector('.confirmation-backdrop')!.addEventListener('click', () => this.hideModal());
+
     this.updateProfileCount();
 
-    // Listen for extraction completion to update count
     chrome.storage.onChanged.addListener((changes) => {
-      if (changes[/* STORAGE_KEYS.EXTRACTED_PROFILES key */ 'scout_extracted_profiles']) {
+      if (changes['scout_extracted_profiles']) {
         this.updateProfileCount();
       }
     });
@@ -46,22 +62,81 @@ export class GeneratePanel {
     this.btnGenerate.disabled = profiles.length === 0;
   }
 
-  private async generate(): Promise<void> {
+  private async showModal(): Promise<void> {
     if (this.isGenerating) return;
-    this.isGenerating = true;
 
     const profiles = await storage.getExtractedProfiles();
     if (profiles.length === 0) {
       alert('抽出済みプロフィールがありません。先に抽出タブでプロフィールを抽出してください。');
-      this.isGenerating = false;
       return;
     }
 
-    const company = await storage.getCompany();
+    // Populate company dropdown from header select
+    const headerCompany = document.getElementById('company') as HTMLSelectElement;
+    this.modalCompany.innerHTML = headerCompany.innerHTML;
+    this.modalCompany.value = headerCompany.value;
+
+    // Profile count
+    this.modalProfileCount.textContent = String(profiles.length);
+
+    // Restore previous settings
+    const prev = await storage.getGenerateSettings();
+    if (prev) {
+      this.modalEmployment.value = prev.employment_type;
+      this.modalJobCategory.value = prev.job_category || '';
+      this.modalSendType.value = prev.send_type;
+      this.modalPrevNotice.classList.remove('hidden');
+    } else {
+      this.modalEmployment.value = 'auto';
+      this.modalJobCategory.value = '';
+      this.modalSendType.value = 'initial';
+      this.modalPrevNotice.classList.add('hidden');
+    }
+
+    this.modal.classList.remove('hidden');
+  }
+
+  private hideModal(): void {
+    this.modal.classList.add('hidden');
+  }
+
+  private async confirmAndGenerate(): Promise<void> {
+    const employment = this.modalEmployment.value;
+    const jobCategory = this.modalJobCategory.value;
+    const sendType = this.modalSendType.value;
+    const company = this.modalCompany.value;
+
+    // Save settings for next time
+    await storage.setGenerateSettings({
+      employment_type: employment,
+      send_type: sendType,
+      job_category: jobCategory,
+    });
+
+    // Sync company selection back to header
+    const headerCompany = document.getElementById('company') as HTMLSelectElement;
+    if (headerCompany.value !== company) {
+      headerCompany.value = company;
+      await storage.setCompany(company);
+    }
+
+    this.hideModal();
+
+    // Build options
     const options: GenerateOptions = {
-      is_resend: this.optionResend.checked,
-      force_seishain: this.optionSeishain.checked,
+      is_resend: sendType === 'resend',
+      force_employment: employment === 'auto' ? undefined : (employment === 'seishain' ? '正社員' : 'パート'),
+      job_category_filter: jobCategory || undefined,
     };
+
+    await this.generate(company, options);
+  }
+
+  private async generate(company: string, options: GenerateOptions): Promise<void> {
+    if (this.isGenerating) return;
+    this.isGenerating = true;
+
+    const profiles = await storage.getExtractedProfiles();
 
     this.btnGenerate.disabled = true;
     this.btnGenerate.textContent = '生成中...';
@@ -74,16 +149,13 @@ export class GeneratePanel {
     try {
       const response = await apiClient.generateBatch(company, profiles, options);
 
-      // Update progress to 100%
       this.progressFill.style.width = '100%';
       this.progressText.textContent = `完了 ${profiles.length}/${profiles.length}`;
 
-      // Count errors within results
       const errorResults = response.results.filter(
         (r: GenerateResponse) => r.generation_path === 'filtered_out' && r.filter_reason?.startsWith('生成エラー')
       );
 
-      // Show summary
       const s = response.summary;
       this.resultSummary.classList.remove('hidden');
       this.resultSummary.innerHTML = `
@@ -93,7 +165,6 @@ export class GeneratePanel {
         </div>
       `;
 
-      // Convert all results to CandidateItems (filtered_out as skipped)
       const candidates: CandidateItem[] = response.results.map((r: GenerateResponse) => {
         if (r.generation_path === 'filtered_out') {
           return {

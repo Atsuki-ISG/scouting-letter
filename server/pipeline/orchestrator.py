@@ -137,6 +137,18 @@ async def _process_candidate(
             filter_reason="職種カテゴリを特定できません",
         )
 
+    # 1.5. Filter by job_category if specified
+    if options.job_category_filter and job_category != options.job_category_filter:
+        return GenerateResponse(
+            member_id=profile.member_id,
+            template_type="",
+            generation_path="filtered_out",
+            personalized_text="",
+            full_scout_text="",
+            job_category=job_category,
+            filter_reason=f"職種フィルタ: {job_category} ≠ {options.job_category_filter}",
+        )
+
     # 2. Resolve template type
     template_type = resolve_template_type(profile, options, job_category)
 
@@ -155,20 +167,34 @@ async def _process_candidate(
             filter_reason=filter_reason,
         )
 
-    # 4. Get template body
-    template_data = config["templates"].get(template_type)
+    # 4. Get template body (prefer job_category-specific, fallback to generic)
+    template_data = config["templates"].get(f"{job_category}:{template_type}")
+    if template_data is None:
+        template_data = config["templates"].get(template_type)
     if template_data is None:
         base = template_type.split("_")[0] + "_初回"
-        template_data = config["templates"].get(base)
+        template_data = config["templates"].get(f"{job_category}:{base}")
+        if template_data is None:
+            template_data = config["templates"].get(base)
     if template_data is None:
         raise ValueError(f"テンプレート '{template_type}' が見つかりません")
 
     template_body = template_data.get("body", "")
 
     # 5. Generate personalized text
+    # Filter patterns and prompt_sections by job_category
+    jc_patterns = [
+        p for p in config["patterns"]
+        if not p.get("job_category") or p["job_category"] == job_category
+    ]
+    jc_prompt_sections = [
+        s for s in config["prompt_sections"]
+        if not s.get("job_category") or s["job_category"] == job_category
+    ]
+
     # Check if patterns have actual content (template_text filled in)
     has_patterns = any(
-        p.get("template_text", "").strip() for p in config["patterns"]
+        p.get("template_text", "").strip() for p in jc_patterns
     )
     use_pattern = should_use_pattern(profile) and has_patterns
 
@@ -176,7 +202,7 @@ async def _process_candidate(
         try:
             pattern_type, personalized_text, debug_info = match_pattern(
                 profile,
-                config["patterns"],
+                jc_patterns,
                 config["qualification_modifiers"],
                 feature_rotation_index=hash(profile.member_id) % 100,
             )
@@ -195,7 +221,7 @@ async def _process_candidate(
             logger.info(f"[{profile.member_id}] ai: MOCK mode")
         else:
             system_prompt = build_system_prompt(
-                config["prompt_sections"],
+                jc_prompt_sections,
                 template_body,
                 config["examples"],
             )

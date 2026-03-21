@@ -39,8 +39,13 @@ async def prompt_preview(company: str, operator=Depends(verify_api_key)):
 
     config = sheets_client.get_company_config(company)
 
-    # Use a sample template (パート_初回)
-    template_data = config["templates"].get("パート_初回") or {}
+    # Use a sample template (パート_初回) - try first available
+    template_data = None
+    for key in config["templates"]:
+        if key.endswith("パート_初回") or key == "パート_初回":
+            template_data = config["templates"][key]
+            break
+    template_data = template_data or {}
     template_body = template_data.get("body", "(テンプレート未設定)")
 
     system_prompt = build_system_prompt(
@@ -246,12 +251,13 @@ async def generate_company(data: dict, operator=Depends(verify_api_key)):
     template_output_schema = ""
     if generate_templates:
         ref_templates = ref_config.get("templates", {})
-        for ttype in ["パート_初回", "正社員_初回"]:
-            t = ref_templates.get(ttype, {})
-            body = t.get("body", "")
-            if body:
-                ref_template_section += f"\n### {ttype} の例（冒頭500文字）:\n{body[:500]}...\n"
-                break
+        for key, t in ref_templates.items():
+            ttype = t.get("type", "")
+            if ttype in ("パート_初回", "正社員_初回"):
+                body = t.get("body", "")
+                if body:
+                    ref_template_section += f"\n### {ttype} の例（冒頭500文字）:\n{body[:500]}...\n"
+                    break
 
         template_instructions = f"""### 0. テンプレート（4種類）
 スカウトメールの本文テンプレート。以下の4種を生成:

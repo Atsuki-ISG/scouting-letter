@@ -214,6 +214,17 @@ export const storage = {
     await chrome.storage.local.set({ [STORAGE_KEYS.CONFIG_CACHE]: cache });
   },
 
+  // --- 生成設定 ---
+
+  async getGenerateSettings(): Promise<{ employment_type: string; send_type: string; job_category: string } | null> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.GENERATE_SETTINGS);
+    return (result[STORAGE_KEYS.GENERATE_SETTINGS] as { employment_type: string; send_type: string; job_category: string } | undefined) || null;
+  },
+
+  async setGenerateSettings(settings: { employment_type: string; send_type: string; job_category: string }): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.GENERATE_SETTINGS]: settings });
+  },
+
   async clear(): Promise<void> {
     await chrome.storage.local.remove([
       STORAGE_KEYS.CANDIDATES,

@@ -100,6 +100,7 @@ export const STORAGE_KEYS = {
   API_ENDPOINT: 'scout_api_endpoint',
   API_KEY: 'scout_api_key',
   CONFIG_CACHE: 'scout_config_cache',
+  GENERATE_SETTINGS: 'scout_generate_settings',
 } as const;
 
 /** 会社別バリデーション設定（API取得不可時のフォールバック） */

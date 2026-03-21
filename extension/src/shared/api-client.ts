@@ -3,7 +3,8 @@ import type { CandidateProfile } from './types';
 
 export interface GenerateOptions {
   is_resend?: boolean;
-  force_seishain?: boolean;
+  force_employment?: string;  // "パート" | "正社員" | undefined (auto)
+  job_category_filter?: string;  // "nurse" | "pt" | "st" | "ot" | "medical_office" | undefined (all)
 }
 
 export interface GenerateResponse {
@@ -100,7 +101,11 @@ export const apiClient = {
       body: JSON.stringify({
         company_id: companyId,
         profiles,
-        options: { is_resend: options?.is_resend, force_seishain: options?.force_seishain },
+        options: {
+          is_resend: options?.is_resend,
+          force_employment: options?.force_employment,
+          job_category_filter: options?.job_category_filter,
+        },
         concurrency: options?.concurrency ?? 10,
       }),
     }, API_TIMEOUT_MS);

@@ -18,7 +18,9 @@ def resolve_template_type(
         Template type string like "パート_初回", "正社員_再送", etc.
     """
     # Determine employment type
-    if options.force_seishain:
+    if options.force_employment:
+        employment = options.force_employment
+    elif options.force_seishain:
         employment = "正社員"
     else:
         desired = profile.desired_employment_type or ""
