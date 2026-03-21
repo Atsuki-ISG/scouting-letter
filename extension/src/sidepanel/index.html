@@ -260,6 +260,23 @@
       <div id="job-offers-extract-list" style="max-height:200px;overflow-y:auto;"></div>
       <button id="btn-register-job-offers" class="btn btn-primary btn-block hidden" style="margin-top:8px;">選択した求人をAPIに登録</button>
       <div id="job-offers-register-status" style="font-size:12px;margin-top:6px;"></div>
+
+      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
+
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">施設情報抽出</h3>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">施設・求人情報ページから施設情報と各求人のプレビューを取得します。</p>
+      <button id="btn-scan-facilities" class="btn btn-secondary" style="margin-bottom:8px;">施設一覧を取得</button>
+      <div id="facility-list-area" class="hidden" style="margin-bottom:8px;">
+        <div id="facility-checklist" style="max-height:150px;overflow-y:auto;margin-bottom:8px;"></div>
+        <button id="btn-extract-facility" class="btn btn-primary">選択した施設の求人を取得</button>
+        <button id="btn-stop-facility" class="btn btn-danger hidden">停止</button>
+      </div>
+      <div id="facility-extract-status" style="font-size:12px;margin-bottom:8px;"></div>
+      <div id="facility-extract-result" class="hidden" style="margin-top:8px;">
+        <div id="facility-info-summary" style="font-size:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:8px;margin-bottom:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
+        <button id="btn-download-profile-md" class="btn btn-primary btn-block">profile.md をダウンロード</button>
+        <button id="btn-download-raw-text" class="btn btn-secondary btn-block" style="margin-top:4px;">生テキストをダウンロード（デバッグ用）</button>
+      </div>
     </section>
 
     <div id="confirmation-popup" class="hidden"></div>

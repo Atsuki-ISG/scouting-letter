@@ -1,3 +1,49 @@
+/** 施設情報（求人プレビューから抽出） */
+export interface FacilityJobInfo {
+  /** 求人タイトル（募集職種 + 雇用形態） */
+  title: string;
+  /** 募集職種 */
+  jobType: string;
+  /** 仕事内容 */
+  jobDescription: string;
+  /** 給与 */
+  salary: string;
+  /** 待遇・福利厚生 */
+  benefits: string;
+  /** 勤務時間 */
+  workingHours: string;
+  /** 休日 */
+  holidays: string;
+  /** 全テキスト（パース失敗時のフォールバック） */
+  rawText: string;
+}
+
+/** 施設情報 */
+export interface FacilityInfo {
+  /** 施設名 */
+  facilityName: string;
+  /** 施設ID */
+  facilityId: string;
+  /** 所在地 */
+  address: string;
+  /** 施設種別（病院、クリニック等） */
+  facilityType: string;
+  /** 代表メッセージ */
+  representativeMessage: string;
+  /** 施設の特徴・紹介文 */
+  description: string;
+  /** 求人一覧（プレビューから取得） */
+  jobs: FacilityJobInfo[];
+  /** ページから取得した生テキスト（デバッグ用） */
+  rawPageText: string;
+}
+
+/** サイドバーの施設リスト項目 */
+export interface FacilityListItem {
+  facilityId: string;
+  name: string;
+}
+
 /** 抽出されたプロフィールデータ */
 export interface CandidateProfile {
   member_id: string;
@@ -104,6 +150,7 @@ export interface CandidateItem {
   personalized_text: string;
   full_scout_text: string;
   template_type: string;
+  job_category?: string;
   validationResults?: ValidationResult[];
 }
 
@@ -167,9 +214,9 @@ export type Message =
   | { type: 'EXTRACTION_ERROR'; error: string }
   | { type: 'GET_OVERLAY_MEMBER_ID' }
   | { type: 'OVERLAY_MEMBER_ID'; memberId: string | null }
-  | { type: 'FILL_FORM'; text: string; memberId?: string; jobOfferId?: string; jobOfferName?: string; skipJobOffer?: boolean }
+  | { type: 'FILL_FORM'; text: string; memberId?: string; searchTerm?: string; jobCategory?: string; employmentType?: string; skipJobOffer?: boolean }
   | { type: 'FILL_FORM_RESULT'; success: boolean; error?: string }
-  | { type: 'FILL_JOB_OFFER'; jobOfferId: string; jobOfferName: string; memberId?: string }
+  | { type: 'FILL_JOB_OFFER'; searchTerm: string; jobCategory: string; employmentType: string; memberId?: string }
   | { type: 'OPEN_SIDE_PANEL' }
   | { type: 'EXTRACT_CONVERSATION' }
   | { type: 'EXTRACT_ALL_CONVERSATIONS' }
@@ -180,7 +227,7 @@ export type Message =
   | { type: 'START_CONTINUOUS_SEND' }
   | { type: 'STOP_CONTINUOUS_SEND' }
   | { type: 'GET_NEXT_CANDIDATE' }
-  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string; jobOfferId?: string; jobOfferName?: string } | null }
+  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string } | null }
   | { type: 'CANDIDATE_SENT'; memberId: string }
   | { type: 'SKIP_CURRENT_CANDIDATE' }
   | { type: 'DEBUG_LOG'; entry: DebugLogEntry }
@@ -190,4 +237,8 @@ export type Message =
   | { type: 'JOB_OFFER_FAILED'; memberId?: string; error: string }
   | { type: 'RESUME_AFTER_JOB_OFFER' }
   | { type: 'CONTINUOUS_SEND_COMPLETE' }
-  | { type: 'EXTRACT_JOB_OFFERS' };
+  | { type: 'EXTRACT_JOB_OFFERS' }
+  | { type: 'EXTRACT_FACILITY_LIST' }
+  | { type: 'EXTRACT_FACILITY_INFO'; facilityIds: string[] }
+  | { type: 'STOP_FACILITY_EXTRACTION' }
+  | { type: 'FACILITY_INFO_RESULT'; success: boolean; facility: FacilityInfo | null; error?: string };

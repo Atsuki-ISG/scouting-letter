@@ -6,7 +6,7 @@ import { GeneratePanel } from './components/GeneratePanel';
 import { DebugPanel } from './components/DebugPanel';
 import { ConfirmationPopup } from './components/ConfirmationPopup';
 import { storage } from '../shared/storage';
-import { CandidateItem, CandidateProfile, FixRecord, Message } from '../shared/types';
+import { CandidateItem, CandidateProfile, FacilityInfo, FacilityListItem, FixRecord, Message } from '../shared/types';
 import { configProvider } from '../shared/config-provider';
 import { apiClient } from '../shared/api-client';
 import { gasClient } from '../shared/gas-client';
@@ -411,6 +411,223 @@ function setupJobOfferExtraction(): void {
   });
 }
 
+/** 施設情報抽出・profile.md生成 */
+function setupFacilityExtraction(): void {
+  const scanBtn = document.getElementById('btn-scan-facilities')!;
+  const listArea = document.getElementById('facility-list-area')!;
+  const checklist = document.getElementById('facility-checklist')!;
+  const extractBtn = document.getElementById('btn-extract-facility')!;
+  const stopBtn = document.getElementById('btn-stop-facility')!;
+  const statusEl = document.getElementById('facility-extract-status')!;
+  const resultEl = document.getElementById('facility-extract-result')!;
+  const summaryEl = document.getElementById('facility-info-summary')!;
+  const downloadBtn = document.getElementById('btn-download-profile-md');
+  const rawBtn = document.getElementById('btn-download-raw-text');
+
+  let facilityItems: FacilityListItem[] = [];
+  let lastFacilities: FacilityInfo[] = [];
+
+  // Step 1: 施設一覧を取得
+  scanBtn.addEventListener('click', () => {
+    statusEl.textContent = '施設一覧を取得中...';
+    statusEl.style.color = '#6b7280';
+
+    chrome.runtime.sendMessage(
+      { type: 'EXTRACT_FACILITY_LIST' } satisfies Message,
+      (response: { success: boolean; facilities: FacilityListItem[]; error?: string }) => {
+        if (!response || !response.success || response.facilities.length === 0) {
+          statusEl.textContent = response?.error || '施設が見つかりません。施設・求人情報ページを開いてください。';
+          statusEl.style.color = '#ef4444';
+          return;
+        }
+
+        facilityItems = response.facilities;
+        statusEl.textContent = `${facilityItems.length}件の施設が見つかりました`;
+        statusEl.style.color = '#22c55e';
+
+        // チェックボックス付きリスト
+        checklist.innerHTML = facilityItems.map((f, i) => `
+          <label style="display:block;padding:4px 0;font-size:12px;cursor:pointer;">
+            <input type="checkbox" checked data-index="${i}" style="margin-right:6px;">
+            ${f.name} <span style="color:#9ca3af;">(${f.facilityId})</span>
+          </label>
+        `).join('');
+
+        listArea.classList.remove('hidden');
+      }
+    );
+  });
+
+  // Step 2: 選択した施設の求人を取得
+  stopBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'STOP_FACILITY_EXTRACTION' } satisfies Message);
+    stopBtn.classList.add('hidden');
+    extractBtn.classList.remove('hidden');
+    statusEl.textContent = '停止しました';
+    statusEl.style.color = '#f59e0b';
+  });
+
+  extractBtn.addEventListener('click', () => {
+    const checkboxes = checklist.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    const selectedIds = facilityItems
+      .filter((_, i) => checkboxes[i]?.checked)
+      .map((f) => f.facilityId);
+
+    if (selectedIds.length === 0) {
+      statusEl.textContent = '施設を選択してください';
+      statusEl.style.color = '#ef4444';
+      return;
+    }
+
+    statusEl.textContent = `取得中... ${selectedIds.length}施設の求人情報を取得しています`;
+    statusEl.style.color = '#6b7280';
+    resultEl.classList.add('hidden');
+    extractBtn.classList.add('hidden');
+    stopBtn.classList.remove('hidden');
+
+    chrome.runtime.sendMessage(
+      { type: 'EXTRACT_FACILITY_INFO', facilityIds: selectedIds } satisfies Message,
+      (response: { success: boolean; facilities: FacilityInfo[]; error?: string }) => {
+        stopBtn.classList.add('hidden');
+        extractBtn.classList.remove('hidden');
+
+        if (!response || !response.success) {
+          statusEl.textContent = `取得失敗: ${response?.error || '不明なエラー'}`;
+          statusEl.style.color = '#ef4444';
+          return;
+        }
+
+        lastFacilities = response.facilities;
+        const totalJobs = lastFacilities.reduce((sum, f) => sum + f.jobs.length, 0);
+        statusEl.textContent = `取得完了: ${lastFacilities.length}施設 / 掲載中求人${totalJobs}件`;
+        statusEl.style.color = '#22c55e';
+
+        // サマリー表示
+        let summary = '';
+        for (const facility of lastFacilities) {
+          summary += `=== ${facility.facilityName} (ID:${facility.facilityId}) ===\n`;
+          summary += `求人数: ${facility.jobs.length}件\n\n`;
+          for (const job of facility.jobs) {
+            summary += `  --- ${job.title || '(タイトル不明)'} ---\n`;
+            if (job.jobType) summary += `  職種: ${job.jobType}\n`;
+            if (job.salary) summary += `  給与: ${job.salary}\n`;
+            if (job.workingHours) summary += `  勤務: ${job.workingHours}\n`;
+            summary += '\n';
+          }
+        }
+
+        summaryEl.textContent = summary;
+        resultEl.classList.remove('hidden');
+      }
+    );
+  });
+
+  downloadBtn?.addEventListener('click', () => {
+    if (lastFacilities.length === 0) return;
+    // 施設ごとにprofile.mdを生成（1つにまとめる）
+    const md = lastFacilities.map((f) => generateProfileMd(f)).join('\n\n---\n\n');
+    downloadText(md, `profile.md`);
+  });
+
+  rawBtn?.addEventListener('click', () => {
+    if (lastFacilities.length === 0) return;
+    let raw = '';
+    for (const facility of lastFacilities) {
+      raw += `========== ${facility.facilityName} ==========\n`;
+      raw += `=== ページ生テキスト ===\n${facility.rawPageText}\n\n`;
+      for (let i = 0; i < facility.jobs.length; i++) {
+        raw += `=== 求人${i + 1} 生テキスト ===\n${facility.jobs[i].rawText}\n\n`;
+      }
+    }
+    downloadText(raw, `facility-raw.txt`);
+  });
+}
+
+/** FacilityInfoからprofile.mdを生成 */
+function generateProfileMd(facility: FacilityInfo): string {
+  const lines: string[] = [];
+
+  lines.push(`# 会社プロファイル: ${facility.facilityName}`);
+  lines.push('');
+  lines.push('## 基本情報');
+  lines.push('');
+  lines.push(`- **施設名**: ${facility.facilityName}`);
+  if (facility.facilityId) lines.push(`- **施設ID**: ${facility.facilityId}`);
+  if (facility.facilityType) lines.push(`- **種別**: ${facility.facilityType}`);
+  if (facility.address) lines.push(`- **所在地**: ${facility.address}`);
+  lines.push('- **代表者**: ');
+  lines.push('- **スカウト担当者名**: ');
+  lines.push('');
+
+  if (facility.description) {
+    lines.push('## 施設の特徴');
+    lines.push('');
+    lines.push(facility.description);
+    lines.push('');
+  }
+
+  if (facility.representativeMessage) {
+    lines.push('## 代表メッセージ');
+    lines.push('');
+    lines.push(`> ${facility.representativeMessage.split('\n').join('\n> ')}`);
+    lines.push('');
+  }
+
+  // 求人情報
+  if (facility.jobs.length > 0) {
+    lines.push('## 募集要項');
+    lines.push('');
+
+    for (const job of facility.jobs) {
+      lines.push(`### ${job.title || job.jobType || '(職種不明)'}`);
+      lines.push('');
+
+      if (job.jobType) {
+        lines.push(`**募集職種**: ${job.jobType}`);
+        lines.push('');
+      }
+
+      if (job.jobDescription) {
+        lines.push('**仕事内容**');
+        lines.push('');
+        lines.push(job.jobDescription);
+        lines.push('');
+      }
+
+      if (job.salary) {
+        lines.push(`**給与**: ${job.salary}`);
+        lines.push('');
+      }
+
+      if (job.workingHours) {
+        lines.push('**勤務時間**');
+        lines.push('');
+        lines.push(job.workingHours);
+        lines.push('');
+      }
+
+      if (job.holidays) {
+        lines.push('**休日**');
+        lines.push('');
+        lines.push(job.holidays);
+        lines.push('');
+      }
+
+      if (job.benefits) {
+        lines.push('**待遇・福利厚生**');
+        lines.push('');
+        lines.push(job.benefits);
+        lines.push('');
+      }
+
+      lines.push('---');
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n');
+}
+
 /** 初期化 */
 async function init(): Promise<void> {
   setupTabs();
@@ -431,6 +648,7 @@ async function init(): Promise<void> {
   setupDebugControls(debugPanel);
   setupSettingsPanel();
   setupJobOfferExtraction();
+  setupFacilityExtraction();
   setupMessageHandlers(debugPanel, confirmPopup, candidateList);
 
   // 確認ポップアップ内の停止ボタンから連続送信を停止
@@ -439,7 +657,7 @@ async function init(): Promise<void> {
   });
 
   // 確認ポップアップをCandidateListに接続
-  candidateList.setConfirmCallback((data) => confirmPopup.show(data));
+  candidateList.setConfirmCallback((data, options) => confirmPopup.show(data, options));
 }
 
 document.addEventListener('DOMContentLoaded', init);

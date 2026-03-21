@@ -59,6 +59,10 @@ chrome.runtime.onMessage.addListener(
         return true;
       }
 
+      // 施設情報抽出 → アクティブタブのContent Scriptに転送
+      case 'EXTRACT_FACILITY_LIST':
+      case 'EXTRACT_FACILITY_INFO':
+      case 'STOP_FACILITY_EXTRACTION':
       // 求人抽出 → アクティブタブのContent Scriptに転送
       case 'EXTRACT_JOB_OFFERS': {
         forwardWithResponse(message, { success: false, offers: [], error: 'アクティブタブが見つかりません' })

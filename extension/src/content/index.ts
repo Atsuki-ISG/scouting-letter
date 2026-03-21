@@ -7,6 +7,7 @@ import { setupOverlayObserver } from './overlay-observer';
 import * as extraction from './extraction';
 import * as continuousSender from './continuous-sender';
 import { extractJobOffers } from './job-offer-extractor';
+import { extractFacilityList, extractFacilityInfo, abortFacilityExtraction } from './facility-scraper';
 
 /** メッセージリスナー */
 chrome.runtime.onMessage.addListener(
@@ -33,12 +34,12 @@ chrome.runtime.onMessage.addListener(
       }
 
       case 'FILL_FORM': {
-        handleFillForm(message.text, message.memberId, message.jobOfferId, message.jobOfferName, message.skipJobOffer).then(sendResponse);
+        handleFillForm(message.text, message.memberId, message.searchTerm, message.jobCategory, message.employmentType, message.skipJobOffer).then(sendResponse);
         return true;
       }
 
       case 'FILL_JOB_OFFER': {
-        handleFillJobOffer(message.jobOfferId, message.jobOfferName, message.memberId).then(sendResponse);
+        handleFillJobOffer(message.searchTerm, message.jobCategory, message.employmentType, message.memberId).then(sendResponse);
         return true;
       }
 
@@ -101,6 +102,27 @@ chrome.runtime.onMessage.addListener(
       case 'EXTRACT_JOB_OFFERS':
         extractJobOffers().then(sendResponse);
         return true;
+
+      case 'EXTRACT_FACILITY_LIST': {
+        try {
+          const list = extractFacilityList();
+          sendResponse({ success: true, facilities: list });
+        } catch (err: unknown) {
+          sendResponse({ success: false, facilities: [], error: (err as Error).message });
+        }
+        return false;
+      }
+
+      case 'EXTRACT_FACILITY_INFO':
+        extractFacilityInfo(message.facilityIds)
+          .then((facilities) => sendResponse({ success: true, facilities }))
+          .catch((err) => sendResponse({ success: false, facilities: [], error: err.message }));
+        return true;
+
+      case 'STOP_FACILITY_EXTRACTION':
+        abortFacilityExtraction();
+        sendResponse({ ok: true });
+        return false;
 
       default:
         return false;
