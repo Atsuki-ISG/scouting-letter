@@ -15,17 +15,23 @@ export class ConfirmationPopup {
     this.stopCallback = cb;
   }
 
-  show(data: ConfirmationData): Promise<'ok' | 'ng'> {
+  show(data: ConfirmationData, options?: { isContinuousSend?: boolean }): Promise<'ok' | 'ng'> {
     return new Promise((resolve) => {
       this.resolver = resolve;
 
       const isEmpty = !data.personalized_text?.trim() || !data.full_scout_text?.trim();
-      const warningHtml = isEmpty
+      const emptyWarningHtml = isEmpty
         ? `<div class="confirmation-warning">
             <div style="font-weight:bold;margin-bottom:4px;">⚠ スカウト対象外の候補者です</div>
             <div>パーソナライズ文が生成されていません。スキップしてください。</div>
           </div>`
         : '';
+      const validationWarningHtml = data.validationWarnings?.length
+        ? `<div class="confirmation-warning" style="background:#fef3c7;border-color:#f59e0b;color:#92400e;">
+            ${data.validationWarnings.map((w) => `<div style="font-weight:bold;">⚠ ${escapeHtml(w)}</div>`).join('')}
+          </div>`
+        : '';
+      const warningHtml = emptyWarningHtml + validationWarningHtml;
 
       const profileHtml = data.profileSummary
         ? `
@@ -119,7 +125,7 @@ export class ConfirmationPopup {
       });
 
       // 連続送信中なら停止ボタンを表示
-      if (this.stopCallback) {
+      if (this.stopCallback && options?.isContinuousSend) {
         const stopRow = this.containerEl.querySelector('.confirmation-stop-row');
         stopRow?.classList.remove('hidden');
         this.containerEl.querySelector('.btn-confirm-stop')?.addEventListener('click', () => {

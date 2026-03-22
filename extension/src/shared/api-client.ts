@@ -36,6 +36,7 @@ export interface CompanyConfig {
   validation_config: {
     age_range?: { min: number; max: number };
     qualification_rules?: Record<string, unknown>;
+    category_exclusions?: Record<string, string[]>;
   };
 }
 

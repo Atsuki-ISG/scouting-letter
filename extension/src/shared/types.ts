@@ -118,6 +118,8 @@ export interface ValidationResult {
 export interface CompanyValidationConfig {
   ageRange?: { min: number; max: number };
   qualificationRules?: { jobOfferId: string; required: string[]; excluded: string[] }[];
+  /** カテゴリ別資格除外 例: { "nurse": ["准看護師"] } */
+  categoryExclusions?: Record<string, string[]>;
 }
 
 /** 送信前確認データ */
@@ -128,6 +130,8 @@ export interface ConfirmationData {
   personalized_text: string;
   full_scout_text: string;
   jobOfferName: string;
+  /** バリデーション警告（ポップアップ表示用） */
+  validationWarnings?: string[];
   /** プロフィール要約（パーソナライズ文との照合用） */
   profileSummary?: {
     qualifications: string;

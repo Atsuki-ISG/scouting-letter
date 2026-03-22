@@ -113,6 +113,7 @@ export const FALLBACK_VALIDATION_CONFIG: Record<string, CompanyValidationConfig>
       { jobOfferId: '1550716', required: ['看護師', '准看護師'], excluded: [] },
       { jobOfferId: '1550715', required: ['看護師'], excluded: [] },
     ],
+    categoryExclusions: { nurse: ['准看護師'] },
   },
   'lcc-visiting-nurse': {
     ageRange: { min: 20, max: 65 },
@@ -121,5 +122,6 @@ export const FALLBACK_VALIDATION_CONFIG: Record<string, CompanyValidationConfig>
       { jobOfferId: '1146892', required: ['理学療法士'], excluded: [] },
       { jobOfferId: '1328672', required: ['言語聴覚士'], excluded: [] },
     ],
+    categoryExclusions: { nurse: ['准看護師'] },
   },
 };

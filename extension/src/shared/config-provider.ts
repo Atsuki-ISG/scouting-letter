@@ -110,6 +110,9 @@ export const configProvider = {
           result.qualificationRules = rules;
         }
       }
+      if (vc.category_exclusions) {
+        result.categoryExclusions = vc.category_exclusions as Record<string, string[]>;
+      }
       return result;
     }
     return FALLBACK_VALIDATION_CONFIG[companyId] || null;

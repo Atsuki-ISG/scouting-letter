@@ -52,6 +52,22 @@ const rules: ValidationRule[] = [
     },
   },
   {
+    id: 'category-exclusion',
+    severity: 'warning',
+    check(candidate, profile, _jobOffer, config) {
+      if (!config.categoryExclusions || !profile?.qualifications) return null;
+      const jobCategory = candidate.job_category || 'nurse';
+      const exclusions = config.categoryExclusions[jobCategory];
+      if (!exclusions) return null;
+      const quals = profile.qualifications;
+      const matched = exclusions.filter((q) => quals.includes(q));
+      if (matched.length > 0) {
+        return `${matched.join('・')}は${jobCategory === 'nurse' ? '看護師' : jobCategory}求人の対象外です`;
+      }
+      return null;
+    },
+  },
+  {
     id: 'employment-type-mismatch',
     severity: 'warning',
     check(candidate, profile) {

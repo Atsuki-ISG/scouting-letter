@@ -1,13 +1,25 @@
-import { CandidateItem, CandidateStatus, CandidateProfile, ConfirmationData, FixRecord, Message, ValidationResult } from '../../shared/types';
+import { CandidateItem, CandidateStatus, ConfirmationData, FixRecord, Message, ValidationResult } from '../../shared/types';
 import { storage } from '../../shared/storage';
-import { JobOffer, localTimestamp, resolveJobOffer } from '../../shared/constants';
+import { localTimestamp } from '../../shared/constants';
 import { configProvider } from '../../shared/config-provider';
 import { validateCandidate } from '../../shared/validation';
 import { gasClient } from '../../shared/gas-client';
 import { escapeHtml } from '../../shared/utils';
 
+/** job_categoryからDropdown検索キーワードを導出 */
+function deriveSearchTerm(jobCategory: string): string {
+  const map: Record<string, string> = {
+    nurse: '看護',
+    pt: '理学療法',
+    st: '言語聴覚',
+    ot: '作業療法',
+    medical_office: '医療事務',
+  };
+  return map[jobCategory] || '看護';
+}
+
 /** 確認ポップアップを表示するコールバック */
-export type ConfirmCallback = (data: ConfirmationData) => Promise<'ok' | 'ng'>;
+export type ConfirmCallback = (data: ConfirmationData, options?: { isContinuousSend?: boolean }) => Promise<'ok' | 'ng'>;
 
 export class CandidateList {
   private candidates: CandidateItem[] = [];
@@ -57,20 +69,20 @@ export class CandidateList {
     this.restore();
   }
 
-  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; jobOfferId?: string; jobOfferName?: string } | null> {
+  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string } | null> {
     const candidate = this.candidates.find((c) => c.status === 'ready');
     if (!candidate) return null;
 
-    // template_typeに応じた求人を自動選択
-    const company = await storage.getCompany();
-    const jobOffers = await configProvider.getJobOffers(company);
-    const jobOffer = resolveJobOffer(candidate.template_type, jobOffers);
+    const jobCategory = candidate.job_category || 'nurse';
+    const employmentType = candidate.template_type.includes('正社員') ? '正社員' : 'パート';
+    const searchTerm = deriveSearchTerm(jobCategory);
 
     return {
       memberId: candidate.member_id,
       text: candidate.full_scout_text,
-      jobOfferId: jobOffer?.id,
-      jobOfferName: jobOffer?.name,
+      searchTerm,
+      jobCategory,
+      employmentType,
     };
   }
 
@@ -180,12 +192,10 @@ export class CandidateList {
     if (!config) return;
 
     const profiles = await storage.getExtractedProfiles();
-    const jobOffers = await configProvider.getJobOffers(company);
 
     for (const candidate of this.candidates) {
       const profile = profiles.find((p) => p.member_id === candidate.member_id) || null;
-      const jobOffer = resolveJobOffer(candidate.template_type, jobOffers) || null;
-      candidate.validationResults = validateCandidate(candidate, profile, jobOffer, config);
+      candidate.validationResults = validateCandidate(candidate, profile, null, config);
     }
   }
 
@@ -340,22 +350,19 @@ export class CandidateList {
       return;
     }
 
-    // template_typeに応じた求人を自動判定（フォールバック: ドロップダウン選択）
-    const company = await storage.getCompany();
-    const allOffers = await configProvider.getJobOffers(company);
-    const jobOffer = resolveJobOffer(candidate.template_type, allOffers) || await this.getJobOffer();
-    if (!jobOffer) {
-      alert('対象求人を選択してください');
-      return;
-    }
+    const jobCategory = candidate.job_category || 'nurse';
+    const employmentType = candidate.template_type.includes('正社員') ? '正社員' : 'パート';
+    const searchTerm = deriveSearchTerm(jobCategory);
+
     const autoJobOffer = await storage.isAutoJobOfferEnabled();
     chrome.runtime.sendMessage(
       {
         type: 'FILL_FORM',
         text: candidate.full_scout_text,
         memberId: candidate.member_id,
-        jobOfferId: jobOffer.id,
-        jobOfferName: jobOffer.name,
+        searchTerm,
+        jobCategory,
+        employmentType,
         skipJobOffer: !autoJobOffer,
       } satisfies Message,
       async (response) => {
@@ -377,18 +384,20 @@ export class CandidateList {
                   hasWorkHistory: !!(profile.work_history_summary && profile.work_history_summary.trim()),
                 }
               : undefined;
+            const validationWarnings = (candidate.validationResults || [])
+              .filter((v) => v.severity === 'warning')
+              .map((v) => v.message);
             const result = await this.confirmCallback({
               member_id: candidate.member_id,
               label: candidate.label,
               template_type: candidate.template_type,
               personalized_text: candidate.personalized_text,
               full_scout_text: candidate.full_scout_text,
-              jobOfferName: jobOffer.name,
+              jobOfferName: `${jobCategory}/${employmentType}`,
+              validationWarnings: validationWarnings.length > 0 ? validationWarnings : undefined,
               profileSummary,
-            });
+            }, { isContinuousSend: this.continuousSendActive });
             if (result === 'ng') {
-              // NGならoverlayを閉じてスキップ
-              // Content Scriptにoverlay閉じを依頼（SKIP_CURRENT_CANDIDATEで代用）
               await this.skipCandidate(candidate.member_id);
             }
           }
