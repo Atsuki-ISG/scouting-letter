@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from auth.api_key import verify_api_key
 from db.sheets_client import sheets_client
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["companies"])
 
 
@@ -20,7 +23,11 @@ async def get_company_config(
     operator: dict = Depends(verify_api_key),
 ):
     """Return templates, job_offers, validation_config for Chrome extension."""
-    return sheets_client.get_company_config(company_id)
+    try:
+        return sheets_client.get_company_config(company_id)
+    except Exception as e:
+        logger.error(f"Config取得エラー ({company_id}): {e}")
+        raise HTTPException(status_code=500, detail=f"設定読み込みエラー: {str(e)}")
 
 
 @router.post("/reload")

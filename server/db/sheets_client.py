@@ -28,6 +28,17 @@ from config import SPREADSHEET_ID, CACHE_TTL_SECONDS
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_int(value: str | None, default: int = 0) -> int:
+    """Convert a string to int, returning default on failure."""
+    if not value:
+        return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
 # Sheet names
 SHEET_TEMPLATES = "テンプレート"
 SHEET_PATTERNS = "パターン"
@@ -217,7 +228,7 @@ class SheetsClient:
             result.append({
                 "section_type": row.get("section_type", ""),
                 "job_category": row.get("job_category", ""),
-                "order": int(row.get("order", "0") or "0"),
+                "order": _safe_int(row.get("order", "0")),
                 "content": row.get("content", "").replace("\\n", "\n"),
             })
         result.sort(key=lambda x: x["order"])
@@ -250,8 +261,8 @@ class SheetsClient:
             age_max = row.get("age_max", "")
             if age_min or age_max:
                 config["age_range"] = {
-                    "min": int(age_min) if age_min else 0,
-                    "max": int(age_max) if age_max else 999,
+                    "min": _safe_int(age_min, 0),
+                    "max": _safe_int(age_max, 999),
                 }
             rules_str = row.get("qualification_rules", "")
             if rules_str:

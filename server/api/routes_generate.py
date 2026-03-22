@@ -31,4 +31,11 @@ async def batch_generate_scout(
     request: BatchGenerateRequest,
     operator: dict = Depends(verify_api_key),
 ):
-    return await generate_batch(request, sheets_client)
+    try:
+        return await generate_batch(request, sheets_client)
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"バッチ生成エラー ({request.company_id}): {error_msg}")
+        if "quota" in error_msg.lower() or "resource_exhausted" in error_msg.lower() or "429" in error_msg:
+            raise HTTPException(status_code=429, detail="Gemini APIの枠を超過しました。しばらく待つか、APIキーの課金設定を確認してください")
+        raise HTTPException(status_code=500, detail=f"生成エラー: {error_msg}")

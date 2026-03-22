@@ -224,40 +224,97 @@ async def generate_company(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(409, f"Company '{company_id}' already exists")
 
     # --- Build the mega-prompt ---
-    # Load ARK as reference example
-    ref_config = {}
+    # Load ALL existing companies as reference examples
+    import json as _json_ref
+    ref_configs = {}
     try:
-        ref_config = sheets_client.get_company_config("ark-visiting-nurse")
+        all_companies = sheets_client.get_company_list()
+        for cid in all_companies:
+            if cid == company_id:
+                continue  # Skip the company being created
+            try:
+                ref_configs[cid] = sheets_client.get_company_config(cid)
+            except Exception:
+                pass
     except Exception:
-        pass  # OK if reference company doesn't exist
+        pass
 
-    # Build reference pattern example
+    # Build reference pattern examples from multiple companies
     ref_pattern_examples = ""
-    ref_patterns = ref_config.get("patterns", [])
-    if ref_patterns:
-        for p in ref_patterns[:2]:  # Show 2 examples
-            ref_pattern_examples += f"- 型{p.get('pattern_type','')}: {p.get('template_text','')[:100]}... 特色: {', '.join(p.get('feature_variations',[])[:2])}\n"
+    target_types_per_company = {"A": "ベテラン向け", "E": "若手向け", "G": "在学中向け"}
+    for cid, cfg in ref_configs.items():
+        patterns = cfg.get("patterns", [])
+        if not patterns:
+            continue
+        ref_pattern_examples += f"\n【{cid}】\n"
+        for p in patterns:
+            pt = p.get("pattern_type", "")
+            if pt in target_types_per_company:
+                emp = p.get("employment_variant", "")
+                label = f"型{pt}" + (f"_{emp}" if emp else "")
+                features = p.get("feature_variations", [])
+                ref_pattern_examples += f"- {label}: template_text=\"{p.get('template_text','')}\", feature_variations={features}\n"
+        if len(ref_configs) > 2:
+            break  # Show max 2 companies to avoid prompt bloat
 
-    # Build reference prompt sections example
+    # Build reference prompt sections from multiple companies (company-specific only)
     ref_prompt_example = ""
-    ref_prompts = ref_config.get("prompt_sections", [])
-    for sec in ref_prompts[:2]:
-        content = sec.get("content", "")
-        if content and sec.get("section_type") != "pattern_generation":
-            ref_prompt_example += f"- section_type: {sec.get('section_type','')}, content冒頭: {content[:150]}...\n"
+    company_specific_types = {"station_features", "education", "ai_guide"}
+    for cid, cfg in ref_configs.items():
+        prompts = cfg.get("prompt_sections", [])
+        relevant = [s for s in prompts if s.get("content") and s.get("section_type") in company_specific_types]
+        if not relevant:
+            continue
+        ref_prompt_example += f"\n【{cid}】\n"
+        for sec in relevant:
+            ref_prompt_example += f"- section_type: \"{sec.get('section_type','')}\", job_category: \"{sec.get('job_category','')}\", order: {sec.get('order','')}, content: \"{sec.get('content','')}\"\n"
+        if len(ref_configs) > 2:
+            break
 
-    # Build reference template example if generating templates
+    # Build reference validation example (pick first company that has it)
+    ref_validation_example = ""
+    for cid, cfg in ref_configs.items():
+        val = cfg.get("validation_config", {})
+        if val:
+            age_range = val.get("age_range", {})
+            qual_rules = val.get("qualification_rules", {})
+            ref_validation_example = f"\n参考例（{cid}）:\n- age_min: {age_range.get('min','')}, age_max: {age_range.get('max','')}\n- qualification_rules: {_json_ref.dumps(qual_rules, ensure_ascii=False)}\n"
+            break
+
+    # Build reference qualifier examples from multiple companies
+    ref_qualifier_example = ""
+    for cid, cfg in ref_configs.items():
+        qualifiers = cfg.get("qualification_modifiers", [])
+        if not qualifiers:
+            continue
+        ref_qualifier_example += f"\n【{cid}】\n"
+        for q in qualifiers[:3]:
+            combo = q.get("qualification_combo", [])
+            combo_str = ",".join(combo) if isinstance(combo, list) else combo
+            ref_qualifier_example += f"- combo: \"{combo_str}\", text: \"{q.get('replacement_text','')}\"\n"
+        if len(ref_configs) > 2:
+            break
+
+    # Build reference template examples if generating templates
     ref_template_section = ""
     template_output_schema = ""
     if generate_templates:
-        ref_templates = ref_config.get("templates", {})
-        for key, t in ref_templates.items():
-            ttype = t.get("type", "")
-            if ttype in ("パート_初回", "正社員_初回"):
+        # Show 初回 and 再送 from first company that has both
+        for cid, cfg in ref_configs.items():
+            templates = cfg.get("templates", {})
+            found_initial = found_resend = ""
+            for key, t in templates.items():
+                ttype = t.get("type", "")
                 body = t.get("body", "")
-                if body:
-                    ref_template_section += f"\n### {ttype} の例（冒頭500文字）:\n{body[:500]}...\n"
-                    break
+                if not body:
+                    continue
+                if "初回" in ttype and not found_initial:
+                    found_initial = f"\n#### {ttype} の例（{cid}、冒頭300文字）:\n{body[:300]}...\n"
+                elif "再送" in ttype and not found_resend:
+                    found_resend = f"\n#### {ttype} の例（{cid}、冒頭300文字）:\n{body[:300]}...\n"
+            if found_initial and found_resend:
+                ref_template_section = found_initial + found_resend
+                break
 
         template_instructions = f"""### 0. テンプレート（4種類）
 スカウトメールの本文テンプレート。以下の4種を生成:
@@ -267,15 +324,17 @@ async def generate_company(data: dict, operator=Depends(verify_api_key)):
 - 正社員_再送: 正社員向け再送スカウト
 
 各テンプレートのルール:
-- 冒頭: 「はじめまして。突然のご連絡大変失礼いたします、[会社名]の[担当者名]と申します。」
-- 2段落目: 「この度は、ご経歴を拝見し、[会社名]の『[求人名]』のキャリアをご検討いただきたく、ご連絡いたしました。」
 - **必ず `{{ここに生成した文章を挿入}}` プレースホルダーを1箇所含める**（AIが候補者ごとのパーソナライズ文を挿入する位置）
 - プレースホルダーの前後に、会社の特色や共通メッセージを配置
 - 末尾は応募を促す文言で締める
 - ですます調、自然な日本語
-- 再送テンプレートは「以前ご連絡させていただきました」等の表現を含め、少し表現を変える
 - 正社員テンプレートは給与・待遇情報を含める
 - 全体で300〜500文字程度
+
+初回 vs 再送の違い:
+- **初回**: 冒頭「はじめまして。突然のご連絡大変失礼いたします、[会社名]の[担当者名]と申します。」
+- **再送**: 冒頭を「度々のご連絡大変申し訳ございません。諦めきれず、ご連絡させていただきます、[会社名]の[担当者名]と申します。」のように、再度連絡している旨に変える。「はじめまして」は使わない
+- 本文の構成は同じでよいが、冒頭の挨拶文は必ず変えること
 {ref_template_section}
 
 """
@@ -313,27 +372,50 @@ async def generate_company(data: dict, operator=Depends(verify_api_key)):
 - template_text: 2〜3文、句点で終わる。ですます調
 - `{{特色}}` プレースホルダーを1箇所含める（特色バリエーションが挿入される）
 - 型A・B1・B2: `{{N}}` プレースホルダー可（経験年数が入る）
-- 上から目線にならない
+- 上から目線にならない（「フォローします」「安心してスタートいただけます」等は厳禁）
 - feature_variations: 3つ、各バリエーションは会社の特色を短く表現（連体修飾形「〜する」「〜な」で終わる）
+- 型E・F・G: **その会社固有の**教育体制を具体的に記載すること（他社の制度を混ぜない）
+
+参考例（他社）:
 {ref_pattern_examples}
 
-### 2. プロンプト（3〜5セクション）
+### 2. プロンプトセクション（会社固有の3セクション）
 AI生成時のシステムプロンプトの構成パーツ。section_type と content を設定。
-- section_type例: "instruction"（生成指示）, "company_info"（会社特色）, "tone"（トーン指示）
-- 各セクションは200〜500文字程度
-- orderで表示順を制御（1, 2, 3...）
-- job_category は空欄（全職種共通）
+トーン・共通ルール・NG表現は全社共通で登録済みのため、**会社固有の情報のみ**を生成する。
+候補者の経歴が豊富な場合にAIが使う生成ガイドになるため、**具体的で実用的な内容**にすること。
+
+必須セクション（section_type名を正確に使うこと）:
+1. **station_features**（会社特色）order=2: AIが接点を見つけるための会社の強み・特色リスト。箇条書きで5〜8項目。各項目に（カッコ内で候補者のどんな経験が活きるか）を添える
+2. **education**（教育体制）order=3: **その会社固有の**研修・サポート体制。他社の制度を混ぜないよう注意。制度がない場合は「現場のスタッフと協力しながら業務を覚えられる体制」等の事実のみ記載
+3. **ai_guide**（AI生成ガイド）order=8: 以下の2つを含めること:
+   a. 経歴別の接点対応表: 候補者の経験パターン → 会社の強み → 接点の表現方向。5〜8パターン
+   b. NGパターン: やってはいけない接点の作り方（弱い接点、会社情報の羅列、地理的要素のみ等）
+
+以下は全社共通で既に登録済み（生成不要）:
+- role_definition（order=1）: パーソナライズ文の基本指示
+- tone_and_manner（order=4）: トーン・マナールール
+- common_rules（order=5）: 文字数・書き出し・経験年数記載等の共通ルール
+- ng_expressions（order=9）: NG表現リスト
+
+つまり、会社固有で生成するのは **station_features, education, ai_guide** の3セクションのみ。
+各セクションは200〜800文字。job_category は会社情報から推測（看護系なら"nurse"等）。
+
+参考例（他社）:
 {ref_prompt_example}
 
 ### 3. バリデーション（1件）
 スカウト対象のフィルタリング条件。JSON形式。
 - age_min, age_max: 年齢範囲（空欄なら制限なし）
 - qualification_rules: JSON。必須資格、除外条件等
+{ref_validation_example}
 
 ### 4. 資格修飾（5〜10件）
-複数資格保持者への修飾テキスト。
+複数資格保持者への修飾テキスト。型はめパターンの冒頭を差し替える文。
 - qualification_combo: 資格の組み合わせ（カンマ区切り）
-- replacement_text: 「看護師・介護福祉士の両方の資格をお持ちとのこと、」のような修飾文
+- replacement_text: その資格の組み合わせが**なぜこの会社で活きるのか**を具体的に書いた1〜2文
+  - 悪い例: 「看護師・介護福祉士の両方の資格をお持ちとのこと、」（接点がない）
+  - 良い例: 「看護師の資格に加え、ケアマネージャーの資格もお持ちとのこと、医療と介護の両面から患者様を支える視点は、地域に根差した精神科医療を提供する当院で大きな力になると考えております。」（資格×会社の特色の接点がある）
+{ref_qualifier_example}
 
 ## 出力形式
 以下のJSON1つで返してください。他のテキストは不要です。
@@ -344,9 +426,9 @@ AI生成時のシステムプロンプトの構成パーツ。section_type と c
     ... (10件: A, B1, B2, C, D就業中, D離職中, E, F就業中, F離職中, G)
   ],
   "prompts": [
-    {{"section_type": "instruction", "job_category": "", "order": 1, "content": "..."}},
-    {{"section_type": "company_info", "job_category": "", "order": 2, "content": "..."}},
-    ...
+    {{"section_type": "station_features", "job_category": "nurse", "order": 2, "content": "- 特色1（どんな経験が活きるか）\\n- 特色2..."}},
+    {{"section_type": "education", "job_category": "nurse", "order": 3, "content": "- 研修制度1\\n- 研修制度2..."}},
+    {{"section_type": "ai_guide", "job_category": "nurse", "order": 8, "content": "経歴別の接点対応表:\\n- 〇〇経験 → 会社の強み → 接点表現\\n...\\n\\nNGパターン:\\n- ..."}}
   ],
   "validation": {{
     "age_min": "",
