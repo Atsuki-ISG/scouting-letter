@@ -26,7 +26,7 @@ COLUMNS = {
     "qualifiers": ["company", "job_category", "pattern_type", "employment_variant", "template_text", "feature_variations", "display_name", "target_description", "match_rules", "qualification_combo", "replacement_text"],
     "prompts": ["company", "section_type", "job_category", "order", "content"],
     "job_offers": ["company", "job_category", "id", "name", "label", "employment_type", "active"],
-    "validation": ["company", "age_min", "age_max", "qualification_rules"],
+    "validation": ["company", "age_min", "age_max", "qualification_rules", "category_exclusions"],
     "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview"],
 }
 
@@ -550,11 +550,15 @@ AI生成時のシステムプロンプトの構成パーツ。section_type と c
         qual_rules = validation.get("qualification_rules", "")
         if isinstance(qual_rules, dict):
             qual_rules = _json.dumps(qual_rules, ensure_ascii=False)
+        cat_excl = validation.get("category_exclusions", "")
+        if isinstance(cat_excl, dict):
+            cat_excl = _json.dumps(cat_excl, ensure_ascii=False)
         sheets_writer.append_row("バリデーション", [
             company_id,
             str(validation.get("age_min", "")),
             str(validation.get("age_max", "")),
             qual_rules,
+            cat_excl,
         ])
         total += 1
 
