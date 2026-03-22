@@ -1,4 +1,4 @@
-import { CandidateItem, CandidateStatus, ConfirmationData, FixRecord, Message, ValidationResult } from '../../shared/types';
+import { CandidateItem, CandidateStatus, CompanyValidationConfig, ConfirmationData, FixRecord, Message, ValidationResult } from '../../shared/types';
 import { storage } from '../../shared/storage';
 import { localTimestamp } from '../../shared/constants';
 import { configProvider } from '../../shared/config-provider';
@@ -6,16 +6,23 @@ import { validateCandidate } from '../../shared/validation';
 import { gasClient } from '../../shared/gas-client';
 import { escapeHtml } from '../../shared/utils';
 
-/** job_categoryからDropdown検索キーワードを導出 */
-function deriveSearchTerm(jobCategory: string): string {
-  const map: Record<string, string> = {
-    nurse: '看護',
-    pt: '理学療法',
-    st: '言語聴覚',
-    ot: '作業療法',
-    medical_office: '医療事務',
-  };
-  return map[jobCategory] || '看護';
+/** フォールバック用: サーバー設定がない場合のデフォルト */
+const FALLBACK_SEARCH_TERMS: Record<string, string> = {
+  nurse: '看護',
+  pt: '理学療法',
+  st: '言語聴覚',
+  ot: '作業療法',
+  medical_office: '医療事務',
+};
+
+/** job_categoryからDropdown検索キーワードを導出（categoryConfigがあればそちらを優先） */
+function deriveSearchTerm(jobCategory: string, config?: CompanyValidationConfig | null): string {
+  return config?.categoryConfig?.[jobCategory]?.search_term || FALLBACK_SEARCH_TERMS[jobCategory] || '看護';
+}
+
+/** job_categoryからマッチング用キーワードを取得 */
+function deriveCategoryKeywords(jobCategory: string, config?: CompanyValidationConfig | null): string[] | undefined {
+  return config?.categoryConfig?.[jobCategory]?.keywords;
 }
 
 /** 確認ポップアップを表示するコールバック */
@@ -69,13 +76,16 @@ export class CandidateList {
     this.restore();
   }
 
-  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string } | null> {
+  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[] } | null> {
     const candidate = this.candidates.find((c) => c.status === 'ready');
     if (!candidate) return null;
 
+    const company = await storage.getCompany();
+    const validationConfig = await configProvider.getValidationConfig(company);
     const jobCategory = candidate.job_category || 'nurse';
     const employmentType = candidate.template_type.includes('正社員') ? '正社員' : 'パート';
-    const searchTerm = deriveSearchTerm(jobCategory);
+    const searchTerm = deriveSearchTerm(jobCategory, validationConfig);
+    const categoryKeywords = deriveCategoryKeywords(jobCategory, validationConfig);
 
     return {
       memberId: candidate.member_id,
@@ -83,6 +93,7 @@ export class CandidateList {
       searchTerm,
       jobCategory,
       employmentType,
+      categoryKeywords,
     };
   }
 
@@ -350,9 +361,12 @@ export class CandidateList {
       return;
     }
 
+    const company = await storage.getCompany();
+    const validationConfig = await configProvider.getValidationConfig(company);
     const jobCategory = candidate.job_category || 'nurse';
     const employmentType = candidate.template_type.includes('正社員') ? '正社員' : 'パート';
-    const searchTerm = deriveSearchTerm(jobCategory);
+    const searchTerm = deriveSearchTerm(jobCategory, validationConfig);
+    const categoryKeywords = deriveCategoryKeywords(jobCategory, validationConfig);
 
     const autoJobOffer = await storage.isAutoJobOfferEnabled();
     chrome.runtime.sendMessage(
@@ -364,6 +378,7 @@ export class CandidateList {
         jobCategory,
         employmentType,
         skipJobOffer: !autoJobOffer,
+        categoryKeywords,
       } satisfies Message,
       async (response) => {
         if (response && !response.success) {

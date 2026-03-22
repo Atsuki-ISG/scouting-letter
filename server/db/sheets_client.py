@@ -276,6 +276,12 @@ class SheetsClient:
                     config["category_exclusions"] = json.loads(cat_excl_str)
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid category_exclusions JSON for {company_id}")
+            cat_config_str = row.get("category_config", "")
+            if cat_config_str:
+                try:
+                    config["category_config"] = json.loads(cat_config_str)
+                except json.JSONDecodeError:
+                    logger.warning(f"Invalid category_config JSON for {company_id}")
             return config
         return {}
 

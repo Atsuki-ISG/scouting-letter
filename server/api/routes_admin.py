@@ -26,7 +26,7 @@ COLUMNS = {
     "qualifiers": ["company", "job_category", "pattern_type", "employment_variant", "template_text", "feature_variations", "display_name", "target_description", "match_rules", "qualification_combo", "replacement_text"],
     "prompts": ["company", "section_type", "job_category", "order", "content"],
     "job_offers": ["company", "job_category", "id", "name", "label", "employment_type", "active"],
-    "validation": ["company", "age_min", "age_max", "qualification_rules", "category_exclusions"],
+    "validation": ["company", "age_min", "age_max", "qualification_rules", "category_exclusions", "category_config"],
     "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview"],
 }
 

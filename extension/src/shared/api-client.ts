@@ -37,6 +37,7 @@ export interface CompanyConfig {
     age_range?: { min: number; max: number };
     qualification_rules?: Record<string, unknown>;
     category_exclusions?: Record<string, string[]>;
+    category_config?: Record<string, { display_name: string; search_term: string; keywords: string[] }>;
   };
 }
 

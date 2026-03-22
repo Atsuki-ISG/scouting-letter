@@ -58,12 +58,30 @@ function clickOptionInMainWorld(index: number, jobId: string, jobName: string): 
   });
 }
 
+/** job_category → 求人テキストのマッチングキーワード（サーバー設定がない場合のフォールバック） */
+const FALLBACK_CATEGORY_KEYWORDS: Record<string, string[]> = {
+  nurse: ['看護師', '准看護師'],
+  pt: ['理学療法士'],
+  st: ['言語聴覚士'],
+  ot: ['作業療法士'],
+  medical_office: ['医療事務', '受付'],
+};
+
+/** employment_type → 求人テキストのマッチングキーワード */
+const EMPLOYMENT_KEYWORDS: Record<string, string[]> = {
+  'パート': ['パート', 'バイト'],
+  '正社員': ['正職員', '正社員'],
+};
+
 /**
- * スカウト対象求人を自動選択する
- * Downshift autocompleteに対してexecCommandでテキスト入力し、
- * ドロップダウンから一致する項目をクリックして選択する
+ * ドロップダウンを開いて中身を読み、job_category + employment_type でマッチする求人を選択する
  */
-export async function fillJobOffer(jobId: string, jobName: string): Promise<{ success: boolean; error?: string }> {
+export async function selectJobOffer(
+  searchTerm: string,
+  jobCategory: string,
+  employmentType: string,
+  categoryKeywords?: string[],
+): Promise<{ success: boolean; error?: string; selectedJobId?: string }> {
   const suggestInput = document.querySelector(SELECTORS.jobOfferSuggestInput) as HTMLInputElement | null;
   if (!suggestInput) {
     return { success: false, error: '求人検索の入力欄が見つかりません' };
@@ -75,22 +93,17 @@ export async function fillJobOffer(jobId: string, jobName: string): Promise<{ su
   document.execCommand('delete', false);
   await randomSleep(80, 200);
 
-  // 2. 短い検索キーワードで入力
-  const searchTerm = extractSearchTerm(jobName);
-  console.log('[Scout Assistant] Searching job offer with:', searchTerm);
+  // 2. 検索キーワードで入力してドロップダウンを開く
+  console.log('[Scout Assistant] Searching job offers with:', searchTerm);
   insertTextViaExecCommand(suggestInput, searchTerm);
   await randomSleep(400, 700);
 
-  // 3. Downshiftのドロップダウンが開くのを待つ（最大8秒）
+  // 3. Downshiftのドロップダウンが開くのを待つ
   const combobox = suggestInput.closest('[role="combobox"]');
-  console.log('[Scout Assistant] Combobox found:', !!combobox, 'aria-expanded:', combobox?.getAttribute('aria-expanded'));
-  console.log('[Scout Assistant] suggestInput value:', suggestInput.value);
   if (!combobox) {
-    console.log('[Scout Assistant] Combobox not found');
     return { success: false, error: 'combobox_not_found' };
   }
 
-  // aria-expanded="true" になるまで待機（最大8秒）
   let expanded = false;
   for (let i = 0; i < 80; i++) {
     if (combobox.getAttribute('aria-expanded') === 'true') {
@@ -99,126 +112,91 @@ export async function fillJobOffer(jobId: string, jobName: string): Promise<{ su
     }
     await sleep(100);
   }
-  console.log('[Scout Assistant] Dropdown expanded:', expanded);
 
   if (!expanded) {
-    console.log('[Scout Assistant] Dropdown did not open');
     return { success: false, error: 'dropdown_not_opened' };
   }
 
-  // 4. ドロップダウン内のoption要素を探す（最大8秒ポーリング）
+  // 4. ドロップダウン内のoption要素を読む
   let options: NodeListOf<Element> = document.querySelectorAll('[role="option"]');
   for (let i = 0; i < 80 && options.length === 0; i++) {
     await sleep(100);
     options = document.querySelectorAll('[role="option"]');
-    if (i === 10) {
-      const suggestList = document.querySelector('.c-suggest__list');
-      console.log('[Scout Assistant] .c-suggest__list found:', !!suggestList, suggestList?.innerHTML?.slice(0, 200));
-    }
   }
-  console.log('[Scout Assistant] Found', options.length, 'options');
 
   if (options.length === 0) {
-    console.log('[Scout Assistant] No options found');
     return { success: false, error: 'no_options' };
   }
 
   // デバッグ: 全optionのテキストを出力
-  options.forEach((o, i) => console.log(`[Scout Assistant] option[${i}]:`, o.textContent?.trim().slice(0, 80)));
+  options.forEach((o, i) => console.log(`[Scout Assistant] option[${i}]:`, o.textContent?.trim().slice(0, 100)));
 
-  // マッチング: 目的のoptionが何番目かを特定
+  // 5. job_category + employment_type でマッチング（サーバー設定優先、なければフォールバック）
+  const effectiveCategoryKeywords = categoryKeywords || FALLBACK_CATEGORY_KEYWORDS[jobCategory] || [];
+  const empKeywords = EMPLOYMENT_KEYWORDS[employmentType] || [];
+
   let targetIndex = -1;
+
+  // 両方マッチする求人を探す
   for (let i = 0; i < options.length; i++) {
     const text = options[i].textContent?.trim() || '';
-    if (text.includes(jobName) || jobName.includes(text.replace(/^\d+/, '').trim())) {
+    const categoryMatch = effectiveCategoryKeywords.some((kw) => text.includes(kw));
+    const empMatch = empKeywords.length === 0 || empKeywords.some((kw) => text.includes(kw));
+    if (categoryMatch && empMatch) {
       targetIndex = i;
       break;
     }
   }
-  // searchTermでの部分一致フォールバック
+
+  // 雇用形態なしでカテゴリだけマッチするフォールバック
   if (targetIndex === -1) {
     for (let i = 0; i < options.length; i++) {
       const text = options[i].textContent?.trim() || '';
-      if (text.includes(searchTerm)) {
+      if (effectiveCategoryKeywords.some((kw) => text.includes(kw))) {
         targetIndex = i;
         break;
       }
     }
   }
 
-  // マッチしない場合はindex 0にフォールバックしない → 失敗を返す
+  // それでもなければ最初のoptionにフォールバック（1件しかない場合等）
+  if (targetIndex === -1 && options.length === 1) {
+    targetIndex = 0;
+  }
+
   if (targetIndex === -1) {
-    console.log('[Scout Assistant] No matching option found for:', jobName);
-    return { success: false, error: 'no_match' };
+    console.log('[Scout Assistant] No matching option for:', jobCategory, employmentType);
+    return { success: false, error: `no_match: ${jobCategory}/${employmentType}` };
   }
 
   const targetEl = options[targetIndex] as HTMLElement;
-  console.log('[Scout Assistant] Target option index:', targetIndex, targetEl?.textContent?.trim().slice(0, 60));
+  console.log('[Scout Assistant] Matched option[%d]: %s', targetIndex, targetEl?.textContent?.trim().slice(0, 80));
 
-  // メインワールドでReact Fiberを辿ってDownshiftから直接選択し、結果を待つ
-  const mwResult = await clickOptionInMainWorld(targetIndex, jobId, jobName);
-  console.log('[Scout Assistant] Main world result:', mwResult);
-
+  // 6. メインワールドでReact Fiberを辿って選択
+  const mwResult = await clickOptionInMainWorld(targetIndex, '', '');
   if (!mwResult.success) {
-    console.log('[Scout Assistant] Main world selection failed:', mwResult.error);
     return { success: false, error: `main_world_failed: ${mwResult.error}` };
   }
 
-  // Reactレンダリング完了を少し待ってからhidden inputを検証
+  // 7. hidden inputに値がセットされたか確認
   await sleep(300);
-
-  // 5. 選択後にhidden inputが正しくセットされたか確認
   const hiddenInput = document.querySelector(SELECTORS.jobOfferInput) as HTMLInputElement | null;
   if (!hiddenInput) {
-    console.log('[Scout Assistant] Hidden input not found');
     return { success: false, error: 'hidden_input_not_found' };
   }
 
-  if (hiddenInput.value === jobId) {
-    console.log('[Scout Assistant] Job offer selected correctly:', jobId);
-    return { success: true };
+  // 追加待機
+  if (!hiddenInput.value) {
+    await sleep(500);
   }
 
-  // hidden inputの値が違う場合、Reactがまだ更新中の可能性があるので追加待機
-  await sleep(500);
-  const hiddenInputRetry = document.querySelector(SELECTORS.jobOfferInput) as HTMLInputElement | null;
-  if (hiddenInputRetry && hiddenInputRetry.value === jobId) {
-    console.log('[Scout Assistant] Job offer selected correctly (after retry):', jobId);
-    return { success: true };
+  const selectedJobId = hiddenInput.value;
+  if (selectedJobId) {
+    console.log('[Scout Assistant] Job offer selected:', selectedJobId);
+    return { success: true, selectedJobId };
   }
 
-  // それでも不一致の場合 → 値を直接セット（ベストエフォート）
-  console.log('[Scout Assistant] Hidden input mismatch:', hiddenInputRetry?.value, 'expected:', jobId, '- correcting');
-  if (hiddenInputRetry) {
-    setNativeInputValue(hiddenInputRetry, jobId);
-    // 修正した場合はsuccessとするが、warningをログに残す
-    console.log('[Scout Assistant] Hidden input corrected to:', jobId);
-    return { success: true };
-  }
-
-  return { success: false, error: 'hidden_input_verification_failed' };
-}
-
-/**
- * 求人名から検索キーワードを抽出
- * 例: "北海道 医療法人社団優希 アーク訪問看護ステーション 看護師/准看護師 (訪問看護師) パート・バイト"
- *   → "アーク訪問看護ステーション"
- * 例: "東京都 LCC訪問看護ステーション 本社 看護師/准看護師  正職員"
- *   → "LCC訪問看護ステーション"
- */
-function extractSearchTerm(jobName: string): string {
-  // "ステーション" を含む部分を探す
-  const parts = jobName.split(/\s+/);
-  for (const part of parts) {
-    if (part.includes('ステーション')) {
-      return part;
-    }
-  }
-  // 見つからなければ2番目〜3番目のパーツ（施設名が多い）
-  if (parts.length >= 3) {
-    return parts.slice(1, 3).join(' ');
-  }
-  return jobName;
+  return { success: false, error: 'hidden_input_empty' };
 }
 
 /**

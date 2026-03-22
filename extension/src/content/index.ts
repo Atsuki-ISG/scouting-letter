@@ -34,7 +34,7 @@ chrome.runtime.onMessage.addListener(
       }
 
       case 'FILL_FORM': {
-        handleFillForm(message.text, message.memberId, message.searchTerm, message.jobCategory, message.employmentType, message.skipJobOffer).then(sendResponse);
+        handleFillForm(message.text, message.memberId, message.searchTerm, message.jobCategory, message.employmentType, message.skipJobOffer, message.categoryKeywords).then(sendResponse);
         return true;
       }
 

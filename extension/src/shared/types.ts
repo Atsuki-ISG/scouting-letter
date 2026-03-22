@@ -120,6 +120,8 @@ export interface CompanyValidationConfig {
   qualificationRules?: { jobOfferId: string; required: string[]; excluded: string[] }[];
   /** カテゴリ別資格除外 例: { "nurse": ["准看護師"] } */
   categoryExclusions?: Record<string, string[]>;
+  /** カテゴリ別設定 例: { "nurse": { display_name: "看護師", search_term: "看護", keywords: ["看護師"] } } */
+  categoryConfig?: Record<string, { display_name: string; search_term: string; keywords: string[] }>;
 }
 
 /** 送信前確認データ */
@@ -218,7 +220,7 @@ export type Message =
   | { type: 'EXTRACTION_ERROR'; error: string }
   | { type: 'GET_OVERLAY_MEMBER_ID' }
   | { type: 'OVERLAY_MEMBER_ID'; memberId: string | null }
-  | { type: 'FILL_FORM'; text: string; memberId?: string; searchTerm?: string; jobCategory?: string; employmentType?: string; skipJobOffer?: boolean }
+  | { type: 'FILL_FORM'; text: string; memberId?: string; searchTerm?: string; jobCategory?: string; employmentType?: string; skipJobOffer?: boolean; categoryKeywords?: string[] }
   | { type: 'FILL_FORM_RESULT'; success: boolean; error?: string }
   | { type: 'FILL_JOB_OFFER'; searchTerm: string; jobCategory: string; employmentType: string; memberId?: string }
   | { type: 'OPEN_SIDE_PANEL' }

@@ -113,6 +113,9 @@ export const configProvider = {
       if (vc.category_exclusions) {
         result.categoryExclusions = vc.category_exclusions as Record<string, string[]>;
       }
+      if (vc.category_config) {
+        result.categoryConfig = vc.category_config as Record<string, { display_name: string; search_term: string; keywords: string[] }>;
+      }
       return result;
     }
     return FALLBACK_VALIDATION_CONFIG[companyId] || null;

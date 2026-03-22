@@ -114,6 +114,9 @@ export const FALLBACK_VALIDATION_CONFIG: Record<string, CompanyValidationConfig>
       { jobOfferId: '1550715', required: ['看護師'], excluded: [] },
     ],
     categoryExclusions: { nurse: ['准看護師'] },
+    categoryConfig: {
+      nurse: { display_name: '看護師', search_term: '看護', keywords: ['看護師', '准看護師'] },
+    },
   },
   'lcc-visiting-nurse': {
     ageRange: { min: 20, max: 65 },
@@ -123,5 +126,10 @@ export const FALLBACK_VALIDATION_CONFIG: Record<string, CompanyValidationConfig>
       { jobOfferId: '1328672', required: ['言語聴覚士'], excluded: [] },
     ],
     categoryExclusions: { nurse: ['准看護師'] },
+    categoryConfig: {
+      nurse: { display_name: '看護師', search_term: '看護', keywords: ['看護師', '准看護師'] },
+      rehab_pt: { display_name: '理学療法士', search_term: '理学療法', keywords: ['理学療法士'] },
+      rehab_st: { display_name: '言語聴覚士', search_term: '言語聴覚', keywords: ['言語聴覚士'] },
+    },
   },
 };

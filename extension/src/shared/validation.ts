@@ -62,7 +62,8 @@ const rules: ValidationRule[] = [
       const quals = profile.qualifications;
       const matched = exclusions.filter((q) => quals.includes(q));
       if (matched.length > 0) {
-        return `${matched.join('・')}は${jobCategory === 'nurse' ? '看護師' : jobCategory}求人の対象外です`;
+        const displayName = config.categoryConfig?.[jobCategory]?.display_name || jobCategory;
+        return `${matched.join('・')}は${displayName}求人の対象外です`;
       }
       return null;
     },

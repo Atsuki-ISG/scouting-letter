@@ -121,7 +121,7 @@ function waitForOverlayCloseOrSkip(timeoutMs: number): Promise<'closed' | 'skipp
 }
 
 /** サイドパネルから次の候補者を取得 */
-function getNextCandidate(): Promise<{ memberId: string; text: string; jobOfferId?: string; jobOfferName?: string } | null> {
+function getNextCandidate(): Promise<{ memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[] } | null> {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'GET_NEXT_CANDIDATE' } satisfies Message, (response) => {
       if (response?.type === 'NEXT_CANDIDATE') {
@@ -191,26 +191,14 @@ export async function start(): Promise<void> {
 
     console.log(`[Scout Assistant] Processing candidate: ${next.memberId}`);
 
-    let jobOfferId = next.jobOfferId;
-    let jobOfferName = next.jobOfferName;
-
-    if (!jobOfferId) {
-      const stored = await chrome.storage.local.get('scout_selected_job_offer');
-      const fallback = stored.scout_selected_job_offer as { id: string; name: string } | undefined;
-      if (!fallback) {
-        console.error('[Scout Assistant] No job offer selected.');
-        break;
-      }
-      jobOfferId = fallback.id;
-      jobOfferName = fallback.name;
-    }
+    const { searchTerm, jobCategory, employmentType, categoryKeywords } = next;
 
     // 求人自動選択の設定を確認
     const autoJobOfferResult = await chrome.storage.local.get(STORAGE_KEYS.AUTO_JOB_OFFER);
     const skipJobOffer = autoJobOfferResult[STORAGE_KEYS.AUTO_JOB_OFFER] === false;
 
-    console.log(`[Scout Assistant] Calling handleFillForm for ${next.memberId}, jobOffer:`, jobOfferId, jobOfferName?.slice(0, 30), 'skipJobOffer:', skipJobOffer);
-    const result = await handleFillForm(next.text, next.memberId, jobOfferId, jobOfferName, skipJobOffer);
+    console.log(`[Scout Assistant] Calling handleFillForm for ${next.memberId}, jobCategory:`, jobCategory, employmentType, 'skipJobOffer:', skipJobOffer);
+    const result = await handleFillForm(next.text, next.memberId, searchTerm, jobCategory, employmentType, skipJobOffer, categoryKeywords);
     console.log(`[Scout Assistant] handleFillForm result:`, result);
 
     if (!result.success) {
@@ -260,7 +248,7 @@ export async function start(): Promise<void> {
     const confirmResult = await requestConfirmation({
       memberId: next.memberId,
       text: next.text,
-      jobOfferLabel: jobOfferName || '',
+      jobOfferLabel: jobCategory ? `${jobCategory}/${employmentType || ''}` : '',
       templateType: '',
       personalizedText: '',
       fullScoutText: next.text,

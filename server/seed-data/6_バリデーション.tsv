@@ -1,3 +1,3 @@
-company	age_min	age_max	qualification_rules	category_exclusions
-ark-visiting-nurse	20	59	[{"jobOfferId":"1550716","required":["看護師","准看護師"],"excluded":[]},{"jobOfferId":"1550715","required":["看護師"],"excluded":[]}]	{"nurse":["准看護師"]}
-lcc-visiting-nurse	20	65	[{"jobOfferId":"638104","required":["看護師","准看護師"],"excluded":[]},{"jobOfferId":"1146892","required":["理学療法士"],"excluded":[]},{"jobOfferId":"1328672","required":["言語聴覚士"],"excluded":[]}]	{"nurse":["准看護師"]}
+company	age_min	age_max	qualification_rules	category_exclusions	category_config
+ark-visiting-nurse	20	59	[{"jobOfferId":"1550716","required":["看護師","准看護師"],"excluded":[]},{"jobOfferId":"1550715","required":["看護師"],"excluded":[]}]	{"nurse":["准看護師"]}	{"nurse":{"display_name":"看護師","search_term":"看護","keywords":["看護師","准看護師"]}}
+lcc-visiting-nurse	20	65	[{"jobOfferId":"638104","required":["看護師","准看護師"],"excluded":[]},{"jobOfferId":"1146892","required":["理学療法士"],"excluded":[]},{"jobOfferId":"1328672","required":["言語聴覚士"],"excluded":[]}]	{"nurse":["准看護師"]}	{"nurse":{"display_name":"看護師","search_term":"看護","keywords":["看護師","准看護師"]},"rehab_pt":{"display_name":"理学療法士","search_term":"理学療法","keywords":["理学療法士"]},"rehab_st":{"display_name":"言語聴覚士","search_term":"言語聴覚","keywords":["言語聴覚士"]}}
