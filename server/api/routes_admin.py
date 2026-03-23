@@ -443,13 +443,14 @@ AI生成時のシステムプロンプトの構成パーツ。section_type と c
 ```"""
 
     try:
-        result_text = await generate_personalized_text(
+        gen_result = await generate_personalized_text(
             system_prompt=system_prompt,
             user_prompt=f"以下の会社情報から、スカウト文生成の全設定を生成してください。\n\n{company_info}",
             model_name=None,
             max_output_tokens=8192,
             temperature=0.5,
         )
+        result_text = gen_result.text
 
         # Extract JSON from response
         import re
@@ -657,11 +658,12 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
 ```"""
 
     try:
-        result_text = await generate_personalized_text(
+        gen_result = await generate_personalized_text(
             system_prompt=system_prompt,
             user_prompt=f"以下の会社情報をもとに、10パターンのスカウト文を生成してください。\n\n{company_info}",
             model_name=None,
         )
+        result_text = gen_result.text
 
         # Extract JSON from response (may be wrapped in markdown code blocks)
         import re
@@ -729,3 +731,19 @@ async def delete_row(sheet_slug: str, row_index: int, operator=Depends(verify_ap
     sheets_writer.delete_row(sheet_name, row_index)
     sheets_client.reload()
     return {"status": "deleted"}
+
+
+# --- Cost monitoring endpoints ---
+
+@router.get("/costs/today")
+async def get_costs_today(operator=Depends(verify_api_key)):
+    """Get today's cost summary."""
+    from monitoring.cost_tracker import cost_tracker
+    return cost_tracker.get_daily_summary()
+
+
+@router.get("/costs/monthly")
+async def get_costs_monthly(operator=Depends(verify_api_key)):
+    """Get current month's cost summary."""
+    from monitoring.cost_tracker import cost_tracker
+    return cost_tracker.get_monthly_summary()

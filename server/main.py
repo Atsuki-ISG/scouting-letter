@@ -39,6 +39,9 @@ async def startup():
     sheets_client.reload()
     logger.info("Config loaded.")
 
+    from monitoring.scheduler import start_scheduler
+    await start_scheduler()
+
 
 @app.get("/health")
 async def health_check():
