@@ -5,6 +5,7 @@ _PLACEHOLDERS = [
     "{personalized_text}",
     "{ここにパーソナライズ文を挿入}",
     "{ここに生成した文章を挿入}",
+    "{パーソナライズされた文章}",
 ]
 
 _PLACEHOLDER_PATTERN = re.compile(
