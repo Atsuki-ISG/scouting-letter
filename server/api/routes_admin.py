@@ -699,10 +699,25 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
         raise HTTPException(404, f"Unknown sheet: {sheet_slug}")
 
     columns = COLUMNS.get(sheet_slug, [])
-    values = [data.get(col, "") for col in columns]
+
+    # Partial update: read existing row and merge with incoming data
+    all_rows = sheets_writer.get_all_rows(sheet_name)
+    if row_index < 1 or row_index >= len(all_rows):
+        raise HTTPException(404, f"Row {row_index} not found")
+
+    header = all_rows[0]
+    existing_row = all_rows[row_index]
+    # Pad existing row to match header length
+    existing_row += [""] * (len(header) - len(existing_row))
+    existing = {header[i]: existing_row[i] for i in range(len(header))}
+
+    # Merge: only overwrite fields present in incoming data
+    merged = {col: data[col] if col in data else existing.get(col, "") for col in columns}
+    values = [merged[col] for col in columns]
+
     sheets_writer.update_row(sheet_name, row_index, values)
     sheets_client.reload()
-    return {"status": "updated"}
+    return {"status": "updated", "merged_fields": list(data.keys())}
 
 
 @router.delete("/{sheet_slug}/{row_index}")
