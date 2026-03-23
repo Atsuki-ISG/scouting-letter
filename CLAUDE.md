@@ -17,10 +17,12 @@
 
 ## 対象会社
 
-| 会社名 | ディレクトリ |
-|--------|-------------|
-| ARK訪問看護 | `companies/ark-visiting-nurse/` |
-| LCC訪問看護 | `companies/lcc-visiting-nurse/` |
+| 会社名 | ディレクトリ | 備考 |
+|--------|-------------|------|
+| ARK訪問看護 | `companies/ark-visiting-nurse/` | |
+| LCC訪問看護 | `companies/lcc-visiting-nurse/` | |
+| いちご訪問看護 | `companies/ichigo-visiting-nurse/` | 3施設（介護NS/リハビリST/富士見台サテライト） |
+| いちごの里 | `companies/ichigo-care-home/` | 有料老人ホーム。profile.mdのみ |
 
 ## 回答スタイル
 
@@ -63,10 +65,11 @@ csv-scout は learnings.md を読まない（recipes.md に必要な知見は反
 
 ## 会社追加
 
-`companies/[会社名]/` に以下を作成:
-1. `profile.md` - 会社情報
-2. `templates.md` - テンプレート + フィルタリングルール
-3. `recipes.md` - 型はめパターン + AI生成ガイド
+`/add-company` スキルで一連の手順をガイド。手動で行う場合は以下:
+
+1. `companies/[会社名]/` に profile.md, templates.md, recipes.md を作成
+2. `/server-admin init [会社名]` → `/server-admin sync [会社名]` でサーバー登録
+3. 求人は `/server-admin add job_offers` で個別追加
 
 ## Plan Mode
 
@@ -85,6 +88,24 @@ Cloud Run上のFastAPI。スカウト文生成API + 管理画面。
 | `api/` | APIルート（生成・会社設定・管理CRUD） |
 
 データソース: Google スプレッドシート（6シート: テンプレート、パターン、資格修飾、プロンプト、求人、バリデーション）
+
+## Chrome拡張（`extension/`）
+
+ジョブメドレーのスカウト画面上で動作。プロフィール抽出→API生成→連続送信の一連のフローをブラウザ上で完結させる。
+会社・求人・設定はAPI経由で動的取得するため、新会社追加時に拡張のコード変更は不要。
+
+- 実装詳細 → `memory/MEMORY.md`（Chrome拡張セクション）
+- ビルド → `npm run build`（`extension/` 配下）
+
+## 管理画面（`server/admin/`）
+
+Cloud Run上のSPA。非エンジニアの管理者がブラウザからテンプレート・パターン・プロンプト・求人等のスカウト設定を編集できる。
+
+- 実装詳細 → `memory/flow-admin-ui.md`
+
+## Tips
+
+- MD→PDF変換 → Chrome headlessを使う。`md-to-pdf`はハングする。詳細は `memory/feedback_md_to_pdf.md`
 
 ## 参照先
 

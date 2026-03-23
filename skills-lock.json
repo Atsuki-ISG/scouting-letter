@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "ui-ux-pro-max": {
+      "source": "kimny1143/claude-code-template",
+      "sourceType": "github",
+      "computedHash": "e122b7731727f01dfa62f24151fa8265f65aa5573524dab4a4f343e12783c5a3"
+    }
+  }
+}

@@ -183,6 +183,7 @@ export class GeneratePanel {
           personalized_text: r.personalized_text,
           full_scout_text: r.full_scout_text,
           template_type: r.template_type,
+          job_category: r.job_category,
         };
       });
 
