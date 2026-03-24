@@ -103,6 +103,48 @@ def validate_prompt_content(
     return warnings
 
 
+# Company name identifiers that MUST appear in the final scout text.
+# If a different company's name appears, it means template/text got mixed up.
+COMPANY_NAME_MARKERS: dict[str, list[str]] = {
+    "ark-visiting-nurse": ["アーク訪問看護"],
+    "lcc-visiting-nurse": ["LCC訪問看護"],
+    "ichigo-visiting-nurse": ["いちご訪問看護"],
+    "chigasaki-tokushukai": ["茅ヶ崎徳洲会", "徳洲会病院"],
+    "nomura-hospital": ["野村病院"],
+}
+
+
+def validate_output_text(
+    company_id: str,
+    full_scout_text: str,
+) -> list[str]:
+    """Check that the final scout text contains the correct company name
+    and doesn't contain another company's name.
+
+    Returns list of error messages (empty = OK).
+    """
+    errors: list[str] = []
+
+    # Check own company name is present
+    own_markers = COMPANY_NAME_MARKERS.get(company_id, [])
+    if own_markers and not any(m in full_scout_text for m in own_markers):
+        errors.append(
+            f"自社名が含まれていません (期待: {' or '.join(own_markers)})"
+        )
+
+    # Check no other company's name is present
+    for other_id, markers in COMPANY_NAME_MARKERS.items():
+        if other_id == company_id:
+            continue
+        for marker in markers:
+            if marker in full_scout_text:
+                errors.append(
+                    f"他社名 '{marker}' ({other_id}) が混入しています"
+                )
+
+    return errors
+
+
 def validate_all_companies(client: "SheetsClient") -> dict[str, list[str]]:
     """Validate all companies' config. Returns {company_id: [errors]}."""
     issues: dict[str, list[str]] = {}

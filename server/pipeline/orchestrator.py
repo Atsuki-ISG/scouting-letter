@@ -18,7 +18,7 @@ from pipeline.template_resolver import resolve_template_type
 from pipeline.pattern_matcher import should_use_pattern, match_pattern
 from pipeline.prompt_builder import build_system_prompt, build_user_prompt
 from pipeline.ai_generator import generate_personalized_text, GenerationResult
-from pipeline.prompt_validator import validate_prompt_content
+from pipeline.prompt_validator import validate_prompt_content, validate_output_text
 from pipeline.text_builder import build_full_scout_text
 from config import get_model_pricing, GEMINI_MODEL
 
@@ -280,7 +280,22 @@ async def _process_candidate(
     # 6. Build full scout text
     full_scout_text = build_full_scout_text(template_body, personalized_text)
 
-    # 7. Resolve job offer
+    # 7. Validate output: company name check
+    output_errors = validate_output_text(request.company_id, full_scout_text)
+    if output_errors:
+        logger.error(f"[{profile.member_id}] output validation failed: {output_errors}")
+        return GenerateResponse(
+            member_id=profile.member_id,
+            template_type=template_type,
+            generation_path="filtered_out",
+            personalized_text="",
+            full_scout_text="",
+            job_offer_id="",
+            job_category=job_category,
+            filter_reason=f"出力検証エラー: {'; '.join(output_errors)}",
+        ), {}
+
+    # 8. Resolve job offer
     job_offer_id = _resolve_job_offer_id(
         config["job_offers"], job_category, template_type
     )
