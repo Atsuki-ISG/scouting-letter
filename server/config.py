@@ -2,7 +2,7 @@ import os
 
 PROJECT_ID: str = os.environ.get("PROJECT_ID", "")
 LOCATION: str = os.environ.get("LOCATION", "us-central1")
-GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3.1-pro")
+GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3.1-pro-preview")
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 MOCK_AI: bool = os.environ.get("MOCK_AI", "").lower() in ("1", "true", "yes")
 MAX_BATCH_CONCURRENCY: int = int(os.environ.get("MAX_BATCH_CONCURRENCY", "10"))
@@ -23,7 +23,7 @@ COST_ALERT_THRESHOLD_USD: float = float(os.environ.get("COST_ALERT_THRESHOLD_USD
 
 # Model pricing (USD per 1M tokens)
 MODEL_PRICING: dict[str, dict[str, float]] = {
-    "gemini-3.1-pro": {"input": 2.00, "output": 12.00},
+    "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},
 }
 
 
