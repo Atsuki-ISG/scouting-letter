@@ -219,18 +219,31 @@ class SheetsClient:
 
     def _get_prompt_sections(self, company_id: str) -> list[dict]:
         rows = self._cache.get(SHEET_PROMPT_SECTIONS, [])
-        result = []
+        global_sections: list[dict] = []
+        company_sections: list[dict] = []
         for row in rows:
             company = row.get("company", "")
-            # Include global sections (empty company) and company-specific
             if company and company != company_id:
                 continue
-            result.append({
+            item = {
                 "section_type": row.get("section_type", ""),
                 "job_category": row.get("job_category", ""),
                 "order": _safe_int(row.get("order", "0")),
                 "content": row.get("content", "").replace("\\n", "\n"),
-            })
+            }
+            if company:
+                company_sections.append(item)
+            else:
+                global_sections.append(item)
+
+        # Company-specific sections override globals with same section_type+job_category
+        company_keys = {
+            (s["section_type"], s["job_category"]) for s in company_sections
+        }
+        result = [
+            s for s in global_sections
+            if (s["section_type"], s["job_category"]) not in company_keys
+        ] + company_sections
         result.sort(key=lambda x: x["order"])
         return result
 
