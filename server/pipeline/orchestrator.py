@@ -18,6 +18,7 @@ from pipeline.template_resolver import resolve_template_type
 from pipeline.pattern_matcher import should_use_pattern, match_pattern
 from pipeline.prompt_builder import build_system_prompt, build_user_prompt
 from pipeline.ai_generator import generate_personalized_text, GenerationResult
+from pipeline.prompt_validator import validate_prompt_content
 from pipeline.text_builder import build_full_scout_text
 from config import get_model_pricing, GEMINI_MODEL
 
@@ -241,6 +242,22 @@ async def _process_candidate(
                 template_body,
                 config["examples"],
             )
+
+            # Validate: block generation if foreign facility terms detected
+            contamination = validate_prompt_content(request.company_id, system_prompt)
+            if contamination:
+                logger.error(f"[{profile.member_id}] prompt contamination blocked: {contamination}")
+                return GenerateResponse(
+                    member_id=profile.member_id,
+                    template_type=template_type,
+                    generation_path="filtered_out",
+                    personalized_text="",
+                    full_scout_text="",
+                    job_offer_id="",
+                    job_category=job_category,
+                    filter_reason=f"プロンプト設定エラー: {'; '.join(contamination)}",
+                ), {}
+
             user_prompt = build_user_prompt(profile, job_category)
             gen_result = await generate_personalized_text(system_prompt, user_prompt)
             personalized_text = gen_result.text

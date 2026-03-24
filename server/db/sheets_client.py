@@ -120,6 +120,18 @@ class SheetsClient:
         total = sum(len(v) for v in self._cache.values())
         logger.info(f"Sheets reloaded: {total} rows from {len(ALL_SHEETS)} sheets")
 
+        # Validate all companies on reload
+        try:
+            from pipeline.prompt_validator import validate_all_companies
+            issues = validate_all_companies(self)
+            for company, errors in issues.items():
+                for err in errors:
+                    logger.error(f"[CONFIG VALIDATION] {company}: {err}")
+            if not issues:
+                logger.info("[CONFIG VALIDATION] All companies passed validation")
+        except Exception as e:
+            logger.warning(f"[CONFIG VALIDATION] Validation skipped: {e}")
+
     def _ensure_cache(self) -> None:
         if not self._is_cache_valid():
             self.reload()

@@ -733,6 +733,38 @@ async def delete_row(sheet_slug: str, row_index: int, operator=Depends(verify_ap
     return {"status": "deleted"}
 
 
+# --- Validation endpoints ---
+
+@router.get("/validate")
+async def validate_config(
+    company: Optional[str] = None,
+    operator=Depends(verify_api_key),
+):
+    """Validate company config for prompt contamination and missing sections."""
+    from pipeline.prompt_validator import (
+        validate_all_companies,
+        validate_company_sections,
+        validate_prompt_content,
+    )
+
+    if company:
+        config = sheets_client.get_company_config(company)
+        sections = config.get("prompt_sections", [])
+        errors = validate_company_sections(company, sections)
+        all_content = "\n".join(s.get("content", "") for s in sections)
+        errors.extend(validate_prompt_content(company, all_content))
+        return {"company": company, "errors": errors, "ok": len(errors) == 0}
+
+    issues = validate_all_companies(sheets_client)
+    companies = sheets_client.get_company_list()
+    results = {}
+    for c in companies:
+        errors = issues.get(c, [])
+        results[c] = {"errors": errors, "ok": len(errors) == 0}
+    all_ok = all(r["ok"] for r in results.values())
+    return {"results": results, "all_ok": all_ok}
+
+
 # --- Cost monitoring endpoints ---
 
 @router.get("/costs/today")
