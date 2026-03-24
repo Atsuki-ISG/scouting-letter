@@ -244,7 +244,7 @@ async def _process_candidate(
             )
 
             # Validate: block generation if foreign facility terms detected
-            contamination = validate_prompt_content(request.company_id, system_prompt)
+            contamination = validate_prompt_content(company_id, system_prompt)
             if contamination:
                 logger.error(f"[{profile.member_id}] prompt contamination blocked: {contamination}")
                 return GenerateResponse(
@@ -281,7 +281,7 @@ async def _process_candidate(
     full_scout_text = build_full_scout_text(template_body, personalized_text)
 
     # 7. Validate output: company name check
-    output_errors = validate_output_text(request.company_id, full_scout_text)
+    output_errors = validate_output_text(company_id, full_scout_text)
     if output_errors:
         logger.error(f"[{profile.member_id}] output validation failed: {output_errors}")
         return GenerateResponse(
