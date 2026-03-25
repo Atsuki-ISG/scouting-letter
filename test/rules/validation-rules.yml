@@ -1,0 +1,201 @@
+# スカウト文バリデーションルール
+# integrate-feedback の自己検証ステップ(Step C6)および test_rule_validation.py で使用
+# 新ルール追加時はここにも追加すること
+
+# NG表現: 生成テキスト（パーソナライズ文）に含まれていたらNG
+ng_patterns:
+  # --- 年齢・世代への言及禁止 ---
+  - pattern: "\\d+代"
+    description: "年代への直接言及"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  - pattern: "\\d+歳"
+    description: "年齢への直接言及"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  - pattern: "若手"
+    description: "世代を示す表現"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  - pattern: "ベテラン"
+    description: "世代を示す表現"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  # --- 冗長な資格言及 ---
+  - pattern: "看護師の資格をお持ちとのこと"
+    description: "スカウト対象職種と一致する資格への冗長な言及"
+    exception: "資格修飾（複数資格）の文脈では許容"
+    source: "learnings.md 冗長な資格言及の禁止"
+
+  - pattern: "看護師の資格をお持ちで、これから"
+    description: "同上（在学中パターン）"
+    exception: "資格修飾の文脈では許容"
+    source: "learnings.md 冗長な資格言及の禁止"
+
+  - pattern: "理学療法士の資格をお持ちとのこと"
+    description: "リハビリ職の冗長な資格言及"
+    exception: null
+    source: "learnings.md 冗長な資格言及の禁止"
+
+  - pattern: "作業療法士の資格をお持ちとのこと"
+    description: "リハビリ職の冗長な資格言及"
+    exception: null
+    source: "learnings.md 冗長な資格言及の禁止"
+
+  - pattern: "言語聴覚士の資格をお持ちとのこと"
+    description: "リハビリ職の冗長な資格言及"
+    exception: null
+    source: "learnings.md 冗長な資格言及の禁止"
+
+  # --- 上から目線・憶測 ---
+  - pattern: "フォローします"
+    description: "上から目線の表現"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  - pattern: "安心してください"
+    description: "上から目線の表現"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  - pattern: "基礎を固めてこられた"
+    description: "上から目線の表現"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  - pattern: "成長の途上"
+    description: "上から目線の表現"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  - pattern: "されたいのですね"
+    description: "憶測表現"
+    exception: null
+    source: "learnings.md 絶対NG"
+
+  - pattern: "続けているはず"
+    description: "憶測表現"
+    exception: null
+    source: "learnings.md 絶対NG"
+
+  # --- 堅すぎる敬語 ---
+  - pattern: "拝察いたします"
+    description: "堅すぎる敬語"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  - pattern: "敬意を表します"
+    description: "堅すぎる敬語"
+    exception: null
+    source: "全社 templates.md 行動指針"
+
+  # --- 不要な前置き ---
+  - pattern: "現在離職中とのこと"
+    description: "就業状態への不要な言及"
+    exception: null
+    source: "learnings.md 絶対NG"
+
+  - pattern: "キャリアを築きたいとお考えのタイミング"
+    description: "不要な前置き・憶測"
+    exception: null
+    source: "learnings.md 絶対NG"
+
+  # --- 送り手の感情主体 ---
+  - pattern: "ご一緒したい"
+    description: "送り手の感情主体の表現"
+    exception: null
+    source: "learnings.md 表現のルール"
+
+  - pattern: "想いを強く感じ"
+    description: "送り手の感情主体の表現"
+    exception: null
+    source: "learnings.md 表現のルール"
+
+  # --- 語の使用制限 ---
+  - pattern: "感銘を受け"
+    description: "経験・キャリアに対する使用は禁止"
+    exception: "具体的なエピソード・姿勢・努力に対する使用は可"
+    source: "learnings.md 重複を避ける語"
+
+# 会社別NG表現: 特定の会社でのみ適用されるルール
+company_ng_patterns:
+  ark-visiting-nurse:
+    - pattern: "プロフィールを拝見し"
+      description: "テンプレート冒頭「ご経歴を拝見し」と重複"
+      source: "ark templates.md 生成ルール1"
+
+  lcc-visiting-nurse:
+    - pattern: "eラーニング"
+      description: "看護師職でeラーニング言及は誤り（医療事務のみ）"
+      condition: "job_category == nurse"
+      source: "lcc recipes.md 教育体制の誤用防止"
+
+    - pattern: "東京都訪問看護教育ステーション"
+      description: "看護師以外でこの制度に言及は誤り"
+      condition: "job_category != nurse"
+      source: "lcc recipes.md"
+
+  ichigo-visiting-nurse:
+    - pattern: "プロフィールを拝見し"
+      description: "テンプレート冒頭「ご経歴を拝見し」と重複"
+      source: "ichigo templates.md 生成ルール1"
+
+  chigasaki-tokushukai:
+    - pattern: "茅ヶ崎"
+      description: "地理情報はテンプレート冒頭に記載済み"
+      source: "chigasaki templates.md 生成ルール1"
+
+  nomura-hospital:
+    - pattern: "プロフィールを拝見し"
+      description: "テンプレート冒頭「ご経歴を拝見し」と重複"
+      source: "nomura templates.md 生成ルール1"
+
+    - pattern: "eラーニング"
+      description: "野村病院にeラーニング制度はない"
+      source: "nomura recipes.md"
+
+# 必須表現: 特定条件で含まれていなければNG
+required_patterns:
+  - condition: "qualification_modifier == 看護師+保健師"
+    pattern: "両資格"
+    description: "複数資格への言及が必要"
+    source: "全社 recipes.md 資格修飾"
+
+  - condition: "qualification_modifier == 看護師+ケアマネージャー"
+    pattern: "ケアマネ"
+    description: "追加資格への言及が必要"
+    source: "全社 recipes.md 資格修飾"
+
+# 構造ルール: テンプレート接続時のチェック
+structural_rules:
+  - company: "ark-visiting-nurse"
+    pattern: "拝見し"
+    max_count: 1
+    scope: "full_text"
+    description: "テンプレート+パーソナライズ文で「拝見し」が2回以上出現しない"
+    source: "ark templates.md 生成ルール1"
+
+  - company: "ichigo-visiting-nurse"
+    pattern: "拝見し"
+    max_count: 1
+    scope: "full_text"
+    description: "同上"
+    source: "ichigo templates.md 生成ルール1"
+
+  - company: "nomura-hospital"
+    pattern: "拝見し"
+    max_count: 1
+    scope: "full_text"
+    description: "同上"
+    source: "nomura templates.md 生成ルール1"
+
+  - company: "chigasaki-tokushukai"
+    pattern: "ご経歴"
+    max_count: 1
+    scope: "full_text"
+    description: "テンプレート+パーソナライズ文で「ご経歴」が2回以上出現しない"
+    source: "chigasaki templates.md 生成ルール1"

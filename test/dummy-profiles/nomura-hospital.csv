@@ -1,0 +1,4 @@
+member_id,job_category,gender,age,qualifications,experience_type,experience_years,employment_status,self_pr,work_history_summary,expected_pattern,expected_ng,expected_required,description
+D-NOM-01,nurse,男性,28歳,看護師,,,離職中,,,F_離職中,看護師の資格をお持ちとのこと,,看護師+離職中→F(NG検出)
+D-NOM-02,nurse,女性,22歳,看護師,,,在学中,,,G,看護師の資格をお持ちで,,看護師+在学中→G(NG検出)
+D-NOM-03,nurse,女性,30歳,看護師/保健師,看護師,5年,離職中,,精神科病棟3年、一般病棟2年,B2+資格修飾,,両資格,複数資格→資格修飾

@@ -1,0 +1,4 @@
+member_id,job_category,gender,age,qualifications,experience_type,experience_years,employment_status,self_pr,work_history_summary,expected_pattern,expected_ng,expected_required,description
+D-ICH-01,nurse,女性,28歳,看護師,,,離職中,,,F_離職中,看護師の資格をお持ちとのこと,,看護師+離職中→F(NG検出)
+D-ICH-02,nurse,男性,22歳,看護師,,,在学中,,,G,看護師の資格をお持ちで,,看護師+在学中→G(NG検出)
+D-ICH-03,nurse,女性,35歳,看護師/保健師,看護師,8年,就業中（正社員）,,訪問看護5年、病棟3年,B1+資格修飾,,両資格,複数資格→資格修飾
