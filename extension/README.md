@@ -16,7 +16,7 @@ Step 4: メッセージページ  →  やりとり取得・分析
 ### 拡張機能のインストール
 1. `npm run build` でビルド
 2. Chrome → `chrome://extensions` → デベロッパーモードON
-3. 「パッケージ化されていない拡張機能を読み込む」→ `extension/dist/` を選択
+3. 「パッケージ化されていない拡張機能を読み込む」→ `extension/scout_extension/` を選択
 
 ### サイドパネルを開く
 - 拡張機能アイコンをクリック →「サイドパネルを開く」
@@ -214,7 +214,7 @@ messages:
 
 ```
 extension/
-├── dist/                  # ビルド出力（Chromeはここを読み込む）
+├── scout_extension/       # ビルド出力（Chromeはここを読み込む）
 ├── src/
 │   ├── background/        # Service Worker
 │   ├── content/           # Content Script（ページ操作）

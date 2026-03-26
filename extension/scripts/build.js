@@ -21,7 +21,7 @@ async function main() {
     entryPoints: [resolve(root, 'src/content/index.ts')],
     bundle: true,
     format: 'iife',
-    outfile: resolve(root, 'dist/content.js'),
+    outfile: resolve(root, 'scout_extension/content.js'),
     target: 'es2022',
     minify: false,
     sourcemap: true,
@@ -33,7 +33,7 @@ async function main() {
     entryPoints: [resolve(root, 'src/background/service-worker.ts')],
     bundle: true,
     format: 'iife',
-    outfile: resolve(root, 'dist/service-worker.js'),
+    outfile: resolve(root, 'scout_extension/service-worker.js'),
     target: 'es2022',
     minify: false,
     sourcemap: true,
@@ -41,7 +41,7 @@ async function main() {
 
   // Step 4: Copy main-world script (plain JS, no bundling needed)
   console.log('=== Copying main-world script ===');
-  cpSync(resolve(root, 'src/content/main-world.js'), resolve(root, 'dist/main-world.js'));
+  cpSync(resolve(root, 'src/content/main-world.js'), resolve(root, 'scout_extension/main-world.js'));
 
   // Step 5: Copy manifest.json with correct paths
   console.log('=== Copying manifest and icons ===');
@@ -54,10 +54,10 @@ async function main() {
   manifest.content_scripts[1].js = ['main-world.js'];
   manifest.side_panel.default_path = 'src/sidepanel/index.html';
 
-  writeFileSync(resolve(root, 'dist/manifest.json'), JSON.stringify(manifest, null, 2));
+  writeFileSync(resolve(root, 'scout_extension/manifest.json'), JSON.stringify(manifest, null, 2));
 
   // Copy icons
-  cpSync(resolve(root, 'icons'), resolve(root, 'dist/icons'), { recursive: true });
+  cpSync(resolve(root, 'icons'), resolve(root, 'scout_extension/icons'), { recursive: true });
 
   console.log('=== Build complete ===');
 }

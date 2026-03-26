@@ -31,6 +31,16 @@ COLUMNS = {
 }
 
 
+@router.get("/server_info")
+async def server_info(operator=Depends(verify_api_key)):
+    """Return server metadata for admin help page."""
+    from config import SPREADSHEET_ID
+    result = {}
+    if SPREADSHEET_ID:
+        result["spreadsheet_url"] = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit"
+    return result
+
+
 @router.get("/prompt_preview")
 async def prompt_preview(company: str, operator=Depends(verify_api_key)):
     """Preview how the system prompt is assembled for a company."""
@@ -777,3 +787,33 @@ async def get_costs_monthly(operator=Depends(verify_api_key)):
     """Get current month's cost summary."""
     from monitoring.cost_tracker import cost_tracker
     return cost_tracker.get_monthly_summary()
+
+
+@router.post("/cron/daily-report")
+async def cron_daily_report(operator=Depends(verify_api_key)):
+    """Cloud Scheduler が毎朝叩くエンドポイント。日次レポート + アラート。"""
+    from monitoring.cost_tracker import cost_tracker
+    from monitoring.notifier import notify_google_chat
+    from monitoring.scheduler import _format_cost_message, _check_alert
+    from datetime import datetime, timedelta, timezone
+
+    JST = timezone(timedelta(hours=9))
+    yesterday = (datetime.now(JST) - timedelta(days=1)).strftime("%Y-%m-%d")
+    summary = cost_tracker.get_daily_summary(yesterday)
+    monthly = cost_tracker.get_monthly_summary()
+
+    if summary["requests"] > 0:
+        message = _format_cost_message(summary, "日次コストレポート")
+        message += f"\n\n📅 今月累計: ${monthly['estimated_cost_usd']:.4f}"
+    else:
+        message = (
+            f"📊 *日次コストレポート*\n"
+            f"期間: {yesterday}\n"
+            f"リクエスト数: 0\n"
+            f"\n📅 今月累計: ${monthly['estimated_cost_usd']:.4f}"
+        )
+
+    sent = await notify_google_chat(message)
+    await _check_alert()
+
+    return {"status": "ok", "sent": sent, "yesterday": yesterday}

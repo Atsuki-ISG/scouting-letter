@@ -39,8 +39,8 @@ async def startup():
     sheets_client.reload()
     logger.info("Config loaded.")
 
-    from monitoring.scheduler import start_scheduler
-    await start_scheduler()
+    # バックグラウンドスケジューラは廃止（Cloud Runではリクエスト外で動けない）
+    # Cloud Scheduler → POST /api/v1/admin/cron/daily-report に移行済み
 
 
 @app.get("/health")

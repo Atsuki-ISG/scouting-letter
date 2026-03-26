@@ -6,7 +6,7 @@ import { resolve } from 'path';
 export default defineConfig({
   base: './',
   build: {
-    outDir: 'dist',
+    outDir: 'scout_extension',
     emptyOutDir: true,
     rollupOptions: {
       input: {

@@ -1,4 +1,20 @@
 import { Message } from '../shared/types';
+import { STORAGE_KEYS } from '../shared/constants';
+
+/** インストール/更新時にデフォルト設定を書き込む（未設定の場合のみ） */
+chrome.runtime.onInstalled.addListener(async () => {
+  const result = await chrome.storage.local.get([STORAGE_KEYS.API_ENDPOINT, STORAGE_KEYS.API_KEY]);
+  if (!result[STORAGE_KEYS.API_ENDPOINT]) {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.API_ENDPOINT]: 'https://scout-api-1080076995871.asia-northeast1.run.app',
+    });
+  }
+  if (!result[STORAGE_KEYS.API_KEY]) {
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.API_KEY]: 'anycare',
+    });
+  }
+});
 
 /** アイコンクリックでサイドパネルを開く（default_popup より優先） */
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
