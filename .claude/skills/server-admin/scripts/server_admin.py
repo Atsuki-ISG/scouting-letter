@@ -80,6 +80,7 @@ LCC_CATEGORY_MAP = {
     "看護師": "nurse",
     "リハビリ職（PT/ST）": "rehab",
     "医療事務": "medical_office",
+    "管理栄養士/栄養士": "dietitian",
 }
 
 
@@ -447,8 +448,8 @@ def cmd_diff(company):
 
     existing = api_get("patterns", {"company": company}).get("rows", [])
 
-    if company == "lcc-visiting-nurse":
-        all_recipes = parse_lcc_recipes(recipes_path)
+    all_recipes = parse_lcc_recipes(recipes_path)
+    if all_recipes:
         diffs = 0
         for jc, recipes in all_recipes.items():
             jc_rows = [r for r in existing if r.get("job_category", "") == jc]
@@ -517,8 +518,8 @@ def cmd_sync(company):
         print(f"No existing patterns for {company}. Use 'create-patterns' instead.")
         sys.exit(1)
 
-    if company == "lcc-visiting-nurse":
-        all_recipes = parse_lcc_recipes(recipes_path)
+    all_recipes = parse_lcc_recipes(recipes_path)
+    if all_recipes:
         total = 0
         for jc, recipes in all_recipes.items():
             jc_rows = [r for r in existing if r.get("job_category", "") == jc]
@@ -581,14 +582,22 @@ def cmd_create_patterns(company, job_category="nurse"):
         sys.exit(1)
 
     existing = api_get("patterns", {"company": company}).get("rows", [])
-    if existing:
-        print(f"WARNING: {company} already has {len(existing)} patterns. Use 'sync' to update.")
+    jc_existing = [r for r in existing if r.get("job_category", "") == job_category]
+    if jc_existing:
+        print(f"WARNING: {company} already has {len(jc_existing)} patterns for job_category={job_category}. Use 'sync' to update.")
         sys.exit(1)
 
-    recipes = parse_recipes(recipes_path)
+    all_recipes = parse_lcc_recipes(recipes_path)
+    if not all_recipes:
+        # Single job category file: wrap in dict
+        all_recipes = {"nurse": parse_recipes(recipes_path)}
+    recipes = all_recipes.get(job_category, {})
+    if not recipes:
+        print(f"ERROR: No patterns found for job_category={job_category} in recipes.md")
+        sys.exit(1)
     created = 0
 
-    for key in ["A", "B1", "B2", "C", "D_就業中", "D_離職中", "E", "F_就業中", "F_離職中", "G"]:
+    for key in sorted(recipes.keys()):
         if key not in recipes:
             print(f"  WARN: {key} not found in recipes!")
             continue
