@@ -26,6 +26,7 @@
 | いちご訪問看護 | `companies/ichigo-visiting-nurse/` | 3施設（介護NS/リハビリST/富士見台サテライト） |
 | いちごの里 | `companies/ichigo-care-home/` | 有料老人ホーム。profile.mdのみ |
 | 茅ヶ崎徳洲会病院 | `companies/chigasaki-tokushukai/` | 病院（病棟看護師・正職員のみ） |
+| an訪問看護 | `companies/an-visiting-nurse/` | 横浜市南区。看護師/PT/OT（正職員のみ） |
 
 ## 回答スタイル
 
