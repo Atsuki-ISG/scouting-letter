@@ -1,4 +1,39 @@
-# スキルの使い方・運用フロー
+# 運用フロー
+
+## ディレクター業務
+
+### 品質管理
+
+1. オペレーターが送信したスカウト文をサンプルレビュー
+2. `quality/criteria.md` の基準に照らしてチェック
+3. `quality/scoring.md` のランクで評価（S/A/B/C/D）
+4. レビュー結果を `quality/reviews/YYYY-MM/` に記録
+5. 共通の問題パターンがあれば `/integrate-feedback` でナレッジに反映
+6. S判定のスカウト文は `/save-example` で蓄積
+
+### ミーティング → 改善反映
+
+1. オペレーターや PM とのミーティングを実施
+2. 議事録を `companies/[会社名]/meetings/` に保存
+3. アクションアイテムを抽出し反映先を判断:
+   - 品質基準の変更 → `quality/criteria.md`
+   - テンプレート・パターンの改善 → `companies/[会社名]/templates.md` or `recipes.md`
+   - 教育資料の更新 → `training/`
+
+### 教育・オンボーディング
+
+- オペレーター教育資料: `training/`
+- 良いスカウト事例: `training/good-examples/`
+- スカウトの基礎: `training/scout-fundamentals/`
+
+### 作業スペース
+
+- 調査・分析の一時ファイル: `workspace/`
+- 確定したら適切なディレクトリ（quality/, companies/, training/等）に移動
+
+---
+
+# スキルの使い方・運用フロー（オペレーター向け）
 
 ## API生成（Chrome拡張から直接）— メインフロー
 
