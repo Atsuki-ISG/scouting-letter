@@ -3,6 +3,7 @@ import { storage } from '../../shared/storage';
 import { toYAML, downloadYAML } from '../../shared/yaml';
 import { localDate } from '../../shared/constants';
 import { escapeHtml } from '../../shared/utils';
+import { apiClient } from '../../shared/api-client';
 
 /**
  * 返信・やりとりタブのUIコンポーネント
@@ -25,6 +26,7 @@ export class ConversationPanel {
     this.setupExtractButton();
     this.setupBatchExtractButton();
     this.setupManualInput();
+    this.setupSyncButton();
     this.setupExportButtons();
     this.setupMessageListener();
     this.loadConversations();
@@ -336,6 +338,67 @@ export class ConversationPanel {
     });
 
     return el;
+  }
+
+  /** 返信データをサーバーに同期 */
+  private setupSyncButton(): void {
+    document.getElementById('btn-sync-replies')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-sync-replies')!;
+      const statusEl = document.getElementById('sync-replies-status')!;
+
+      btn.setAttribute('disabled', 'true');
+      btn.textContent = '同期中...';
+      statusEl.className = '';
+      statusEl.textContent = '';
+      statusEl.classList.remove('hidden');
+
+      try {
+        const conversations = await storage.getConversations();
+        const company = await storage.getCompany();
+
+        // 返信があるやりとりだけ抽出
+        const replies: Array<{ member_id: string; replied_at: string; category: string }> = [];
+        for (const thread of conversations) {
+          const candidateMsgs = thread.messages.filter(m => m.role === 'candidate');
+          if (candidateMsgs.length === 0) continue;
+
+          const firstReply = candidateMsgs[0];
+          const category = this.classifyReply(candidateMsgs);
+          replies.push({
+            member_id: thread.member_id,
+            replied_at: firstReply.date || thread.started,
+            category,
+          });
+        }
+
+        if (replies.length === 0) {
+          statusEl.textContent = '返信のあるやりとりがありません';
+          statusEl.style.color = '#b45309';
+          return;
+        }
+
+        const result = await apiClient.syncReplies(company, replies);
+        statusEl.textContent = `同期完了: ${result.updated}件更新`;
+        statusEl.style.color = '#059669';
+      } catch (err) {
+        statusEl.textContent = `同期失敗: ${err instanceof Error ? err.message : String(err)}`;
+        statusEl.style.color = '#dc2626';
+      } finally {
+        btn.removeAttribute('disabled');
+        btn.textContent = 'サーバーに返信データを同期';
+        setTimeout(() => statusEl.classList.add('hidden'), 5000);
+      }
+    });
+  }
+
+  /** 返信内容を簡易分類 */
+  private classifyReply(candidateMsgs: ConversationMessage[]): string {
+    const allText = candidateMsgs.map(m => m.text).join(' ');
+    if (/辞退|遠慮|お断り|見送/.test(allText)) return '辞退';
+    if (/面[談接]|見学|日程/.test(allText)) return '面談設定済';
+    if (/[？?]/.test(allText) && !/興味|ぜひ/.test(allText)) return '質問';
+    if (/興味|ぜひ|詳しく|気になる/.test(allText)) return '興味あり';
+    return '興味あり'; // デフォルト: 返信があれば興味あり
   }
 
   /** エクスポートボタン */

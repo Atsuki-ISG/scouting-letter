@@ -147,6 +147,21 @@ export const apiClient = {
     return res.json();
   },
 
+  async syncReplies(company: string, replies: Array<{ member_id: string; replied_at: string; category: string }>): Promise<{ status: string; updated: number }> {
+    const endpoint = await this.getEndpoint();
+    const headers = await this.getHeaders();
+    const res = await fetchWithTimeout(`${endpoint}/api/v1/admin/sync_replies`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company, replies }),
+    }, API_TIMEOUT_MS);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(formatApiError(res.status, text));
+    }
+    return res.json();
+  },
+
   async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
       const endpoint = await this.getEndpoint();
