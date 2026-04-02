@@ -796,29 +796,34 @@ async def improve_template(
     job_category = data.get("job_category", "")
     directive = data.get("directive", "")  # ユーザーの改善指示
     analysis_summary = data.get("analysis_summary", "")  # 分析タブからの連携データ
+    requested_row_index = data.get("row_index")  # 管理画面から直接渡されるrow_index
 
     if not company or not template_type:
         raise HTTPException(400, "company and template_type are required")
 
-    # 1. Get current template
-    config = sheets_client.get_company_config(company)
-    templates = config.get("templates", {})
-    template_data = templates.get(f"{job_category}:{template_type}") or templates.get(template_type)
-    if not template_data:
-        raise HTTPException(404, f"テンプレート '{template_type}' が見つかりません")
-
-    original_body = template_data.get("body", "")
-
-    # Find row_index in the sheet
+    # 1. Get current template body
     all_template_rows = sheets_writer.get_all_rows("テンプレート")
     row_index = None
-    for idx, row in enumerate(all_template_rows[1:], start=2):
-        if len(row) >= 4 and row[0] == company and row[2] == template_type:
-            if not job_category or row[1] == job_category:
-                row_index = idx
-                break
+    original_body = ""
 
-    if row_index is None:
+    if requested_row_index:
+        # row_indexが直接指定されている場合はそれを使用
+        row_index = int(requested_row_index)
+        if row_index >= 1 and row_index < len(all_template_rows):
+            row = all_template_rows[row_index]
+            original_body = row[3].replace("\\n", "\n") if len(row) > 3 else ""
+        else:
+            raise HTTPException(404, f"Row {row_index} not found")
+    else:
+        # row_indexが指定されていない場合は検索
+        for idx, row in enumerate(all_template_rows[1:], start=2):
+            if len(row) >= 4 and row[0] == company and row[2] == template_type:
+                if not job_category or row[1] == job_category:
+                    row_index = idx
+                    original_body = row[3].replace("\\n", "\n") if len(row) > 3 else ""
+                    break
+
+    if row_index is None or not original_body:
         raise HTTPException(404, "テンプレートの行が見つかりません")
 
     # 2. Load company profile from Sheets

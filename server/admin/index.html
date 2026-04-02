@@ -4702,6 +4702,7 @@ async function generateImprovement() {
       company,
       template_type: t.type,
       job_category: t.job_category || '',
+      row_index: t._row_index,
       directive,
       analysis_summary: lastAnalysisSummary || '',
     });
