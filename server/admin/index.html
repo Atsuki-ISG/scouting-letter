@@ -4788,9 +4788,7 @@ async function applyImprovement() {
     if (!t) throw new Error('テンプレートが見つかりません');
 
     const storedBody = finalBody.replace(/\n/g, '\\n');
-    const updated = { ...t, body: storedBody };
-    delete updated._row_index;
-    await api('PUT', `/api/v1/admin/templates/${diffRowIndex}`, updated);
+    await api('PUT', `/api/v1/admin/templates/${diffRowIndex}`, { body: storedBody });
 
     analysisOriginalBody = storedBody;
     const escaped = storedBody
