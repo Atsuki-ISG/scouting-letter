@@ -30,6 +30,11 @@ def resolve_template_type(
             employment = "パート"
 
     # Determine send type
-    send_type = "再送" if options.is_resend else "初回"
+    if profile.is_favorite:
+        send_type = "お気に入り"
+    elif options.is_resend:
+        send_type = "再送"
+    else:
+        send_type = "初回"
 
     return f"{employment}_{send_type}"
