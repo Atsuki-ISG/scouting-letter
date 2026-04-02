@@ -1879,6 +1879,24 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
           <button class="btn btn-secondary btn-sm" onclick="switchDiffViewMode()">&#x21C4; 表示切替</button>
           <button class="btn btn-secondary btn-sm" onclick="exitDiffMode()">&#x21A9; 戻す</button>
         </div>
+        <!-- 一括展開UI -->
+        <div id="expandSection" style="display:none;margin-top:12px;">
+          <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:12px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+              <strong style="font-size:13px;">📤 他のテンプレートに展開</strong>
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('type')">全型</button>
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('category')">全職種</button>
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('all')">全て</button>
+            </div>
+            <div id="expandTargets" style="max-height:150px;overflow-y:auto;margin-bottom:8px;font-size:12px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input id="expandDirective" type="text" placeholder="展開時の指示（任意）" style="flex:1;padding:4px 8px;border:1px solid var(--c-border);border-radius:4px;font-size:12px;">
+              <button class="btn btn-primary btn-sm" onclick="executeExpand()">展開を実行</button>
+            </div>
+          </div>
+          <!-- 展開結果のdiff一覧 -->
+          <div id="expandResults" style="margin-top:12px;"></div>
+        </div>
       </div>
       <div class="analysis-panel">
         <div class="analysis-panel-header">
@@ -4781,8 +4799,188 @@ async function applyImprovement() {
 
     exitDiffMode();
     toast(`${acceptedCount > 0 ? acceptedCount + '件の変更を' : '改善案を'}適用しました`);
+
+    // 展開UIを表示
+    showExpandSection(t);
   } catch (e) {
     toast('保存エラー: ' + e.message, true);
+  }
+}
+
+// ===== 一括テンプレート展開 =====
+let expandSourceTemplate = null; // { company, job_category, type }
+let expandResults = []; // API結果
+
+function showExpandSection(sourceTemplate) {
+  expandSourceTemplate = sourceTemplate;
+  const section = document.getElementById('expandSection');
+  section.style.display = 'block';
+  document.getElementById('expandResults').innerHTML = '';
+
+  // ターゲット一覧を構築（同会社の全テンプレートからソースを除外）
+  const targetsEl = document.getElementById('expandTargets');
+  const company = document.getElementById('companySelect').value;
+  const sourceKey = `${sourceTemplate.job_category || ''}:${sourceTemplate.type}`;
+
+  const others = analysisTemplates.filter(t => {
+    const key = `${t.job_category || ''}:${t.type}`;
+    return key !== sourceKey;
+  });
+
+  if (others.length === 0) {
+    targetsEl.innerHTML = '<div style="color:#6b7280;">展開先のテンプレートがありません</div>';
+    return;
+  }
+
+  targetsEl.innerHTML = others.map((t, i) => {
+    const label = t.job_category ? `${t.job_category}:${t.type}` : t.type;
+    return `<label style="display:block;padding:2px 0;cursor:pointer;">
+      <input type="checkbox" class="expand-target-cb" data-idx="${i}"
+             data-jc="${t.job_category || ''}" data-type="${t.type}" data-row="${t._row_index}"
+             style="accent-color:var(--c-primary);"> ${label}
+    </label>`;
+  }).join('');
+}
+
+function selectExpandPreset(mode) {
+  const cbs = document.querySelectorAll('.expand-target-cb');
+  const src = expandSourceTemplate;
+  if (!src) return;
+
+  cbs.forEach(cb => {
+    const jc = cb.dataset.jc;
+    const type = cb.dataset.type;
+    if (mode === 'type') {
+      // 同じ職種の全型
+      cb.checked = jc === (src.job_category || '');
+    } else if (mode === 'category') {
+      // 同じ型の全職種
+      cb.checked = type === src.type;
+    } else {
+      // 全て
+      cb.checked = true;
+    }
+  });
+}
+
+async function executeExpand() {
+  const company = document.getElementById('companySelect').value;
+  const src = expandSourceTemplate;
+  if (!src) return;
+
+  const cbs = document.querySelectorAll('.expand-target-cb:checked');
+  if (cbs.length === 0) {
+    toast('展開先を選択してください', true);
+    return;
+  }
+
+  const targets = Array.from(cbs).map(cb => ({
+    job_category: cb.dataset.jc,
+    template_type: cb.dataset.type,
+  }));
+
+  const directive = document.getElementById('expandDirective').value.trim();
+  const resultsEl = document.getElementById('expandResults');
+  resultsEl.innerHTML = `<div style="padding:20px;text-align:center;"><div class="spinner"></div> ${targets.length}件のテンプレートを生成中...</div>`;
+
+  try {
+    const resp = await api('POST', '/api/v1/admin/expand_template', {
+      company,
+      source_job_category: src.job_category || '',
+      source_template_type: src.type,
+      targets,
+      directive,
+    });
+
+    expandResults = resp.results;
+    renderExpandResults();
+  } catch (e) {
+    resultsEl.innerHTML = `<div style="color:#dc2626;padding:12px;">エラー: ${e.message}</div>`;
+  }
+}
+
+function renderExpandResults() {
+  const el = document.getElementById('expandResults');
+  if (!expandResults.length) {
+    el.innerHTML = '<div style="color:#6b7280;">結果なし</div>';
+    return;
+  }
+
+  let html = `<div style="display:flex;gap:8px;margin-bottom:8px;">
+    <button class="btn btn-primary btn-sm" onclick="applyExpandResults()">✅ 選択を一括適用</button>
+    <button class="btn btn-secondary btn-sm" onclick="toggleAllExpand(true)">全て選択</button>
+    <button class="btn btn-secondary btn-sm" onclick="toggleAllExpand(false)">全て解除</button>
+  </div>`;
+
+  expandResults.forEach((r, i) => {
+    const label = r.job_category ? `${r.job_category}:${r.template_type}` : r.template_type;
+    const hasError = !!r.error;
+    const hasChange = r.proposed && r.proposed !== r.original;
+
+    html += `<div style="border:1px solid var(--c-border);border-radius:6px;margin-bottom:8px;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${hasError ? '#fef2f2' : '#f8fafc'};border-bottom:1px solid var(--c-border);">
+        ${hasError ? '' : `<input type="checkbox" class="expand-result-cb" data-idx="${i}" ${hasChange ? 'checked' : ''} style="accent-color:var(--c-primary);">`}
+        <strong style="font-size:13px;">${label}</strong>
+        ${hasError ? `<span style="color:#dc2626;font-size:12px;">エラー: ${r.error}</span>` : ''}
+        ${!hasChange && !hasError ? '<span style="color:#6b7280;font-size:11px;">変更なし</span>' : ''}
+        <button class="btn btn-sm btn-secondary" style="margin-left:auto;font-size:11px;" onclick="toggleExpandDiff(${i})">diff</button>
+      </div>
+      <div id="expand-diff-${i}" style="display:none;padding:8px 12px;font-size:12px;font-family:var(--font-mono);white-space:pre-wrap;max-height:300px;overflow-y:auto;"></div>
+    </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function toggleExpandDiff(idx) {
+  const el = document.getElementById(`expand-diff-${idx}`);
+  if (el.style.display === 'none') {
+    const r = expandResults[idx];
+    // Simple side-by-side
+    const escOld = (r.original || '(空)').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'\n');
+    const escNew = (r.proposed || '(空)').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'\n');
+    el.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div><div style="font-weight:bold;margin-bottom:4px;color:#dc2626;">Before</div><div style="background:#fef2f2;padding:8px;border-radius:4px;">${escOld}</div></div>
+      <div><div style="font-weight:bold;margin-bottom:4px;color:#059669;">After</div><div style="background:#f0fdf4;padding:8px;border-radius:4px;">${escNew}</div></div>
+    </div>`;
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function toggleAllExpand(checked) {
+  document.querySelectorAll('.expand-result-cb').forEach(cb => cb.checked = checked);
+}
+
+async function applyExpandResults() {
+  const cbs = document.querySelectorAll('.expand-result-cb:checked');
+  if (cbs.length === 0) {
+    toast('適用するテンプレートを選択してください', true);
+    return;
+  }
+
+  const updates = [];
+  cbs.forEach(cb => {
+    const r = expandResults[parseInt(cb.dataset.idx)];
+    if (r && r.proposed && r.row_index) {
+      updates.push({
+        row_index: r.row_index,
+        body: r.proposed.replace(/\n/g, '\\n'),
+        reason: `${expandSourceTemplate.type}から展開`,
+      });
+    }
+  });
+
+  if (updates.length === 0) return;
+  if (!confirm(`${updates.length}件のテンプレートを更新しますか？`)) return;
+
+  try {
+    const resp = await api('POST', '/api/v1/admin/batch_update_templates', { updates });
+    toast(`${resp.updated}件のテンプレートを更新しました`);
+    document.getElementById('expandSection').style.display = 'none';
+  } catch (e) {
+    toast('一括更新エラー: ' + e.message, true);
   }
 }
 

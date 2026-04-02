@@ -1085,6 +1085,238 @@ CTAは1つだけ。複数並べると迷って行動しない。
     }
 
 
+@router.post("/expand_template")
+async def expand_template(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """ソーステンプレートを元に、複数ターゲットへ適応版を一括生成する。"""
+    import re
+    from pipeline.ai_generator import generate_personalized_text
+
+    company = data.get("company", "")
+    source_jc = data.get("source_job_category", "")
+    source_type = data.get("source_template_type", "")
+    targets = data.get("targets", [])
+    directive = data.get("directive", "")
+
+    if not company or not source_type or not targets:
+        raise HTTPException(400, "company, source_template_type, targets are required")
+
+    # 1. Get source template
+    all_rows = sheets_writer.get_all_rows("テンプレート")
+    if not all_rows:
+        raise HTTPException(404, "テンプレートシートが空です")
+    headers = all_rows[0]
+    col_map = {h.strip(): i for i, h in enumerate(headers)}
+
+    source_body = ""
+    for row in all_rows[1:]:
+        c = row[col_map.get("company", 0)] if col_map.get("company") is not None and len(row) > col_map["company"] else ""
+        jc = row[col_map.get("job_category", 1)] if col_map.get("job_category") is not None and len(row) > col_map["job_category"] else ""
+        tt = row[col_map.get("type", 2)] if col_map.get("type") is not None and len(row) > col_map["type"] else ""
+        if c.strip() == company and jc.strip() == source_jc and tt.strip() == source_type:
+            source_body = row[col_map.get("body", 3)] if col_map.get("body") is not None and len(row) > col_map["body"] else ""
+            break
+
+    if not source_body:
+        raise HTTPException(404, f"ソーステンプレートが見つかりません: {source_jc}:{source_type}")
+
+    source_body = source_body.replace("\\n", "\n")
+
+    # 2. Load company profile
+    company_profile = sheets_client.get_company_profile(company)
+
+    # 3. Build target info + find existing templates
+    target_rows = []
+    for t in targets:
+        t_jc = t.get("job_category", "")
+        t_type = t.get("template_type", "")
+        existing_body = ""
+        row_index = None
+        for idx, row in enumerate(all_rows[1:], start=2):
+            c = row[col_map.get("company", 0)] if col_map.get("company") is not None and len(row) > col_map["company"] else ""
+            jc = row[col_map.get("job_category", 1)] if col_map.get("job_category") is not None and len(row) > col_map["job_category"] else ""
+            tt = row[col_map.get("type", 2)] if col_map.get("type") is not None and len(row) > col_map["type"] else ""
+            if c.strip() == company and jc.strip() == t_jc and tt.strip() == t_type:
+                existing_body = row[col_map.get("body", 3)] if col_map.get("body") is not None and len(row) > col_map["body"] else ""
+                existing_body = existing_body.replace("\\n", "\n")
+                row_index = idx
+                break
+        target_rows.append({
+            "job_category": t_jc,
+            "template_type": t_type,
+            "existing_body": existing_body,
+            "row_index": row_index,
+        })
+
+    # 4. Build adaptation prompt
+    JOB_CATEGORY_NAMES = {
+        "nurse": "看護師/准看護師",
+        "pt": "理学療法士",
+        "st": "言語聴覚士",
+        "ot": "作業療法士",
+        "medical_office": "医療事務",
+    }
+
+    TYPE_RULES = {
+        "パート_初回": "パート・アルバイト向けの初回スカウト。柔軟な働き方を訴求。",
+        "パート_再送": "パート向けの再送スカウト。前回の補足として短く、新たな魅力や変化を伝える。",
+        "正社員_初回": "正社員/正職員向けの初回スカウト。キャリアや待遇面を訴求。",
+        "正社員_再送": "正社員向けの再送スカウト。前回の補足として短く、新たな魅力や変化を伝える。",
+    }
+
+    system_prompt = f"""あなたは介護・医療系のスカウト文テンプレートを、異なるテンプレート型・職種に適応させるエキスパートです。
+
+「お手本テンプレート」の構成・トーン・表現の質を維持しながら、ターゲットの型や職種に合わせて適応してください。
+
+## ルール
+- {{personalized_text}} プレースホルダーは必ず維持
+- お手本の構成（段落構成、CTA位置）を基本的に踏襲
+- 型の違い（初回↔再送、パート↔正社員）に応じてトーンと内容を調整
+- 職種の違いに応じて業務内容の表現を適切に変更
+- 再送テンプレートは初回より短く、「再度のご連絡」のトーンに
+- 正社員は待遇・キャリア面を強調、パートは柔軟性・働きやすさを強調
+- テンプレート本文のみ出力（説明不要）
+
+{f'## 会社情報{chr(10)}{company_profile[:2000]}' if company_profile else ''}
+"""
+
+    # 5. Generate for each target (sequential to avoid rate limits)
+    results = []
+    for tr in target_rows:
+        t_jc_name = JOB_CATEGORY_NAMES.get(tr["job_category"], tr["job_category"])
+        t_type_rule = TYPE_RULES.get(tr["template_type"], "")
+        source_jc_name = JOB_CATEGORY_NAMES.get(source_jc, source_jc)
+
+        adaptation_notes = []
+        if tr["job_category"] != source_jc:
+            adaptation_notes.append(f"職種変更: {source_jc_name} → {t_jc_name}")
+        if tr["template_type"] != source_type:
+            adaptation_notes.append(f"型変更: {source_type} → {tr['template_type']}")
+
+        user_prompt = f"""以下のお手本テンプレートを適応してください。
+
+## お手本（{source_jc_name} / {source_type}）
+{source_body}
+
+## 適応先
+- 職種: {t_jc_name}
+- テンプレート型: {tr['template_type']}
+- {t_type_rule}
+{f'- 適応ポイント: {", ".join(adaptation_notes)}' if adaptation_notes else ''}
+{f'{chr(10)}## ディレクターの指示{chr(10)}{directive}' if directive else ''}
+
+テンプレート本文のみ出力してください。"""
+
+        try:
+            result = await generate_personalized_text(
+                system_prompt,
+                user_prompt,
+                max_output_tokens=8192,
+                temperature=0.3,
+            )
+            proposed = result.text
+            # Clean up
+            proposed = re.sub(r'^```[^\n]*\n', '', proposed)
+            proposed = re.sub(r'\n```$', '', proposed.rstrip())
+            proposed = proposed.strip()
+
+            results.append({
+                "job_category": tr["job_category"],
+                "template_type": tr["template_type"],
+                "original": tr["existing_body"],
+                "proposed": proposed,
+                "row_index": tr["row_index"],
+            })
+        except Exception as e:
+            results.append({
+                "job_category": tr["job_category"],
+                "template_type": tr["template_type"],
+                "original": tr["existing_body"],
+                "proposed": "",
+                "row_index": tr["row_index"],
+                "error": str(e),
+            })
+
+    return {"status": "ok", "results": results}
+
+
+@router.post("/batch_update_templates")
+async def batch_update_templates(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """複数テンプレートを一括更新（バージョニング+変更履歴付き）。"""
+    from datetime import datetime, timedelta, timezone
+    JST = timezone(timedelta(hours=9))
+
+    updates = data.get("updates", [])
+    if not updates:
+        raise HTTPException(400, "updates is required")
+
+    all_rows = sheets_writer.get_all_rows("テンプレート")
+    if not all_rows:
+        raise HTTPException(404, "テンプレートシートが空です")
+    header = all_rows[0]
+    columns = COLUMNS.get("templates", [])
+
+    updated = 0
+    for upd in updates:
+        row_index = upd.get("row_index")
+        new_body = upd.get("body", "")
+        reason = upd.get("reason", "一括展開")
+
+        if not row_index or not new_body:
+            continue
+        if row_index < 1 or row_index >= len(all_rows):
+            continue
+
+        existing_row = all_rows[row_index]
+        existing_row += [""] * (len(header) - len(existing_row))
+        existing = {header[i]: existing_row[i] for i in range(len(header))}
+
+        if existing.get("body", "") == new_body:
+            continue  # no change
+
+        # Version increment
+        old_version = existing.get("version", "1")
+        try:
+            new_version = str(int(old_version) + 1)
+        except (ValueError, TypeError):
+            new_version = "2"
+
+        # Log history
+        try:
+            sheets_writer.ensure_sheet_exists("テンプレート変更履歴", [
+                "timestamp", "company", "job_category", "type",
+                "old_version", "new_version", "reason", "old_body",
+            ])
+            sheets_writer.append_row("テンプレート変更履歴", [
+                datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
+                existing.get("company", ""),
+                existing.get("job_category", ""),
+                existing.get("type", ""),
+                old_version,
+                new_version,
+                reason,
+                existing.get("body", ""),
+            ])
+        except Exception:
+            pass
+
+        # Update row
+        merged = {col: existing.get(col, "") for col in columns}
+        merged["body"] = new_body
+        merged["version"] = new_version
+        values = [merged[col] for col in columns]
+        sheets_writer.update_row("テンプレート", row_index, values)
+        updated += 1
+
+    sheets_client.reload()
+    return {"status": "ok", "updated": updated}
+
+
 @router.post("/analyze_cycle")
 async def analyze_cycle(
     data: dict,
