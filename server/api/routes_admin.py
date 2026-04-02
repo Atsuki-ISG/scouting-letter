@@ -17,6 +17,7 @@ SHEET_MAP = {
     "job_offers": "求人",
     "validation": "バリデーション",
     "logs": "生成ログ",
+    "profiles": "プロフィール",
 }
 
 # Column order for each sheet (must match header row)
@@ -28,6 +29,7 @@ COLUMNS = {
     "job_offers": ["company", "job_category", "id", "name", "label", "employment_type", "active"],
     "validation": ["company", "age_min", "age_max", "qualification_rules", "category_exclusions", "category_config"],
     "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview"],
+    "profiles": ["company", "content"],
 }
 
 
@@ -237,6 +239,11 @@ async def init_company(data: dict, operator=Depends(verify_api_key)):
     # Validation: 1 empty row
     # columns: company, age_min, age_max, qualification_rules
     sheets_writer.append_row("バリデーション", [company_id, "", "", ""])
+    total += 1
+
+    # Profile: 1 empty row
+    # columns: company, content
+    sheets_writer.append_row("プロフィール", [company_id, ""])
     total += 1
 
     sheets_client.reload()
@@ -781,7 +788,6 @@ async def improve_template(
 ):
     """AIがテンプレートを改善し、変更理由付きの改善版を返す。"""
     import re
-    from pathlib import Path
     from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
     from pipeline.ai_generator import generate_personalized_text
 
@@ -815,16 +821,8 @@ async def improve_template(
     if row_index is None:
         raise HTTPException(404, "テンプレートの行が見つかりません")
 
-    # 2. Load company profile
-    company_profile = ""
-    profile_paths = [
-        Path(__file__).parent.parent.parent / "companies" / company / "profile.md",  # repo root
-        Path(__file__).parent.parent / "companies" / company / "profile.md",  # fallback
-    ]
-    for p in profile_paths:
-        if p.exists():
-            company_profile = p.read_text(encoding="utf-8")
-            break
+    # 2. Load company profile from Sheets
+    company_profile = sheets_client.get_company_profile(company)
 
     # 3. Get send data stats + build analysis context
     from datetime import datetime, timedelta, timezone
@@ -1277,6 +1275,7 @@ async def create_row(sheet_slug: str, data: dict, operator=Depends(verify_api_ke
 
     columns = COLUMNS.get(sheet_slug, [])
     values = [data.get(col, "") for col in columns]
+    sheets_writer.ensure_sheet_exists(sheet_name, headers=columns)
     sheets_writer.append_row(sheet_name, values)
     sheets_client.reload()
     return {"status": "created"}

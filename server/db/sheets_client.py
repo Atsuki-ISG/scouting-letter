@@ -12,6 +12,7 @@ Expected sheets and columns:
   プロンプト: company, section_type, job_category, order, content
   求人: company, job_category, id, name, label, employment_type, active
   バリデーション: company, age_min, age_max, qualification_rules
+  プロフィール: company, content
 """
 
 from __future__ import annotations
@@ -45,6 +46,7 @@ SHEET_PATTERNS = "パターン"
 SHEET_PROMPT_SECTIONS = "プロンプト"
 SHEET_JOB_OFFERS = "求人"
 SHEET_VALIDATION = "バリデーション"
+SHEET_PROFILES = "プロフィール"
 SHEET_LOGS = "生成ログ"
 
 ALL_SHEETS = [
@@ -53,6 +55,7 @@ ALL_SHEETS = [
     SHEET_PROMPT_SECTIONS,
     SHEET_JOB_OFFERS,
     SHEET_VALIDATION,
+    SHEET_PROFILES,
 ]
 
 
@@ -102,19 +105,36 @@ class SheetsClient:
             return
 
         service = self._get_service()
-        # Batch read all sheets
-        ranges = [f"'{name}'!A:Z" for name in ALL_SHEETS]
-        result = (
-            service.spreadsheets()
-            .values()
-            .batchGet(spreadsheetId=SPREADSHEET_ID, ranges=ranges)
-            .execute()
-        )
 
-        value_ranges = result.get("valueRanges", [])
-        for i, name in enumerate(ALL_SHEETS):
-            rows = value_ranges[i].get("values", []) if i < len(value_ranges) else []
-            self._cache[name] = _parse_sheet(rows)
+        # Discover which sheets actually exist in the spreadsheet
+        spreadsheet_meta = service.spreadsheets().get(
+            spreadsheetId=SPREADSHEET_ID, fields="sheets.properties.title"
+        ).execute()
+        existing_sheets = {
+            s["properties"]["title"] for s in spreadsheet_meta.get("sheets", [])
+        }
+
+        # Only request sheets that exist
+        sheets_to_load = [name for name in ALL_SHEETS if name in existing_sheets]
+        missing = [name for name in ALL_SHEETS if name not in existing_sheets]
+        if missing:
+            logger.warning(f"Sheets not found (skipped): {missing}")
+
+        for name in ALL_SHEETS:
+            self._cache[name] = []  # default empty
+
+        if sheets_to_load:
+            ranges = [f"'{name}'!A:Z" for name in sheets_to_load]
+            result = (
+                service.spreadsheets()
+                .values()
+                .batchGet(spreadsheetId=SPREADSHEET_ID, ranges=ranges)
+                .execute()
+            )
+            value_ranges = result.get("valueRanges", [])
+            for i, name in enumerate(sheets_to_load):
+                rows = value_ranges[i].get("values", []) if i < len(value_ranges) else []
+                self._cache[name] = _parse_sheet(rows)
 
         self._cache_time = time.time()
         total = sum(len(v) for v in self._cache.values())
@@ -159,6 +179,15 @@ class SheetsClient:
             "validation_config": self._get_validation_config(company_id),
             "examples": [],  # examples are managed via /save-example skill
         }
+
+    def get_company_profile(self, company_id: str) -> str:
+        """Return the profile markdown text for a company, or empty string if not found."""
+        self._ensure_cache()
+        rows = self._cache.get(SHEET_PROFILES, [])
+        for row in rows:
+            if row.get("company") == company_id:
+                return row.get("content", "").replace("\\n", "\n")
+        return ""
 
     def _get_templates(self, company_id: str) -> dict[str, dict]:
         """Return templates keyed by 'job_category:type' (or just 'type' if no job_category)."""

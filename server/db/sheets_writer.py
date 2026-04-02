@@ -28,6 +28,28 @@ class SheetsWriter:
         ).execute()
         return result.get("values", [])
 
+    def ensure_sheet_exists(self, sheet_name: str, headers: list[str] | None = None) -> None:
+        """Create a sheet if it doesn't exist. Optionally write header row."""
+        service = self._get_service()
+        meta = service.spreadsheets().get(
+            spreadsheetId=SPREADSHEET_ID, fields="sheets.properties.title"
+        ).execute()
+        existing = {s["properties"]["title"] for s in meta.get("sheets", [])}
+        if sheet_name in existing:
+            return
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=SPREADSHEET_ID,
+            body={"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
+        ).execute()
+        logger.info(f"Created sheet '{sheet_name}'")
+        if headers:
+            service.spreadsheets().values().update(
+                spreadsheetId=SPREADSHEET_ID,
+                range=f"'{sheet_name}'!A1",
+                valueInputOption="RAW",
+                body={"values": [headers]}
+            ).execute()
+
     def append_row(self, sheet_name: str, values: list[str]) -> None:
         """Append a row to a sheet."""
         service = self._get_service()
