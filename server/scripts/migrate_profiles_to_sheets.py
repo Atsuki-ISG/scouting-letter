@@ -25,7 +25,7 @@ COMPANIES = [
     "an-visiting-nurse",
 ]
 
-DEFAULT_BASE_URL = "https://scout-api-1011954708881.us-central1.run.app"
+DEFAULT_BASE_URL = "https://scout-api-1080076995871.asia-northeast1.run.app"
 
 
 def post_profile(base_url: str, api_key: str, company: str, content: str) -> dict:
