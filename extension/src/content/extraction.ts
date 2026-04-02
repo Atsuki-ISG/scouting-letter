@@ -78,7 +78,7 @@ export async function startExtraction(count: number, startMemberId?: string): Pr
     console.log(`[Scout Assistant] Card ${cardIndex}: overlay appeared`);
     const profile = await extractProfile(overlay);
     profile.scout_sent_date = scoutSentDate;
-    profile.is_favorite = isFavorite;
+    profile.is_favorite = isFavorite || profile.is_favorite;
     profiles.push(profile);
 
     safeSendMessage({
