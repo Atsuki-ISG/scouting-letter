@@ -103,6 +103,17 @@ export const STORAGE_KEYS = {
   GENERATE_SETTINGS: 'scout_generate_settings',
 } as const;
 
+/** 会社IDから施設名キーワード（求人ドロップダウンのテキストに含まれるべき文字列） */
+export const COMPANY_FACILITY_KEYWORDS: Record<string, string[]> = {
+  'ark-visiting-nurse': ['アーク'],
+  'lcc-visiting-nurse': ['LCC', 'ＬＣＣ'],
+  'ichigo-visiting-nurse': ['いちご'],
+  'ichigo-care-home': ['いちごの里'],
+  'chigasaki-tokushukai': ['茅ヶ崎徳洲会', '徳洲会'],
+  'nomura-hospital': ['野村病院'],
+  'an-visiting-nurse': ['ａｎ訪問看護', 'an訪問看護'],
+};
+
 /** 会社別バリデーション設定（API取得不可時のフォールバック） */
 import { CompanyValidationConfig } from './types';
 

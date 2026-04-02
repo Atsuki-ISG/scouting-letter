@@ -1,5 +1,7 @@
 import { SELECTORS } from './selectors';
 import { sleep, randomSleep } from '../shared/utils';
+import { COMPANY_FACILITY_KEYWORDS, STORAGE_KEYS } from '../shared/constants';
+import { Message } from '../shared/types';
 
 /**
  * input要素にReact native setterで値をセットし、イベントを発火する
@@ -56,6 +58,14 @@ function clickOptionInMainWorld(index: number, jobId: string, jobName: string): 
       detail: { selector: '[role="option"]', index, jobId, jobName },
     }));
   });
+}
+
+/** 会社検証の重複チェック防止フラグ（ページリロードでリセット） */
+let companyMismatchChecked = false;
+
+/** 会社検証フラグをリセット（会社変更時に呼ぶ） */
+export function resetCompanyMismatchCheck(): void {
+  companyMismatchChecked = false;
 }
 
 /** job_category → 求人テキストのマッチングキーワード（サーバー設定がない場合のフォールバック） */
@@ -130,6 +140,30 @@ export async function selectJobOffer(
 
   // デバッグ: 全optionのテキストを出力
   options.forEach((o, i) => console.log(`[Scout Assistant] option[${i}]:`, o.textContent?.trim().slice(0, 100)));
+
+  // 4.5. 会社検証: ドロップダウンのテキストに選択中の会社の施設名が含まれるか確認
+  if (!companyMismatchChecked) {
+    companyMismatchChecked = true;
+    try {
+      const result = await chrome.storage.local.get(STORAGE_KEYS.COMPANY);
+      const companyId = result[STORAGE_KEYS.COMPANY] || '';
+      const keywords = COMPANY_FACILITY_KEYWORDS[companyId];
+      if (keywords && keywords.length > 0) {
+        const allText = Array.from(options).map(o => o.textContent || '').join(' ');
+        const found = keywords.some(kw => allText.includes(kw));
+        if (!found) {
+          console.warn(`[Scout Assistant] COMPANY MISMATCH: selected=${companyId}, keywords=${keywords.join(',')}, not found in dropdown`);
+          try {
+            chrome.runtime.sendMessage({
+              type: 'COMPANY_MISMATCH',
+              companyId,
+              keywords,
+            } satisfies Message);
+          } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
 
   // 5. job_category + employment_type でマッチング（サーバー設定優先、なければフォールバック）
   const effectiveCategoryKeywords = categoryKeywords || FALLBACK_CATEGORY_KEYWORDS[jobCategory] || [];

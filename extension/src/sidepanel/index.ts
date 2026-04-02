@@ -211,6 +211,9 @@ function setupMessageHandlers(debugPanel: DebugPanel, confirmPopup: Confirmation
     } else if (msg.type === 'DRY_RUN_COMPLETE') {
       // ドライラン完了 → ステータスをskippedに更新
       candidateList.updateStatusExternal(msg.memberId, 'skipped');
+    } else if (msg.type === 'COMPANY_MISMATCH') {
+      // 会社不一致警告
+      showCompanyMismatchWarning(msg.companyId);
     } else if (msg.type === 'JOB_OFFER_FAILED') {
       // 求人自動選択失敗の通知 → 再開ボタンを表示
       showJobOfferFailedNotification(msg.error);
@@ -274,6 +277,32 @@ function showJobOfferFailedNotification(error: string): void {
     notification.remove();
     chrome.runtime.sendMessage({ type: 'RESUME_AFTER_JOB_OFFER' } satisfies Message);
   });
+}
+
+/** 会社不一致警告を表示 */
+function showCompanyMismatchWarning(companyId: string): void {
+  // 既存の警告があれば削除
+  document.getElementById('company-mismatch-warning')?.remove();
+
+  const warning = document.createElement('div');
+  warning.id = 'company-mismatch-warning';
+  warning.style.cssText = 'background:#fffbeb;border:2px solid #f59e0b;border-radius:6px;padding:12px;margin:8px 0;';
+  warning.innerHTML = `
+    <div style="color:#b45309;font-weight:bold;font-size:14px;margin-bottom:6px;">⚠ 会社が違う可能性があります</div>
+    <div style="color:#92400e;font-size:12px;margin-bottom:8px;">
+      選択中の会社「<b>${companyId}</b>」の求人が、ジョブメドレーのスカウト画面に見つかりません。<br>
+      別の施設のスカウト画面を開いていないか確認してください。
+    </div>
+    <button onclick="this.parentElement.remove()" style="background:#f59e0b;color:white;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;">閉じる</button>
+  `;
+
+  // 送信パネルの先頭、またはメインコンテンツの先頭に挿入
+  const sendPanel = document.getElementById('panel-send');
+  const extractPanel = document.getElementById('panel-extract');
+  const target = sendPanel || extractPanel;
+  if (target) {
+    target.insertBefore(warning, target.firstChild);
+  }
 }
 
 /** 設定パネル */

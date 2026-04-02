@@ -117,6 +117,7 @@ chrome.runtime.onMessage.addListener(
       case 'CONFIRM_BEFORE_SEND':
       case 'DRY_RUN_COMPLETE':
       case 'JOB_OFFER_FAILED':
+      case 'COMPANY_MISMATCH':
       case 'CONTINUOUS_SEND_COMPLETE': {
         sendResponse({ ok: true });
         return false;
