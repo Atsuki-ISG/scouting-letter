@@ -807,10 +807,10 @@ async def improve_template(
     original_body = ""
 
     if requested_row_index:
-        # row_indexが直接指定されている場合はそれを使用
+        # row_indexが直接指定されている場合はそれを使用（Sheet行番号: 1-based）
         row_index = int(requested_row_index)
-        if row_index >= 1 and row_index < len(all_template_rows):
-            row = all_template_rows[row_index]
+        if row_index >= 2 and row_index <= len(all_template_rows):
+            row = all_template_rows[row_index - 1]
             original_body = row[3].replace("\\n", "\n") if len(row) > 3 else ""
         else:
             raise HTTPException(404, f"Row {row_index} not found")
@@ -1287,10 +1287,10 @@ async def batch_update_templates(
                 updated += 1
             continue
 
-        if row_index < 1 or row_index >= len(all_rows):
+        if row_index < 2 or row_index > len(all_rows):
             continue
 
-        existing_row = all_rows[row_index]
+        existing_row = all_rows[row_index - 1]
         existing_row += [""] * (len(header) - len(existing_row))
         existing = {header[i]: existing_row[i] for i in range(len(header))}
 
@@ -1541,11 +1541,11 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
 
     # Partial update: read existing row and merge with incoming data
     all_rows = sheets_writer.get_all_rows(sheet_name)
-    if row_index < 1 or row_index >= len(all_rows):
+    if row_index < 2 or row_index > len(all_rows):
         raise HTTPException(404, f"Row {row_index} not found")
 
     header = all_rows[0]
-    existing_row = all_rows[row_index]
+    existing_row = all_rows[row_index - 1]
     # Pad existing row to match header length
     existing_row += [""] * (len(header) - len(existing_row))
     existing = {header[i]: existing_row[i] for i in range(len(header))}
