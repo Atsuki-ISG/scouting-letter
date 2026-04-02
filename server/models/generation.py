@@ -37,6 +37,7 @@ class GenerateResponse(BaseModel):
     job_category: Optional[str] = None
     filter_reason: Optional[str] = None
     validation_warnings: List[str] = []
+    is_favorite: bool = False
 
 
 class BatchGenerateResponse(BaseModel):

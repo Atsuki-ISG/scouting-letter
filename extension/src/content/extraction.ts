@@ -12,6 +12,12 @@ export function abort(): void {
   aborted = true;
 }
 
+/** カード要素から「気になる」バッジを検出 */
+function detectFavorite(card: Element): boolean {
+  const text = card.textContent || '';
+  return text.includes('「気になる」した求職者');
+}
+
 /** カード要素からスカウト送信日を抽出 */
 function extractScoutSentDate(card: Element): string {
   const allText = card.querySelectorAll('*');
@@ -60,6 +66,7 @@ export async function startExtraction(count: number, startMemberId?: string): Pr
     if (aborted) break;
 
     const scoutSentDate = extractScoutSentDate(cards[cardIndex]);
+    const isFavorite = detectFavorite(cards[cardIndex]);
 
     const scoutBtn = cards[cardIndex].querySelector(SELECTORS.scoutButton);
     console.log(`[Scout Assistant] Card ${cardIndex}: scoutBtn =`, scoutBtn ? 'found' : 'NOT FOUND', 'selector:', SELECTORS.scoutButton);
@@ -71,6 +78,7 @@ export async function startExtraction(count: number, startMemberId?: string): Pr
     console.log(`[Scout Assistant] Card ${cardIndex}: overlay appeared`);
     const profile = await extractProfile(overlay);
     profile.scout_sent_date = scoutSentDate;
+    profile.is_favorite = isFavorite;
     profiles.push(profile);
 
     safeSendMessage({

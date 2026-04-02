@@ -62,6 +62,7 @@ export interface CandidateProfile {
   special_conditions: string;
   work_history_summary: string;
   scout_sent_date: string;
+  is_favorite: boolean;
 }
 
 /** CSV列の順序 */
@@ -82,6 +83,7 @@ export const PROFILE_CSV_COLUMNS: (keyof CandidateProfile)[] = [
   'special_conditions',
   'work_history_summary',
   'scout_sent_date',
+  'is_favorite',
 ];
 
 /** 生成されたスカウト文データ */
@@ -158,6 +160,7 @@ export interface CandidateItem {
   template_type: string;
   job_category?: string;
   validationResults?: ValidationResult[];
+  is_favorite?: boolean;
 }
 
 /** スカウト文の修正記録 */

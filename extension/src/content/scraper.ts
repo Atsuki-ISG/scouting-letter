@@ -194,6 +194,7 @@ export async function extractProfile(overlay: Element): Promise<CandidateProfile
     special_conditions: getValueByLabel(overlay, FIELD_LABELS.specialConditions),
     work_history_summary: '',
     scout_sent_date: '',
+    is_favorite: false,
   };
 
   // 職務経歴タブに切替えて抽出（勤務先名ラベルの出現で読み込み完了を検知）

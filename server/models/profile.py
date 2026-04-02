@@ -20,3 +20,4 @@ class CandidateProfile(BaseModel):
     special_conditions: Optional[str] = None
     work_history_summary: Optional[str] = None
     scout_sent_date: Optional[str] = None
+    is_favorite: bool = False

@@ -459,6 +459,7 @@ async def _process_candidate(
         full_scout_text=full_scout_text,
         job_offer_id=job_offer_id,
         job_category=job_category,
+        is_favorite=profile.is_favorite,
     ), token_usage
 
 

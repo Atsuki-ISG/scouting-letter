@@ -18,6 +18,7 @@ export interface GenerateResponse {
   job_category?: string;
   filter_reason?: string;
   validation_warnings: string[];
+  is_favorite?: boolean;
 }
 
 export interface BatchGenerateResponse {
