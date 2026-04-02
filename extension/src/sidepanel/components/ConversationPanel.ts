@@ -308,7 +308,13 @@ export class ConversationPanel {
     el.className = 'conversation-item';
 
     const candidateCount = thread.messages.filter((m) => m.role === 'candidate').length;
-    const hasReply = candidateCount > 0;
+    const companyCount = thread.messages.filter((m) => m.role === 'company').length;
+    const firstRole = thread.messages[0]?.role;
+    const isScout = firstRole === 'company';
+    const originLabel = isScout ? 'スカウト' : '応募';
+    const statusLabel = isScout
+      ? (candidateCount > 0 ? '返信あり' : '返信なし')
+      : `やりとり${thread.messages.length}通`;
 
     el.innerHTML = `
       <div class="conversation-header">
@@ -316,7 +322,7 @@ export class ConversationPanel {
         <span class="conversation-date">${escapeHtml(thread.started)}</span>
       </div>
       <div class="conversation-summary">
-        スカウト → ${hasReply ? '返信あり' : '返信なし'} (${thread.messages.length}通)
+        ${originLabel} → ${statusLabel} (${thread.messages.length}通)
       </div>
       <div class="conversation-actions">
         <button class="btn btn-sm btn-secondary btn-yaml-dl">YAML DL</button>
@@ -356,9 +362,12 @@ export class ConversationPanel {
         const conversations = await storage.getConversations();
         const company = await storage.getCompany();
 
-        // 返信があるやりとりだけ抽出
+        // スカウト起点で返信があるやりとりだけ抽出（応募経由は除外）
         const replies: Array<{ member_id: string; replied_at: string; category: string }> = [];
         for (const thread of conversations) {
+          const firstRole = thread.messages[0]?.role;
+          if (firstRole !== 'company') continue; // 応募経由は除外
+
           const candidateMsgs = thread.messages.filter(m => m.role === 'candidate');
           if (candidateMsgs.length === 0) continue;
 
