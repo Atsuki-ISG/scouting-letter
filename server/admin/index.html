@@ -4961,12 +4961,16 @@ async function applyExpandResults() {
     return;
   }
 
+  const company = document.getElementById('companySelect').value;
   const updates = [];
   cbs.forEach(cb => {
     const r = expandResults[parseInt(cb.dataset.idx)];
-    if (r && r.proposed && r.row_index) {
+    if (r && r.proposed) {
       updates.push({
-        row_index: r.row_index,
+        row_index: r.row_index || null,
+        company: company,
+        job_category: r.job_category || '',
+        template_type: r.template_type || '',
         body: r.proposed.replace(/\n/g, '\\n'),
         reason: `${expandSourceTemplate.type}から展開`,
       });

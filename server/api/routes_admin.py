@@ -1272,8 +1272,21 @@ async def batch_update_templates(
         new_body = upd.get("body", "")
         reason = upd.get("reason", "一括展開")
 
-        if not row_index or not new_body:
+        if not new_body:
             continue
+
+        # row_indexがない場合は新規追加
+        if not row_index:
+            company_id = upd.get("company", "")
+            job_cat = upd.get("job_category", "")
+            ttype = upd.get("template_type", "")
+            if company_id and ttype:
+                sheets_writer.append_row("テンプレート", [
+                    company_id, job_cat, ttype, new_body, "1",
+                ])
+                updated += 1
+            continue
+
         if row_index < 1 or row_index >= len(all_rows):
             continue
 
