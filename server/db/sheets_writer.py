@@ -29,26 +29,44 @@ class SheetsWriter:
         return result.get("values", [])
 
     def ensure_sheet_exists(self, sheet_name: str, headers: list[str] | None = None) -> None:
-        """Create a sheet if it doesn't exist. Optionally write header row."""
+        """Create a sheet if it doesn't exist. Update header row if columns are missing."""
         service = self._get_service()
         meta = service.spreadsheets().get(
             spreadsheetId=SPREADSHEET_ID, fields="sheets.properties.title"
         ).execute()
         existing = {s["properties"]["title"] for s in meta.get("sheets", [])}
-        if sheet_name in existing:
-            return
-        service.spreadsheets().batchUpdate(
-            spreadsheetId=SPREADSHEET_ID,
-            body={"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
-        ).execute()
-        logger.info(f"Created sheet '{sheet_name}'")
-        if headers:
-            service.spreadsheets().values().update(
+        if sheet_name not in existing:
+            service.spreadsheets().batchUpdate(
                 spreadsheetId=SPREADSHEET_ID,
-                range=f"'{sheet_name}'!A1",
-                valueInputOption="RAW",
-                body={"values": [headers]}
+                body={"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
             ).execute()
+            logger.info(f"Created sheet '{sheet_name}'")
+            if headers:
+                service.spreadsheets().values().update(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=f"'{sheet_name}'!A1",
+                    valueInputOption="RAW",
+                    body={"values": [headers]}
+                ).execute()
+        elif headers:
+            # Check if existing header needs updating
+            try:
+                result = service.spreadsheets().values().get(
+                    spreadsheetId=SPREADSHEET_ID,
+                    range=f"'{sheet_name}'!1:1"
+                ).execute()
+                current = result.get("values", [[]])[0] if result.get("values") else []
+                current_stripped = [h.strip() for h in current]
+                if current_stripped != headers:
+                    service.spreadsheets().values().update(
+                        spreadsheetId=SPREADSHEET_ID,
+                        range=f"'{sheet_name}'!A1",
+                        valueInputOption="RAW",
+                        body={"values": [headers]}
+                    ).execute()
+                    logger.info(f"Updated headers for '{sheet_name}': {current_stripped} -> {headers}")
+            except Exception as e:
+                logger.warning(f"Failed to check/update headers for '{sheet_name}': {e}")
 
     def append_row(self, sheet_name: str, values: list[str]) -> None:
         """Append a row to a sheet."""
