@@ -34,6 +34,30 @@ LOG_HEADERS = [
     "prompt_tokens", "output_tokens", "estimated_cost",
 ]
 
+SEND_DATA_HEADERS = [
+    # 自動（生成時に書き込み）— 会社列不要（シート自体が会社）
+    "日時", "会員番号", "テンプレート種別", "テンプレートVer", "生成パス", "パターン",
+    "年齢層", "資格", "経験区分", "希望雇用形態", "就業状況", "地域",
+    "曜日", "時間帯",
+    # 自動（返信同期で書き込み）
+    "返信", "返信日", "返信カテゴリ",
+]
+
+COMPANY_DISPLAY_NAMES = {
+    "ark-visiting-nurse": "アーク訪看",
+    "lcc-visiting-nurse": "LCC訪看",
+    "ichigo-visiting-nurse": "いちご訪看",
+    "an-visiting-nurse": "an訪看",
+    "chigasaki-tokushukai": "茅ヶ崎徳洲会",
+    "nomura-hospital": "野村病院",
+}
+
+
+def _send_data_sheet_name(company_id: str) -> str:
+    """Get the per-company send data sheet name."""
+    display = COMPANY_DISPLAY_NAMES.get(company_id, company_id)
+    return f"送信_{display}"
+
 
 def _write_generation_logs(
     company_id: str,
@@ -79,6 +103,132 @@ def _write_generation_logs(
         logger.info(f"Wrote {len(rows)} log entries to '{LOG_SHEET}'")
     except Exception as e:
         logger.warning(f"Failed to write generation logs: {e}")
+
+
+def _age_bucket(age_str: str | None) -> str:
+    """Convert age string like '25歳' to bucket like '20代'."""
+    if not age_str:
+        return ""
+    try:
+        age = int("".join(c for c in age_str if c.isdigit()))
+        if age < 25:
+            return "〜24歳"
+        elif age < 30:
+            return "25-29歳"
+        elif age < 35:
+            return "30-34歳"
+        elif age < 40:
+            return "35-39歳"
+        elif age < 45:
+            return "40-44歳"
+        elif age < 50:
+            return "45-49歳"
+        else:
+            return "50歳〜"
+    except (ValueError, TypeError):
+        return ""
+
+
+def _experience_bucket(exp_str: str | None) -> str:
+    """Convert experience string to bucket."""
+    if not exp_str:
+        return "不明"
+    try:
+        years = int("".join(c for c in exp_str if c.isdigit()))
+        if years == 0:
+            return "未経験"
+        elif years <= 3:
+            return "1-3年"
+        elif years <= 5:
+            return "4-5年"
+        elif years <= 10:
+            return "6-10年"
+        else:
+            return "11年以上"
+    except (ValueError, TypeError):
+        return "不明"
+
+
+def _time_slot(hour: int) -> str:
+    """Categorize hour into time slot."""
+    if hour < 9:
+        return "早朝"
+    elif hour < 12:
+        return "午前"
+    elif hour < 14:
+        return "昼"
+    elif hour < 17:
+        return "午後"
+    else:
+        return "夕方以降"
+
+
+WEEKDAY_NAMES = ["月", "火", "水", "木", "金", "土", "日"]
+
+
+def _write_send_data(
+    company_id: str,
+    profiles: list,
+    results: list[GenerateResponse],
+    config: dict | None = None,
+) -> None:
+    """Write generation results to the per-company send data sheet.
+
+    Only writes successful generations (excludes filtered-out candidates).
+    """
+    try:
+        from db.sheets_writer import sheets_writer
+        sheet_name = _send_data_sheet_name(company_id)
+        sheets_writer.ensure_sheet_exists(sheet_name, SEND_DATA_HEADERS)
+
+        now = datetime.now(JST)
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        weekday = WEEKDAY_NAMES[now.weekday()]
+        time_slot = _time_slot(now.hour)
+
+        # Build template version lookup from config
+        template_versions = {}
+        if config and "templates" in config:
+            for tkey, tdata in config["templates"].items():
+                template_versions[tkey] = tdata.get("version", "1")
+
+        profile_map = {p.member_id: p for p in profiles}
+
+        rows = []
+        for r in results:
+            if r.generation_path == "filtered_out":
+                continue
+            p = profile_map.get(r.member_id)
+            # Resolve template version
+            tver = ""
+            if r.template_type and r.job_category:
+                tver = template_versions.get(f"{r.job_category}:{r.template_type}", "")
+            if not tver and r.template_type:
+                tver = template_versions.get(r.template_type, "")
+            rows.append([
+                now_str,
+                r.member_id,
+                r.template_type or "",
+                tver,  # テンプレートVer
+                r.generation_path or "",
+                r.pattern_type or "",
+                _age_bucket(p.age if p else None),
+                p.qualifications or "" if p else "",
+                _experience_bucket(p.experience_years if p else None),
+                p.desired_employment_type or "" if p else "",
+                p.employment_status or "" if p else "",
+                p.area or p.desired_area or "" if p else "",  # 地域
+                weekday,
+                time_slot,
+                "",  # 返信
+                "",  # 返信日
+                "",  # 返信カテゴリ
+            ])
+        if rows:
+            sheets_writer.append_rows(sheet_name, rows)
+            logger.info(f"Wrote {len(rows)} rows to '{sheet_name}'")
+    except Exception as e:
+        logger.warning(f"Failed to write send data: {e}")
 
 
 def _resolve_job_offer_id(
@@ -337,13 +487,24 @@ async def generate_single(
         except Exception as e:
             logger.warning(f"Failed to record cost: {e}")
 
-    # Write log
-    await asyncio.get_event_loop().run_in_executor(
-        None,
-        _write_generation_logs,
-        request.company_id,
-        [response],
-        {response.member_id: token_usage} if token_usage else {},
+    # Write logs
+    loop = asyncio.get_event_loop()
+    await asyncio.gather(
+        loop.run_in_executor(
+            None,
+            _write_generation_logs,
+            request.company_id,
+            [response],
+            {response.member_id: token_usage} if token_usage else {},
+        ),
+        loop.run_in_executor(
+            None,
+            _write_send_data,
+            request.company_id,
+            [request.profile],
+            [response],
+            config,
+        ),
     )
 
     return response
@@ -412,13 +573,24 @@ async def generate_batch(
         "filtered_out": sum(1 for r in results if r.generation_path == "filtered_out"),
     }
 
-    # Write generation logs to Sheets (must await before response on Cloud Run)
-    await asyncio.get_event_loop().run_in_executor(
-        None,
-        _write_generation_logs,
-        request.company_id,
-        list(results),
-        all_token_usage,
+    # Write logs to Sheets (must await before response on Cloud Run)
+    loop = asyncio.get_event_loop()
+    await asyncio.gather(
+        loop.run_in_executor(
+            None,
+            _write_generation_logs,
+            request.company_id,
+            list(results),
+            all_token_usage,
+        ),
+        loop.run_in_executor(
+            None,
+            _write_send_data,
+            request.company_id,
+            list(request.profiles),
+            list(results),
+            config,
+        ),
     )
 
     return BatchGenerateResponse(results=list(results), summary=summary)

@@ -1485,6 +1485,276 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 
 /* Placeholder highlight in pattern text */
 .ph { background: var(--c-accent-light); border-radius: 3px; padding: 1px 4px; color: #92400e; font-weight: 600; font-size: 0.95em; }
+
+/* Analysis View */
+.analysis-container {
+  max-width: 1440px; margin: 0 auto; padding: 20px 24px 80px;
+}
+.analysis-toolbar {
+  display: flex; gap: 12px; align-items: center;
+  background: var(--c-surface); border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg); padding: 14px 20px; margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+.analysis-toolbar select {
+  flex: 1; padding: 9px 14px; border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font-sans);
+  background: var(--c-surface); color: var(--c-text);
+  transition: border-color var(--transition);
+}
+.analysis-toolbar select:focus { border-color: var(--c-primary); outline: none; box-shadow: var(--shadow-glow); }
+.analysis-panels {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;
+}
+.analysis-panel {
+  background: var(--c-surface); border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg); display: flex; flex-direction: column;
+  overflow: hidden; box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition);
+}
+.analysis-panel:hover { box-shadow: var(--shadow-md); }
+.analysis-panel-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--c-border);
+  background: linear-gradient(135deg, var(--c-surface-alt) 0%, var(--c-surface) 100%);
+}
+.analysis-panel-header h3 {
+  font-size: 14px; font-weight: 700; margin: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.analysis-panel-header h3::before {
+  content: ''; width: 3px; height: 16px; border-radius: 2px;
+  background: var(--c-primary); display: inline-block;
+}
+
+/* Template Editor */
+.template-editor {
+  flex: 1; padding: 20px 24px; font-size: 13.5px; line-height: 2;
+  white-space: pre-wrap; outline: none; overflow-y: auto;
+  color: var(--c-text); letter-spacing: 0.01em;
+  background: repeating-linear-gradient(
+    transparent, transparent 1.95em,
+    rgba(0,0,0,0.018) 1.95em, rgba(0,0,0,0.018) 2em
+  );
+}
+.template-editor:focus {
+  box-shadow: inset 0 0 0 2px var(--c-primary-bg);
+}
+.template-editor:empty::before {
+  content: 'テンプレートを選択してください...';
+  color: var(--c-text-muted); font-style: italic;
+}
+
+/* Annotation Toolbar (floating) */
+.ann-toolbar {
+  position: absolute; z-index: 50;
+  background: var(--c-text); border-radius: var(--radius-md);
+  padding: 5px 8px; display: flex; gap: 3px;
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0,0,0,0.1);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.ann-toolbar.hidden { opacity: 0; pointer-events: none; transform: translateY(4px); }
+.ann-btn {
+  background: transparent; color: rgba(255,255,255,0.9); border: none;
+  padding: 7px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  font-size: 12px; font-weight: 500; white-space: nowrap;
+  transition: all 0.1s ease;
+}
+.ann-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
+
+/* Annotation marks */
+.ann-strike {
+  text-decoration: line-through; text-decoration-thickness: 2px;
+  text-decoration-color: var(--c-danger); color: var(--c-danger);
+  background: var(--c-danger-bg); padding: 1px 4px; border-radius: 3px;
+  opacity: 0.7;
+}
+.ann-comment {
+  background: var(--c-accent-light); border-bottom: 2px solid var(--c-accent);
+  padding: 1px 4px; cursor: help; position: relative; border-radius: 2px;
+}
+.ann-comment:hover::after {
+  content: '💬 ' attr(data-comment);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--c-text); color: white; padding: 8px 14px;
+  border-radius: var(--radius-md); font-size: 12px; line-height: 1.5;
+  white-space: nowrap; z-index: 100; box-shadow: var(--shadow-lg);
+  animation: tooltipIn 0.15s ease;
+}
+@keyframes tooltipIn { from { opacity: 0; transform: translateX(-50%) translateY(4px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.ann-addition {
+  color: var(--c-success); background: var(--c-success-bg); font-weight: 600;
+  padding: 1px 4px; border-radius: 3px;
+  border-left: 2px solid var(--c-success);
+}
+
+/* Analysis Results */
+.analysis-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px;
+}
+.stat-card {
+  text-align: center; padding: 20px 16px;
+  background: var(--c-surface-alt); border-radius: var(--radius-md);
+  border: 1px solid var(--c-border-light);
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.stat-card .stat-icon { font-size: 20px; margin-bottom: 6px; }
+.stat-card .stat-value {
+  font-size: 30px; font-weight: 800; color: var(--c-primary);
+  letter-spacing: -0.02em; line-height: 1.2;
+}
+.stat-card .stat-label {
+  font-size: 11px; font-weight: 600; color: var(--c-text-muted);
+  margin-top: 6px; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.stat-card:nth-child(2) .stat-value { color: var(--c-success); }
+.stat-card:nth-child(3) .stat-value { color: #8b5cf6; }
+
+/* Cross-tab tables */
+.analysis-crosstab {
+  margin-bottom: 20px; background: var(--c-surface-alt);
+  border-radius: var(--radius-md); overflow: hidden;
+  border: 1px solid var(--c-border-light);
+}
+.analysis-crosstab h4 {
+  font-size: 12px; font-weight: 700; padding: 10px 14px 8px;
+  color: var(--c-text-secondary); text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--c-border-light); margin: 0;
+}
+.analysis-crosstab table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.analysis-crosstab th {
+  text-align: left; padding: 8px 14px; background: transparent;
+  font-weight: 600; font-size: 11px; color: var(--c-text-muted);
+  border-bottom: 1px solid var(--c-border-light);
+}
+.analysis-crosstab td {
+  padding: 8px 14px; border-bottom: 1px solid rgba(0,0,0,0.03);
+  background: var(--c-surface);
+}
+.analysis-crosstab tr:last-child td { border-bottom: none; }
+.analysis-crosstab tr:hover td { background: var(--c-primary-bg); }
+
+/* Rate bar in cross-tab */
+.rate-cell {
+  display: flex; align-items: center; gap: 8px;
+}
+.rate-bar {
+  flex: 1; height: 4px; background: var(--c-border-light); border-radius: 2px;
+  overflow: hidden; max-width: 60px;
+}
+.rate-bar-fill {
+  height: 100%; background: var(--c-primary); border-radius: 2px;
+  transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Gemini analysis markdown */
+.analysis-md {
+  padding: 4px 0;
+}
+.analysis-md h2 {
+  font-size: 15px; font-weight: 800; margin: 24px 0 10px; color: var(--c-text);
+  padding-bottom: 8px; border-bottom: 2px solid var(--c-primary-light);
+}
+.analysis-md h2:first-child { margin-top: 8px; }
+.analysis-md h3 {
+  font-size: 13px; font-weight: 700; margin: 18px 0 8px;
+  color: var(--c-primary-dark); display: flex; align-items: center; gap: 6px;
+}
+.analysis-md ul { padding-left: 0; margin: 8px 0; list-style: none; }
+.analysis-md li {
+  margin: 6px 0; font-size: 13px; line-height: 1.7; padding: 6px 12px;
+  background: var(--c-surface-alt); border-radius: var(--radius-sm);
+  border-left: 3px solid var(--c-primary-light);
+}
+.analysis-md p { font-size: 13px; line-height: 1.7; margin: 8px 0; color: var(--c-text-secondary); }
+.analysis-md strong { font-weight: 700; color: var(--c-text); }
+
+.analysis-empty {
+  text-align: center; padding: 80px 24px; color: var(--c-text-muted);
+  font-size: 13px; line-height: 1.6;
+}
+.analysis-empty::before {
+  content: '📊'; display: block; font-size: 36px; margin-bottom: 12px; opacity: 0.4;
+}
+.analysis-loading {
+  text-align: center; padding: 60px 20px; color: var(--c-text-muted);
+}
+.analysis-period {
+  font-size: 12px; color: var(--c-text-muted); margin-bottom: 20px;
+  padding: 8px 14px; background: var(--c-surface-alt); border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Diff View */
+.diff-view {
+  flex: 1; padding: 20px 24px; font-size: 13.5px; line-height: 2;
+  white-space: pre-wrap; overflow-y: auto;
+  background: repeating-linear-gradient(transparent, transparent 1.95em, rgba(0,0,0,0.018) 1.95em, rgba(0,0,0,0.018) 2em);
+}
+.diff-line { padding: 1px 0; }
+.diff-del {
+  background: #fecaca; color: #991b1b; text-decoration: line-through;
+  text-decoration-thickness: 2px; padding: 1px 4px; border-radius: 3px;
+}
+.diff-add {
+  background: #bbf7d0; color: #166534; padding: 1px 4px; border-radius: 3px;
+  font-weight: 500;
+}
+.diff-reason {
+  cursor: help; position: relative;
+}
+.diff-reason:hover::after {
+  content: '💡 ' attr(data-reason);
+  position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  background: var(--c-text); color: white; padding: 8px 14px;
+  border-radius: var(--radius-md); font-size: 12px; line-height: 1.5;
+  white-space: nowrap; z-index: 100; box-shadow: var(--shadow-lg);
+  max-width: 350px; white-space: normal;
+  animation: tooltipIn 0.15s ease;
+}
+.diff-summary {
+  margin-top: 20px; padding: 16px; background: var(--c-surface-alt);
+  border-radius: var(--radius-md); border: 1px solid var(--c-border-light);
+}
+.diff-summary h4 {
+  font-size: 13px; font-weight: 700; margin-bottom: 10px;
+  color: var(--c-text-secondary);
+}
+.diff-summary-item {
+  font-size: 12px; line-height: 1.6; padding: 4px 0;
+  color: var(--c-text-secondary); border-bottom: 1px solid var(--c-border-light);
+}
+.diff-summary-item:last-child { border-bottom: none; }
+.diff-actions {
+  display: flex; gap: 10px; padding: 14px 20px;
+  border-top: 1px solid var(--c-border); background: var(--c-surface-alt);
+}
+/* Diff hunk (per-change block) */
+.diff-hunk {
+  border: 2px solid var(--c-border); border-radius: var(--radius-md);
+  margin: 8px 0; overflow: hidden; transition: border-color var(--transition);
+}
+.diff-hunk.accepted { border-color: var(--c-success); }
+.diff-hunk.rejected { border-color: var(--c-danger); opacity: 0.5; }
+.diff-hunk-body { padding: 8px 12px; }
+.diff-hunk-bar {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+  background: var(--c-surface-alt); border-top: 1px solid var(--c-border-light);
+  font-size: 12px;
+}
+.diff-hunk-bar .reason { flex: 1; color: var(--c-text-secondary); }
+.diff-hunk-btn {
+  border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer;
+  font-size: 11px; font-weight: 600; transition: all 0.1s;
+}
+.diff-hunk-btn.accept { background: var(--c-success-bg); color: var(--c-success); }
+.diff-hunk-btn.accept:hover { background: var(--c-success); color: white; }
+.diff-hunk-btn.reject { background: var(--c-danger-bg); color: var(--c-danger); }
+.diff-hunk-btn.reject:hover { background: var(--c-danger); color: white; }
+.diff-hunk-btn.active { color: white; }
+.diff-hunk-btn.accept.active { background: var(--c-success); }
+.diff-hunk-btn.reject.active { background: var(--c-danger); }
 </style>
 </head>
 <body>
@@ -1549,6 +1819,7 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
     <button id="viewFlowBtn" class="active" onclick="setViewMode('flow')">フロー</button>
     <button id="viewTableBtn" onclick="setViewMode('table')">テーブル</button>
     <button id="viewHelpBtn" onclick="setViewMode('help')">ヘルプ</button>
+    <button id="viewAnalysisBtn" onclick="setViewMode('analysis')">分析</button>
   </div>
   <div class="header-right">
     <button class="btn btn-secondary" onclick="reloadCache()">キャッシュ更新</button>
@@ -1578,6 +1849,54 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 
 <!-- Help View -->
 <div id="helpView" style="display:none"></div>
+
+<!-- Analysis View -->
+<div id="analysisView" style="display:none">
+  <div class="analysis-container">
+    <div class="analysis-toolbar">
+      <select id="analysisTemplateSelect"></select>
+      <button class="btn btn-primary btn-sm" onclick="applyAnnotations()">&#x2714; 提案を適用</button>
+      <button class="btn btn-secondary btn-sm" onclick="resetAnnotations()">&#x21BA; リセット</button>
+      <span style="flex:1"></span>
+      <a id="linkSendData" href="#" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;" title="送信データ・生成ログ">📋 送信データ</a>
+      <a id="linkDashboard" href="#" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;" title="ダッシュボード・スカウト管理">📊 ダッシュボード</a>
+    </div>
+    <div class="analysis-panels">
+      <div class="analysis-panel" style="position:relative;">
+        <div class="analysis-panel-header">
+          <h3>テンプレート編集</h3>
+          <span style="font-size:11px;color:var(--c-text-muted);font-weight:500;">テキスト選択 → ツール表示</span>
+        </div>
+        <div class="ann-toolbar hidden" id="annToolbar">
+          <button class="ann-btn" onclick="applyStrikethrough()" title="取り消し線">&#x2715; 削除</button>
+          <button class="ann-btn" onclick="applyComment()" title="コメント追加">&#x1F4AC; メモ</button>
+          <button class="ann-btn" onclick="applyAddition()" title="テキスト追記">&#xFF0B; 追記</button>
+        </div>
+        <div class="template-editor" id="templateEditor" contenteditable="true"></div>
+        <div id="diffView" class="diff-view" style="display:none;"></div>
+        <div id="diffActions" class="diff-actions" style="display:none;">
+          <button class="btn btn-primary btn-sm" onclick="applyImprovement()">&#x2705; 選択を適用</button>
+          <button class="btn btn-secondary btn-sm" onclick="switchDiffViewMode()">&#x21C4; 表示切替</button>
+          <button class="btn btn-secondary btn-sm" onclick="exitDiffMode()">&#x21A9; 戻す</button>
+        </div>
+      </div>
+      <div class="analysis-panel">
+        <div class="analysis-panel-header">
+          <h3>サイクル分析</h3>
+          <label style="font-size:11px;color:var(--c-text-muted);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="crossCompanyCheck" style="accent-color:var(--c-primary);"> 全社横断</label>
+          <button class="btn btn-primary btn-sm" onclick="runAnalysis()">&#x25B6; 分析を実行</button>
+        </div>
+        <div id="analysisResults" style="flex:1;padding:20px;overflow-y:auto;">
+          <div class="analysis-empty">「分析を実行」を押すと送信データのクロス集計とAI分析が表示されます</div>
+        </div>
+        <div id="improveInputArea" style="display:none;padding:12px 20px;border-top:1px solid var(--c-border);background:var(--c-surface-alt);">
+          <textarea id="improveDirective" rows="2" placeholder="改善の方向性を入力（例: 冒頭を短くしたい、30代に響く表現にして、CTAを柔らかく）" style="width:100%;padding:8px 12px;border:1px solid var(--c-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-sans);resize:vertical;margin-bottom:8px;"></textarea>
+          <button class="btn btn-primary btn-sm" id="btnImproveTemplate" onclick="generateImprovement()">&#x2728; 改善案を生成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Edit Modal -->
 <div class="modal-overlay" id="modalOverlay">
@@ -1723,6 +2042,11 @@ const TABS = [
 let viewMode = 'flow';
 let flowConfig = null; // company config for flow view
 
+// ===== Analysis View =====
+let analysisTemplates = [];
+let analysisOriginalBody = '';
+let analysisCurrentRowIndex = null;
+
 const FLOW_STEPS = [
   { id: 'profile',   num: '1', title: 'プロフィール受信',  color: '#64748b', editable: false },
   { id: 'job_cat',   num: '2', title: '職種カテゴリ判定',  color: '#8b5cf6', editable: false },
@@ -1752,14 +2076,18 @@ function setViewMode(mode) {
   document.getElementById('viewFlowBtn').classList.toggle('active', mode === 'flow');
   document.getElementById('viewTableBtn').classList.toggle('active', mode === 'table');
   document.getElementById('viewHelpBtn').classList.toggle('active', mode === 'help');
+  document.getElementById('viewAnalysisBtn').classList.toggle('active', mode === 'analysis');
   document.getElementById('tabs').style.display = mode === 'table' ? 'flex' : 'none';
   document.getElementById('content').style.display = mode === 'table' ? 'block' : 'none';
   document.getElementById('flowView').style.display = mode === 'flow' ? 'block' : 'none';
   document.getElementById('helpView').style.display = mode === 'help' ? 'block' : 'none';
+  document.getElementById('analysisView').style.display = mode === 'analysis' ? 'block' : 'none';
   if (mode === 'flow') {
     loadFlowView();
   } else if (mode === 'help') {
     renderHelpView();
+  } else if (mode === 'analysis') {
+    loadAnalysisView();
   } else {
     loadData();
   }
@@ -3850,9 +4178,679 @@ function helpSection(id, title, content, openDefault) {
   </div>`;
 }
 
+// ===== Analysis View Functions =====
+
+async function loadAnalysisView() {
+  const company = document.getElementById('companySelect').value;
+  if (!company) return;
+
+  // Load spreadsheet links
+  try {
+    const info = await api('GET', '/api/v1/admin/server_info');
+    const linkSend = document.getElementById('linkSendData');
+    const linkDash = document.getElementById('linkDashboard');
+    if (info.spreadsheet_url && linkSend) linkSend.href = info.spreadsheet_url;
+    if (info.dashboard_url && linkDash) linkDash.href = info.dashboard_url;
+  } catch (e) { /* ignore */ }
+
+  try {
+    const data = await api('GET', `/api/v1/admin/templates?company=${company}`);
+    const rows = data.rows || data || [];
+    analysisTemplates = rows.filter(r => r.company === company);
+    const sel = document.getElementById('analysisTemplateSelect');
+    sel.innerHTML = analysisTemplates.map((t, i) =>
+      `<option value="${i}">${t.job_category ? t.job_category + ' / ' : ''}${t.type}</option>`
+    ).join('');
+    if (analysisTemplates.length > 0) {
+      loadTemplateIntoEditor(0);
+    } else {
+      document.getElementById('templateEditor').innerHTML = '<span style="color:var(--c-text-muted)">テンプレートがありません</span>';
+    }
+    sel.onchange = () => loadTemplateIntoEditor(parseInt(sel.value));
+  } catch (e) {
+    document.getElementById('templateEditor').innerHTML = `<span style="color:var(--c-danger)">読み込みエラー: ${e.message}</span>`;
+  }
+}
+
+function loadTemplateIntoEditor(index) {
+  const t = analysisTemplates[index];
+  if (diffMode) exitDiffMode();
+  if (!t) return;
+  analysisOriginalBody = t.body || '';
+  analysisCurrentRowIndex = t._row_index;
+  const editor = document.getElementById('templateEditor');
+  const escaped = analysisOriginalBody
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\\n/g, '\n')
+    .replace(/\n/g, '<br>');
+  editor.innerHTML = escaped;
+}
+
+function initAnnotationToolbar() {
+  const editor = document.getElementById('templateEditor');
+  const toolbar = document.getElementById('annToolbar');
+  if (!editor || !toolbar) return;
+
+  editor.addEventListener('mouseup', () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !editor.contains(sel.anchorNode)) {
+      toolbar.classList.add('hidden');
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const editorRect = editor.closest('.analysis-panel').getBoundingClientRect();
+    toolbar.style.top = (rect.top - editorRect.top - 40) + 'px';
+    toolbar.style.left = (rect.left - editorRect.left + rect.width / 2 - toolbar.offsetWidth / 2) + 'px';
+    toolbar.classList.remove('hidden');
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!toolbar.contains(e.target)) {
+      toolbar.classList.add('hidden');
+    }
+  });
+}
+
+function wrapSelection(className, attrs) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  const span = document.createElement('span');
+  span.className = className;
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      span.setAttribute(k, v);
+    }
+  }
+  try {
+    range.surroundContents(span);
+  } catch (e) {
+    const fragment = range.extractContents();
+    span.appendChild(fragment);
+    range.insertNode(span);
+  }
+  sel.removeAllRanges();
+  document.getElementById('annToolbar').classList.add('hidden');
+}
+
+function applyStrikethrough() {
+  wrapSelection('ann-strike');
+}
+
+function applyComment() {
+  const comment = prompt('コメントを入力:');
+  if (!comment) return;
+  wrapSelection('ann-comment', { 'data-comment': comment });
+}
+
+function applyAddition() {
+  const text = prompt('追加するテキスト:');
+  if (!text) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  range.collapse(false);
+  const span = document.createElement('span');
+  span.className = 'ann-addition';
+  span.textContent = text;
+  range.insertNode(span);
+  sel.removeAllRanges();
+  document.getElementById('annToolbar').classList.add('hidden');
+}
+
+function extractFinalText(node) {
+  let text = '';
+  for (const child of node.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      text += child.textContent;
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      if (child.classList.contains('ann-strike')) {
+        continue;
+      } else if (child.tagName === 'BR') {
+        text += '\\n';
+      } else {
+        text += extractFinalText(child);
+      }
+    }
+  }
+  return text;
+}
+
+async function applyAnnotations() {
+  if (analysisCurrentRowIndex === null) return;
+  const editor = document.getElementById('templateEditor');
+  const clone = editor.cloneNode(true);
+  const finalBody = extractFinalText(clone);
+
+  if (finalBody === analysisOriginalBody) {
+    toast('変更がありません');
+    return;
+  }
+
+  if (!confirm('テンプレートの変更を保存しますか？\n\n取り消し線の箇所は削除、追記は反映されます。')) return;
+
+  try {
+    const t = analysisTemplates.find(t => t._row_index === analysisCurrentRowIndex);
+    if (!t) throw new Error('テンプレートが見つかりません');
+    const updated = { ...t, body: finalBody };
+    delete updated._row_index;
+    await api('PUT', `/api/v1/admin/templates/${analysisCurrentRowIndex}`, updated);
+    analysisOriginalBody = finalBody;
+    const escaped = finalBody
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\\n/g, '\n')
+      .replace(/\n/g, '<br>');
+    editor.innerHTML = escaped;
+    toast('テンプレートを更新しました');
+  } catch (e) {
+    toast('保存エラー: ' + e.message, true);
+  }
+}
+
+function resetAnnotations() {
+  const editor = document.getElementById('templateEditor');
+  const escaped = analysisOriginalBody
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\\n/g, '\n')
+    .replace(/\n/g, '<br>');
+  editor.innerHTML = escaped;
+  toast('リセットしました');
+}
+
+function simpleMarkdown(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('### ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h3>${escHtml(trimmed.slice(4))}</h3>`;
+    } else if (trimmed.startsWith('## ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += `<h2>${escHtml(trimmed.slice(3))}</h2>`;
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      const content = trimmed.slice(2).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      html += `<li>${content}</li>`;
+    } else if (trimmed === '') {
+      if (inList) { html += '</ul>'; inList = false; }
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      const content = trimmed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      html += `<p>${content}</p>`;
+    }
+  }
+  if (inList) html += '</ul>';
+  return html;
+}
+
+// ===== Template Improvement (Diff View) =====
+let diffImprovedBody = null;
+let diffOriginalBody = null;
+let diffChanges = [];
+let diffRowIndex = null;
+let diffMode = false;
+
+// LCS on arrays of strings (lines or words)
+function lcsTable(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({length: m + 1}, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+    }
+  }
+  // Backtrack
+  const result = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (a[i-1] === b[j-1]) {
+      result.unshift({oldIdx: i-1, newIdx: j-1});
+      i--; j--;
+    } else if (dp[i-1][j] >= dp[i][j-1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return result;
+}
+
+function computeLineDiff(oldText, newText) {
+  const oldLines = oldText.split('\n');
+  const newLines = newText.split('\n');
+  const matches = lcsTable(oldLines, newLines);
+
+  const entries = [];
+  let oi = 0, ni = 0, mi = 0;
+
+  while (oi < oldLines.length || ni < newLines.length) {
+    if (mi < matches.length) {
+      const m = matches[mi];
+      // Deletions before this match
+      while (oi < m.oldIdx) {
+        entries.push({type: 'delete', text: oldLines[oi]});
+        oi++;
+      }
+      // Insertions before this match
+      while (ni < m.newIdx) {
+        entries.push({type: 'insert', text: newLines[ni]});
+        ni++;
+      }
+      // Equal
+      entries.push({type: 'equal', text: oldLines[oi]});
+      oi++; ni++; mi++;
+    } else {
+      // Remaining
+      while (oi < oldLines.length) {
+        entries.push({type: 'delete', text: oldLines[oi]});
+        oi++;
+      }
+      while (ni < newLines.length) {
+        entries.push({type: 'insert', text: newLines[ni]});
+        ni++;
+      }
+    }
+  }
+
+  // Merge adjacent delete+insert into modify if similar
+  const merged = [];
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].type === 'delete' && i + 1 < entries.length && entries[i+1].type === 'insert') {
+      merged.push({type: 'modify', oldText: entries[i].text, newText: entries[i+1].text});
+      i++;
+    } else {
+      merged.push(entries[i]);
+    }
+  }
+  return merged;
+}
+
+function computeWordDiff(oldLine, newLine) {
+  const splitWords = s => s.split(/([\s、。！？「」（）\n]+)/);
+  const oldWords = splitWords(oldLine).filter(w => w);
+  const newWords = splitWords(newLine).filter(w => w);
+  const matches = lcsTable(oldWords, newWords);
+
+  const segments = [];
+  let oi = 0, ni = 0, mi = 0;
+
+  while (oi < oldWords.length || ni < newWords.length) {
+    if (mi < matches.length) {
+      const m = matches[mi];
+      while (oi < m.oldIdx) { segments.push({type: 'delete', text: oldWords[oi]}); oi++; }
+      while (ni < m.newIdx) { segments.push({type: 'insert', text: newWords[ni]}); ni++; }
+      segments.push({type: 'equal', text: oldWords[oi]});
+      oi++; ni++; mi++;
+    } else {
+      while (oi < oldWords.length) { segments.push({type: 'delete', text: oldWords[oi]}); oi++; }
+      while (ni < newWords.length) { segments.push({type: 'insert', text: newWords[ni]}); ni++; }
+    }
+  }
+  return segments;
+}
+
+// Diff hunks state: [{id, oldLines, newLines, reason, accepted}]
+let diffHunks = [];
+let diffViewStyle = 'auto'; // 'auto' | 'diff' | 'sidebyside'
+
+function renderDiffView(original, improved, changes) {
+  const norm = s => s.replace(/\\n/g, '\n');
+  const normOrig = norm(original);
+  const normImpr = norm(improved);
+  const entries = computeLineDiff(normOrig, normImpr);
+
+  // Decide view mode: auto-detect or user override
+  const changedLines = entries.filter(e => e.type !== 'equal').length;
+  const totalLines = entries.length;
+  const changeRatio = totalLines > 0 ? changedLines / totalLines : 0;
+
+  const useSideBySide = diffViewStyle === 'sidebyside' || (diffViewStyle === 'auto' && changeRatio > 0.4);
+  if (useSideBySide) {
+    renderBeforeAfterView(normOrig, normImpr, changes);
+    return;
+  }
+
+  // Group entries into hunks (consecutive changes = 1 hunk)
+  diffHunks = [];
+  let hunkId = 0;
+  let html = '';
+
+  let i = 0;
+  while (i < entries.length) {
+    if (entries[i].type === 'equal') {
+      html += `<div class="diff-line">${escHtml(entries[i].text)}</div>`;
+      i++;
+    } else {
+      // Collect consecutive non-equal entries into a hunk
+      const hunkEntries = [];
+      while (i < entries.length && entries[i].type !== 'equal') {
+        hunkEntries.push(entries[i]);
+        i++;
+      }
+
+      const oldLines = [];
+      const newLines = [];
+      for (const e of hunkEntries) {
+        if (e.type === 'delete') oldLines.push(e.text);
+        else if (e.type === 'insert') newLines.push(e.text);
+        else if (e.type === 'modify') { oldLines.push(e.oldText); newLines.push(e.newText); }
+      }
+
+      // Find matching reason
+      const allNewText = newLines.join(' ');
+      const reason = findReasonForText(allNewText, changes) || '';
+
+      const hunk = { id: hunkId, oldLines, newLines, reason, accepted: true };
+      diffHunks.push(hunk);
+
+      // Render hunk
+      let hunkBody = '';
+      for (const e of hunkEntries) {
+        if (e.type === 'delete') {
+          hunkBody += `<div class="diff-line"><span class="diff-del">${escHtml(e.text)}</span></div>`;
+        } else if (e.type === 'insert') {
+          hunkBody += `<div class="diff-line"><span class="diff-add">${escHtml(e.text)}</span></div>`;
+        } else if (e.type === 'modify') {
+          const wordDiff = computeWordDiff(e.oldText, e.newText);
+          let lineHtml = '';
+          for (const seg of wordDiff) {
+            if (seg.type === 'equal') lineHtml += escHtml(seg.text);
+            else if (seg.type === 'delete') lineHtml += `<span class="diff-del">${escHtml(seg.text)}</span>`;
+            else lineHtml += `<span class="diff-add">${escHtml(seg.text)}</span>`;
+          }
+          hunkBody += `<div class="diff-line">${lineHtml}</div>`;
+        }
+      }
+
+      html += `<div class="diff-hunk accepted" id="hunk-${hunkId}">
+        <div class="diff-hunk-body">${hunkBody}</div>
+        <div class="diff-hunk-bar">
+          <span class="reason">${reason ? '💡 ' + escHtml(reason) : ''}</span>
+          <button class="diff-hunk-btn accept active" onclick="toggleHunk(${hunkId}, true)">✓ 採用</button>
+          <button class="diff-hunk-btn reject" onclick="toggleHunk(${hunkId}, false)">✗ 却下</button>
+        </div>
+      </div>`;
+
+      hunkId++;
+    }
+  }
+
+  const acceptedCount = diffHunks.filter(h => h.accepted).length;
+  html += `<div class="diff-summary" id="diffSummary"><h4>💡 ${diffHunks.length}件の変更 — <span id="acceptedCount">${acceptedCount}</span>件を採用</h4></div>`;
+
+  document.getElementById('diffView').innerHTML = html;
+}
+
+function renderBeforeAfterView(original, improved, changes) {
+  diffHunks = []; // No per-hunk control in this mode
+  let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--c-danger);margin-bottom:8px;">Before（現在）</div>
+      <div style="padding:12px;background:var(--c-danger-bg);border-radius:var(--radius-sm);font-size:13px;line-height:1.8;white-space:pre-wrap;">${escHtml(original)}</div>
+    </div>
+    <div>
+      <div style="font-size:12px;font-weight:700;color:var(--c-success);margin-bottom:8px;">After（改善案）</div>
+      <div style="padding:12px;background:var(--c-success-bg);border-radius:var(--radius-sm);font-size:13px;line-height:1.8;white-space:pre-wrap;">${escHtml(improved)}</div>
+    </div>
+  </div>`;
+
+  if (changes.length > 0) {
+    html += `<div class="diff-summary"><h4>💡 変更理由一覧（${changes.length}件）</h4>`;
+    for (const c of changes) {
+      html += `<div class="diff-summary-item">・${escHtml(c.reason)}</div>`;
+    }
+    html += '</div>';
+  }
+
+  document.getElementById('diffView').innerHTML = html;
+}
+
+function toggleHunk(hunkId, accept) {
+  const hunk = diffHunks.find(h => h.id === hunkId);
+  if (!hunk) return;
+  hunk.accepted = accept;
+
+  const el = document.getElementById(`hunk-${hunkId}`);
+  el.className = `diff-hunk ${accept ? 'accepted' : 'rejected'}`;
+  el.querySelector('.diff-hunk-btn.accept').classList.toggle('active', accept);
+  el.querySelector('.diff-hunk-btn.reject').classList.toggle('active', !accept);
+
+  const count = diffHunks.filter(h => h.accepted).length;
+  const countEl = document.getElementById('acceptedCount');
+  if (countEl) countEl.textContent = count;
+}
+
+function findReasonForText(text, changes) {
+  for (const c of changes) {
+    if (c.context && text.includes(c.context.slice(-15))) return c.reason;
+  }
+  return null;
+}
+
+function switchDiffViewMode() {
+  if (!diffOriginalBody || !diffImprovedBody) return;
+  // Cycle: auto → diff → sidebyside → auto
+  if (diffViewStyle === 'auto' || diffViewStyle === 'sidebyside') {
+    diffViewStyle = 'diff';
+    toast('差分表示モード');
+  } else {
+    diffViewStyle = 'sidebyside';
+    toast('Before/After表示モード');
+  }
+  renderDiffView(diffOriginalBody, diffImprovedBody, diffChanges);
+}
+
+function enterDiffMode() {
+  document.getElementById('templateEditor').style.display = 'none';
+  document.getElementById('diffView').style.display = '';
+  document.getElementById('diffActions').style.display = '';
+  document.getElementById('annToolbar').classList.add('hidden');
+  // Update header
+  const h = document.querySelector('#analysisView .analysis-panel:first-child .analysis-panel-header h3');
+  if (h) h.textContent = 'テンプレート改善案（差分表示）';
+  diffMode = true;
+}
+
+function exitDiffMode() {
+  document.getElementById('templateEditor').style.display = '';
+  document.getElementById('diffView').style.display = 'none';
+  document.getElementById('diffActions').style.display = 'none';
+  const h = document.querySelector('#analysisView .analysis-panel:first-child .analysis-panel-header h3');
+  if (h) h.textContent = 'テンプレート編集';
+  diffMode = false;
+  diffImprovedBody = null;
+  diffChanges = [];
+}
+
+async function generateImprovement() {
+  if (analysisCurrentRowIndex === null) return;
+  const company = document.getElementById('companySelect').value;
+  const t = analysisTemplates.find(t => t._row_index === analysisCurrentRowIndex);
+  if (!t) return;
+
+  // Show loading in left panel
+  const editor = document.getElementById('templateEditor');
+  const savedHTML = editor.innerHTML;
+  editor.innerHTML = '<div class="analysis-loading"><div class="spinner"></div> AIが改善テンプレートを生成中...</div>';
+
+  try {
+    const directive = (document.getElementById('improveDirective')?.value || '').trim();
+    const data = await api('POST', '/api/v1/admin/improve_template', {
+      company,
+      template_type: t.type,
+      job_category: t.job_category || '',
+      directive,
+      analysis_summary: lastAnalysisSummary || '',
+    });
+
+    if (data.status === 'error') {
+      editor.innerHTML = savedHTML;
+      toast(data.detail, true);
+      return;
+    }
+
+    diffOriginalBody = data.original;
+    diffImprovedBody = data.improved;
+    diffChanges = data.changes || [];
+    diffRowIndex = data.row_index;
+
+    renderDiffView(data.original, data.improved, data.changes || []);
+    enterDiffMode();
+  } catch (e) {
+    editor.innerHTML = savedHTML;
+    toast('改善案生成エラー: ' + e.message, true);
+  }
+}
+
+async function applyImprovement() {
+  if (!diffOriginalBody || diffRowIndex === null) return;
+
+  // If hunk mode, build merged body from accepted/rejected hunks
+  let finalBody;
+  if (diffHunks.length > 0) {
+    const norm = s => s.replace(/\\n/g, '\n');
+    const entries = computeLineDiff(norm(diffOriginalBody), norm(diffImprovedBody));
+
+    // Walk entries and apply/reject based on hunk decisions
+    let hunkIdx = 0;
+    const resultLines = [];
+    let i = 0;
+    while (i < entries.length) {
+      if (entries[i].type === 'equal') {
+        resultLines.push(entries[i].text);
+        i++;
+      } else {
+        // Collect hunk entries
+        const hunkEntries = [];
+        while (i < entries.length && entries[i].type !== 'equal') {
+          hunkEntries.push(entries[i]);
+          i++;
+        }
+        const hunk = diffHunks[hunkIdx];
+        hunkIdx++;
+
+        if (hunk && hunk.accepted) {
+          // Use new version
+          for (const e of hunkEntries) {
+            if (e.type === 'insert') resultLines.push(e.text);
+            else if (e.type === 'modify') resultLines.push(e.newText);
+            // delete entries are omitted (replaced by insert/modify)
+          }
+        } else {
+          // Keep original version
+          for (const e of hunkEntries) {
+            if (e.type === 'delete') resultLines.push(e.text);
+            else if (e.type === 'modify') resultLines.push(e.oldText);
+            // insert entries are omitted (rejected)
+          }
+        }
+      }
+    }
+    finalBody = resultLines.join('\n');
+  } else {
+    // Before/After mode: all or nothing
+    finalBody = diffImprovedBody.replace(/\\n/g, '\n');
+  }
+
+  const acceptedCount = diffHunks.filter(h => h.accepted).length;
+  const totalCount = diffHunks.length;
+  const msg = totalCount > 0
+    ? `${totalCount}件中${acceptedCount}件の変更を適用しますか？`
+    : '改善案を適用しますか？';
+  if (!confirm(msg)) return;
+
+  try {
+    const t = analysisTemplates.find(t => t._row_index === diffRowIndex);
+    if (!t) throw new Error('テンプレートが見つかりません');
+
+    const storedBody = finalBody.replace(/\n/g, '\\n');
+    const updated = { ...t, body: storedBody };
+    delete updated._row_index;
+    await api('PUT', `/api/v1/admin/templates/${diffRowIndex}`, updated);
+
+    analysisOriginalBody = storedBody;
+    const escaped = storedBody
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\\n/g, '\n').replace(/\n/g, '<br>');
+    document.getElementById('templateEditor').innerHTML = escaped;
+
+    exitDiffMode();
+    toast(`${acceptedCount > 0 ? acceptedCount + '件の変更を' : '改善案を'}適用しました`);
+  } catch (e) {
+    toast('保存エラー: ' + e.message, true);
+  }
+}
+
+let lastAnalysisSummary = ''; // 分析結果を改善に渡すためのバッファ
+
+async function runAnalysis() {
+  const isCross = document.getElementById('crossCompanyCheck')?.checked;
+  const company = isCross ? 'all' : document.getElementById('companySelect').value;
+  if (!company) return;
+  const el = document.getElementById('analysisResults');
+  el.innerHTML = `<div class="analysis-loading"><div class="spinner"></div> ${isCross ? '全社横断' : ''}分析中...</div>`;
+  lastAnalysisSummary = ''; // reset
+
+  try {
+    const data = await api('POST', '/api/v1/admin/analyze_cycle', { company });
+    if (data.status === 'error') {
+      el.innerHTML = `<div class="analysis-empty">${escHtml(data.detail)}</div>`;
+      return;
+    }
+
+    let html = '';
+
+    const s = data.summary || {};
+    html += `<div class="analysis-stats">
+      <div class="stat-card"><div class="stat-icon">📨</div><div class="stat-value">${s.total || 0}</div><div class="stat-label">送信数</div></div>
+      <div class="stat-card"><div class="stat-icon">💬</div><div class="stat-value">${s.replied || 0}</div><div class="stat-label">返信数</div></div>
+      <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-value">${s.reply_rate || '0%'}</div><div class="stat-label">返信率</div></div>
+    </div>`;
+    html += `<div class="analysis-period">📅 ${data.period || ''} ／ ${data.company || ''}</div>`;
+
+    const ct = data.cross_tabs || {};
+    for (const [dim, buckets] of Object.entries(ct)) {
+      html += `<div class="analysis-crosstab"><h4>${escHtml(dim)}</h4><table><tr><th>区分</th><th>送信</th><th>返信</th><th>返信率</th></tr>`;
+      for (const [val, stats] of Object.entries(buckets)) {
+        const pct = parseFloat(stats.rate) || 0;
+        html += `<tr><td><strong>${escHtml(val)}</strong></td><td>${stats.total}</td><td>${stats.replied}</td><td><div class="rate-cell"><span>${stats.rate}</span><div class="rate-bar"><div class="rate-bar-fill" style="width:${Math.min(pct * 2, 100)}%"></div></div></div></td></tr>`;
+      }
+      html += '</table></div>';
+    }
+
+    if (data.analysis) {
+      html += '<div class="analysis-md">' + simpleMarkdown(data.analysis) + '</div>';
+    }
+
+    el.innerHTML = html;
+    // Show improve button after analysis completes
+    document.getElementById('improveInputArea').style.display = '';
+
+    // Build analysis summary for improve_template
+    let summaryParts = [];
+    if (s.total) summaryParts.push(`送信${s.total}通, 返信${s.replied || 0}件, 返信率${s.reply_rate || '0%'}`);
+    for (const [dim, buckets] of Object.entries(ct)) {
+      let dimLines = [`### ${dim}`];
+      for (const [val, stats] of Object.entries(buckets)) {
+        dimLines.push(`- ${val}: 送信${stats.total}, 返信${stats.replied}, 返信率${stats.rate}`);
+      }
+      summaryParts.push(dimLines.join('\n'));
+    }
+    if (data.analysis) summaryParts.push(`### AI分析\n${data.analysis}`);
+    lastAnalysisSummary = summaryParts.join('\n\n');
+  } catch (e) {
+    el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">分析エラー: ${escHtml(e.message)}</div>`;
+  }
+}
+
 // --- Init ---
 document.getElementById('companySelect').addEventListener('change', () => {
   if (viewMode === 'flow') loadFlowView();
+  else if (viewMode === 'analysis') loadAnalysisView();
   else loadData();
 });
 renderTabs();
@@ -3870,6 +4868,8 @@ setTimeout(() => {
   const flowView = document.getElementById('flowView');
   if (flowView) _flowResizeObserver.observe(flowView);
 }, 100);
+
+initAnnotationToolbar();
 </script>
 </div><!-- /appMain -->
 </body>

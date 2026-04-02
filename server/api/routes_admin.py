@@ -21,7 +21,7 @@ SHEET_MAP = {
 
 # Column order for each sheet (must match header row)
 COLUMNS = {
-    "templates": ["company", "job_category", "type", "body"],
+    "templates": ["company", "job_category", "type", "body", "version"],
     "patterns": ["company", "job_category", "pattern_type", "employment_variant", "template_text", "feature_variations", "display_name", "target_description", "match_rules", "qualification_combo", "replacement_text"],
     "qualifiers": ["company", "job_category", "pattern_type", "employment_variant", "template_text", "feature_variations", "display_name", "target_description", "match_rules", "qualification_combo", "replacement_text"],
     "prompts": ["company", "section_type", "job_category", "order", "content"],
@@ -31,6 +31,9 @@ COLUMNS = {
 }
 
 
+DASHBOARD_SPREADSHEET_ID = "1a3XE212nZgsQP-93phk22VlSSZ5aD1ig72M4A6p2awE"
+
+
 @router.get("/server_info")
 async def server_info(operator=Depends(verify_api_key)):
     """Return server metadata for admin help page."""
@@ -38,6 +41,7 @@ async def server_info(operator=Depends(verify_api_key)):
     result = {}
     if SPREADSHEET_ID:
         result["spreadsheet_url"] = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit"
+    result["dashboard_url"] = f"https://docs.google.com/spreadsheets/d/{DASHBOARD_SPREADSHEET_ID}/edit"
     return result
 
 
@@ -717,6 +721,550 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(500, f"AI生成エラー: {str(e)}")
 
 
+@router.post("/sync_replies")
+async def sync_replies(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Chrome拡張から返信データを受け取り、送信データシートを更新する。"""
+    company = data.get("company", "")
+    replies = data.get("replies", [])
+    if not replies:
+        return {"status": "ok", "updated": 0}
+
+    from pipeline.orchestrator import _send_data_sheet_name
+    sheet_name = _send_data_sheet_name(company)
+
+    try:
+        all_rows = sheets_writer.get_all_rows(sheet_name)
+    except Exception:
+        return {"status": "error", "detail": f"送信データシート '{sheet_name}' が存在しません"}
+    if len(all_rows) < 2:
+        return {"status": "ok", "updated": 0}
+
+    headers = all_rows[0]
+    try:
+        col_member = headers.index("会員番号")
+        col_reply = headers.index("返信")
+        col_reply_date = headers.index("返信日")
+        col_reply_cat = headers.index("返信カテゴリ")
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"シートヘッダー不正: {e}")
+
+    reply_map = {r["member_id"]: r for r in replies}
+
+    updated = 0
+    for row_idx, row in enumerate(all_rows[1:], start=2):
+        if len(row) <= col_member:
+            continue
+        member_id = row[col_member]
+        if member_id not in reply_map:
+            continue
+
+        reply = reply_map[member_id]
+        while len(row) < len(headers):
+            row.append("")
+        row[col_reply] = "有"
+        row[col_reply_date] = reply.get("replied_at", "")
+        row[col_reply_cat] = reply.get("category", "")
+
+        sheets_writer.update_row(sheet_name, row_idx, row)
+        updated += 1
+
+    return {"status": "ok", "updated": updated}
+
+
+@router.post("/improve_template")
+async def improve_template(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """AIがテンプレートを改善し、変更理由付きの改善版を返す。"""
+    import re
+    from pathlib import Path
+    from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
+    from pipeline.ai_generator import generate_personalized_text
+
+    company = data.get("company", "")
+    template_type = data.get("template_type", "")
+    job_category = data.get("job_category", "")
+    directive = data.get("directive", "")  # ユーザーの改善指示
+    analysis_summary = data.get("analysis_summary", "")  # 分析タブからの連携データ
+
+    if not company or not template_type:
+        raise HTTPException(400, "company and template_type are required")
+
+    # 1. Get current template
+    config = sheets_client.get_company_config(company)
+    templates = config.get("templates", {})
+    template_data = templates.get(f"{job_category}:{template_type}") or templates.get(template_type)
+    if not template_data:
+        raise HTTPException(404, f"テンプレート '{template_type}' が見つかりません")
+
+    original_body = template_data.get("body", "")
+
+    # Find row_index in the sheet
+    all_template_rows = sheets_writer.get_all_rows("テンプレート")
+    row_index = None
+    for idx, row in enumerate(all_template_rows[1:], start=2):
+        if len(row) >= 4 and row[0] == company and row[2] == template_type:
+            if not job_category or row[1] == job_category:
+                row_index = idx
+                break
+
+    if row_index is None:
+        raise HTTPException(404, "テンプレートの行が見つかりません")
+
+    # 2. Load company profile
+    company_profile = ""
+    profile_paths = [
+        Path(__file__).parent.parent.parent / "companies" / company / "profile.md",  # repo root
+        Path(__file__).parent.parent / "companies" / company / "profile.md",  # fallback
+    ]
+    for p in profile_paths:
+        if p.exists():
+            company_profile = p.read_text(encoding="utf-8")
+            break
+
+    # 3. Get send data stats + build analysis context
+    from datetime import datetime, timedelta, timezone
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST)
+    date_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+
+    stats_text = ""
+    sheet_name = _send_data_sheet_name(company)
+    try:
+        all_rows = sheets_writer.get_all_rows(sheet_name)
+        if len(all_rows) >= 2:
+            headers = all_rows[0]
+            col_map = {h: i for i, h in enumerate(headers)}
+            total = 0
+            replied = 0
+            for row in all_rows[1:]:
+                row_date = row[col_map.get("日時", 0)][:10] if col_map.get("日時") is not None and len(row) > col_map["日時"] and row[col_map["日時"]] else ""
+                if row_date >= date_from:
+                    total += 1
+                    if col_map.get("返信") is not None and len(row) > col_map["返信"] and row[col_map["返信"]] == "有":
+                        replied += 1
+            if total > 0:
+                stats_text = f"直近30日: 送信{total}通, 返信{replied}件, 返信率{replied/total*100:.1f}%"
+    except Exception:
+        pass
+
+    # 4. Build analysis data section
+    analysis_section = ""
+    if analysis_summary:
+        analysis_section = f"""
+
+---
+
+## 分析データ
+
+{analysis_summary}
+
+上記のデータから読み取れる傾向を改善に活かしてください。
+返信率が高いパターン・低いパターンがあれば、テンプレートのどの部分が影響しているかを考察し、改善案に反映してください。"""
+    elif stats_text:
+        analysis_section = f"""
+
+---
+
+## 送信実績
+
+{stats_text}"""
+
+    # 5. Build company profile section
+    profile_section = ""
+    display_name = COMPANY_DISPLAY_NAMES.get(company, company)
+    if company_profile:
+        profile_section = f"""
+
+---
+
+## 会社情報
+
+{company_profile}
+
+上記の会社情報を踏まえ、この会社が求職者に対して本当に訴求すべき強みは何かを判断してください。
+全ての特徴を並べるのではなく、求職者が最も価値を感じるポイントに絞ってテンプレートに反映してください。"""
+    else:
+        profile_section = f"""
+
+---
+
+## 会社情報
+
+会社名: {display_name}
+（詳細な会社情報は取得できませんでした。テンプレートの文面から読み取れる情報をもとに改善してください。）"""
+
+    # 6. Build system prompt
+    system_prompt = f"""あなたは介護・医療系求人のスカウト文テンプレートを改善するエキスパートです。
+目的はただ一つ: このテンプレートで送るスカウトの返信率を上げること。
+
+表現の微調整ではなく、「求職者がこのスカウトを受け取ったとき、返信したくなるか？」という視点で改善してください。
+
+---
+
+## 求職者を知る
+
+### 転職者の不安と動機
+
+介護・医療職が転職を考えるとき、最も多い理由:
+- **介護職**: 人間関係の問題が圧倒的に多い。次いで施設の理念・運営への不満、より良い条件の職場を求めて
+- **看護師**: 上司との関係、長時間労働・残業の多さ、給与への不満、結婚・出産・育児などライフステージの変化
+
+転職活動中の最大の不安は「転職先でも同じ問題が起きないか」。特に人間関係で辞めた人は、次の職場の雰囲気に最も敏感になる。
+
+訪問看護特有の不安:
+- 「一人で訪問することへの怖さ・プレッシャー」が最大の壁（過半数が感じる）
+- オンコール対応の負担も大きな懸念材料
+→ 訪問看護のテンプレートでは、この不安をどう解消するかが返信率に直結する
+
+### 求職者が求人で見ているもの
+
+優先順位（高い順）:
+1. **給与・賞与・手当** — 最も多くの人が重視する。ただし具体的な数字がないと信用されない
+2. **残業時間・勤務体制** — 「月平均○時間」の具体性が信頼につながる
+3. **人間関係・職場の雰囲気** — 最も気にしているが、求人票だけでは分かりにくい。だからこそスカウト文で伝えられると強い
+4. **勤務地・通勤時間** — 長く働けるかの判断材料
+5. **教育体制・研修制度** — 特に未経験・ブランク層に響く
+6. **休日数・有休取得率** — ワークライフバランスの指標
+
+重要: 給与が地域相場より低い場合、給与を前面に出しても逆効果。その会社が本当に強いポイント（教育体制、雰囲気、柔軟な働き方等）で勝負すべき。
+
+### 売り手市場という前提
+
+介護関係職種の有効求人倍率は約4倍。求職者1人に対して約4件の求人がある。つまり求職者が選ぶ立場。条件に妥協する必要がなく、スカウトを受けても「もっと良い条件があるかも」と比較検討する余裕がある。
+
+だからこそ、テンプレート一斉送信では埋もれる。「この会社は自分に合いそう」と思わせる具体性が必要。
+
+---
+
+## スカウトを読む人の心理
+
+### 大量に届く中での判断
+
+求職者は複数の事業所からスカウトを受け取る。特に関東圏では大量に届く。その中で:
+
+1. **冒頭数十文字で開封するか決める** — ジョブメドレーの一覧画面では事業所名＋本文の冒頭部分がプレビュー表示される。ここで興味を引けなければ開かれない
+2. **開封しても数秒で「読む価値があるか」を判断する** — 会社紹介から始まるスカウトは読み飛ばされる
+3. **返信するかは「自分に合うか」で決める** — 待遇と「自分のスキルが活かせるか」で約7割の判断が決まる
+
+### 好まれるスカウト
+
+- **プロフィールを読んだと分かる**（最重要 — 約6割が重視）
+- 特別感がある（テンプレ一斉送信ではないと感じる）
+- なぜスカウトしたか理由が具体的
+- **短くて簡潔**（約7割が好む）
+
+### 嫌われるスカウト
+
+- 希望に合わない求人のスカウト
+- 明らかにテンプレートの一斉送信
+- 会社の情報ばかりで自分への言及がない
+- 断っても繰り返し送ってくる
+
+### 潜在層と顕在層の違い
+
+離職中の求職者は緊急度が高く、具体的な条件提示・早期入職可能性が響く。
+就業中（情報収集中）の求職者は選別的で、「今の職場より良い点」を明確に示す必要がある。CTAも「まずは情報交換」程度のライトさが有効。
+
+---
+
+## 良いスカウトの原則
+
+### 原則① 冒頭30文字が勝負
+
+一覧画面のプレビューで見えるのは冒頭30〜50文字程度。全メールの半数以上がスマホで開封される。
+最初の1文で「なぜあなたに送ったか」を伝える。
+
+テンプレートには `{{personalized_text}}` が含まれるが、その前後の定型文がプレビューに出る可能性がある。
+冒頭の定型文がテンプレ感を出していないか確認する。
+
+### 原則② 「候補者の経験 × 会社の特色 = 接点」
+
+パーソナライズの核心はこの掛け算。テンプレート内の `{{personalized_text}}` がこの役割を担う。
+テンプレート側は、この接点が最大限活きる構成になっているべき。
+
+テンプレートが会社情報の羅列になっていると、パーソナライズ文を入れても「会社紹介の中に1文だけ個別メッセージがある」状態になり、効果が薄れる。
+
+### 原則③ 特徴ではなく「あなたにとっての利益」で語る
+
+会社の特徴をそのまま書いても人は動かない。「それが相手にとって何を意味するか」まで踏み込む。
+- ✕ 特徴そのまま:「電子カルテ導入済みです」
+- ◎ 相手の利益:「残業が月平均5時間以内で、プライベートとの両立が可能です」
+
+### 原則④ CTAは低いハードルで1つだけ
+
+- 低（推奨）:「ご興味があればお気軽にご返信ください」「まずは見学だけでも歓迎です」
+- 高（避ける）:「ぜひご応募ください」
+
+CTAは1つだけ。複数並べると迷って行動しない。
+{profile_section}
+{analysis_section}
+
+---
+
+## NG表現・品質の最低ライン
+
+以下は絶対に避けること:
+- **年齢・世代への言及**（「20代」「若手」「ベテラン」）
+- **会社名の誤り**
+- **居住地の詳細すぎる言及**（「○○区にお住まい」→ 広域表現に）
+- **憶測の記載**（「〜されたいのですね」→ 事実のみ）
+- **過剰敬語**（「拝察いたします」「敬意を表します」）
+- **送り手の感情が主語**（「ご一緒したい」→ 相手へのオファー主体で）
+- **対象職種の資格への冗長な言及**（看護師求人で「看護師の資格をお持ちとのこと」→ 資格保有は前提なので不要）
+- **上から目線**（「フォローします」「安心してください」→「チームでサポートし合う環境」）
+
+---
+
+## 出力ルール
+
+1. **`{{personalized_text}}` を必ず含める**。位置は変えてよい
+2. 改善したテンプレートの**全文**を出力する（部分ではなく全文）
+3. 変更した箇所の直後に `<!-- 変更理由: 理由 -->` を入れる
+4. 変更していない箇所は一字一句そのまま残す
+5. テンプレート本文のみ出力。前置き・説明・コードフェンス不要
+6. 各行の改行フォーマット（\\n）はそのまま維持する
+7. 元テンプレートに存在しないプレースホルダー（{{お名前}}等）を追加しない
+
+構成の変更、段落の順序入れ替え、大幅な書き換えは許可する。
+返信率を上げるために必要であれば、遠慮なく変えてよい。
+ただし変更理由を必ず明記すること。"""
+
+    # ユーザーの改善指示があればプロンプトに追加
+    directive_section = ""
+    if directive:
+        directive_section = f"\n\n## ディレクターからの改善指示（最優先）\n{directive}\n上記の指示を最優先で反映してください。"
+
+    user_prompt = f"以下のテンプレートを改善してください。\n求職者の心理と会社の強みを踏まえ、返信率が上がる形に変えてください。{directive_section}\n\n{original_body}"
+
+    # 7. Call Gemini
+    try:
+        result = await generate_personalized_text(
+            system_prompt,
+            user_prompt,
+            max_output_tokens=8192,
+            temperature=0.5,
+        )
+        raw_improved = result.text
+    except Exception as e:
+        raise HTTPException(500, f"AI生成エラー: {e}")
+
+    # 5. Parse: extract change reasons, clean up
+    # Strip markdown code fences if present
+    raw_improved = re.sub(r'^```[^\n]*\n', '', raw_improved)
+    raw_improved = re.sub(r'\n```$', '', raw_improved.rstrip())
+
+    # Extract change reasons
+    changes = []
+    for m in re.finditer(r'<!-- 変更理由:\s*(.+?)\s*-->', raw_improved):
+        reason = m.group(1)
+        start = max(0, m.start() - 30)
+        context = raw_improved[start:m.start()].strip()[-40:]
+        changes.append({"reason": reason, "context": context})
+
+    # Remove HTML comments to get clean version
+    improved_clean = re.sub(r'\s*<!-- 変更理由:\s*.+?\s*-->', '', raw_improved).strip()
+
+    # Validate placeholder
+    if "{personalized_text}" not in improved_clean and "\\{personalized_text\\}" not in improved_clean:
+        # Try to recover
+        if "{personalized_text}" in original_body:
+            return {
+                "status": "error",
+                "detail": "AIがプレースホルダー{personalized_text}を削除してしまいました。再度お試しください。",
+            }
+
+    return {
+        "status": "ok",
+        "original": original_body,
+        "improved": improved_clean,
+        "changes": changes,
+        "row_index": row_index,
+    }
+
+
+@router.post("/analyze_cycle")
+async def analyze_cycle(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """送信データを多角的に分析し、改善仮説と改善案を自動生成する。"""
+    from datetime import datetime, timedelta, timezone
+    from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
+    from pipeline.ai_generator import generate_personalized_text
+
+    JST = timezone(timedelta(hours=9))
+    company = data.get("company", "")
+    is_cross_company = (company == "all")
+    now = datetime.now(JST)
+    date_from = data.get("date_from", (now - timedelta(days=30 if is_cross_company else 14)).strftime("%Y-%m-%d"))
+    date_to = data.get("date_to", now.strftime("%Y-%m-%d"))
+
+    # Collect rows from one or all company sheets
+    headers = None
+    col_map = {}
+    filtered = []
+
+    companies_to_scan = list(COMPANY_DISPLAY_NAMES.keys()) if is_cross_company else [company]
+
+    for cid in companies_to_scan:
+        sheet_name = _send_data_sheet_name(cid)
+        try:
+            all_rows = sheets_writer.get_all_rows(sheet_name)
+        except Exception:
+            continue
+        if len(all_rows) < 2:
+            continue
+
+        if headers is None:
+            headers = all_rows[0]
+            col_map = {h: i for i, h in enumerate(headers)}
+
+        display_name = COMPANY_DISPLAY_NAMES.get(cid, cid)
+        for row in all_rows[1:]:
+            row_date = row[col_map.get("日時", 0)][:10] if col_map.get("日時") is not None and len(row) > col_map["日時"] and row[col_map["日時"]] else ""
+            if date_from <= row_date <= date_to:
+                # For cross-company, tag each row with company name
+                if is_cross_company:
+                    row = list(row)
+                    row.append(display_name)  # append company name as extra column
+                filtered.append(row)
+
+    if not filtered or headers is None:
+        label = "全社" if is_cross_company else company
+        return {"status": "error", "detail": f"{label} の {date_from}〜{date_to} にデータがありません"}
+
+    # For cross-company, add virtual "会社" column
+    if is_cross_company:
+        company_col_idx = len(headers)  # appended at the end
+
+    def _safe_get(row, col_name):
+        if is_cross_company and col_name == "会社":
+            return row[company_col_idx] if len(row) > company_col_idx else ""
+        idx = col_map.get(col_name)
+        if idx is None or idx >= len(row):
+            return ""
+        return row[idx]
+
+    total = len(filtered)
+    replied = sum(1 for r in filtered if _safe_get(r, "返信") == "有")
+    reply_rate = replied / total if total > 0 else 0
+
+    # Pattern display name mapping
+    PATTERN_LABELS = {
+        "A": "経験浅め・若手", "B1": "中堅・ブランクあり", "B2": "中堅・経験豊富",
+        "C": "ベテラン", "D_就業中": "経験少なめ・就業中", "D_離職中": "経験少なめ・離職中",
+        "E": "新人・未経験", "F_就業中": "高齢・就業中", "F_離職中": "高齢・離職中",
+        "G": "情報不足（最小パターン）",
+    }
+
+    dimensions = ["テンプレート種別", "テンプレートVer", "生成パス", "パターン", "年齢層", "経験区分",
+                   "希望雇用形態", "就業状況", "地域", "曜日", "時間帯"]
+    if is_cross_company:
+        dimensions = ["会社"] + dimensions
+    cross_tabs = {}
+    for dim in dimensions:
+        buckets = {}
+        for row in filtered:
+            val = _safe_get(row, dim) or "(空)"
+            # Map pattern codes to readable labels
+            if dim == "パターン":
+                if val == "(空)":
+                    val = "AI生成（職歴・自己PRベース）"
+                elif val in PATTERN_LABELS:
+                    val = f"{val}（{PATTERN_LABELS[val]}）"
+            if val not in buckets:
+                buckets[val] = {"total": 0, "replied": 0}
+            buckets[val]["total"] += 1
+            if _safe_get(row, "返信") == "有":
+                buckets[val]["replied"] += 1
+        if len(buckets) > 1:
+            cross_tabs[dim] = {
+                k: {**v, "rate": f"{v['replied']/v['total']*100:.1f}%"}
+                for k, v in sorted(buckets.items(), key=lambda x: -x[1]["total"])
+            }
+
+    # Get current template text for analysis context (full text)
+    template_context = ""
+    try:
+        config = sheets_client.get_company_config(company)
+        templates = config.get("templates", {})
+        for tkey, tdata in templates.items():
+            body = tdata.get("body", "").replace("\\n", "\n")
+            template_context += f"\n### テンプレート: {tkey}\n{body}\n---\n"
+    except Exception:
+        pass
+
+    summary_text = f"""## スカウト送信データ分析（{company}）
+期間: {date_from} 〜 {date_to}
+総送信数: {total}
+返信数: {replied}
+返信率: {reply_rate*100:.1f}%
+
+### クロス集計
+"""
+    for dim, buckets in cross_tabs.items():
+        summary_text += f"\n**{dim}別:**\n"
+        for val, stats in buckets.items():
+            summary_text += f"  {val}: {stats['total']}通 → 返信{stats['replied']}件 ({stats['rate']})\n"
+
+    analysis_prompt = f"""あなたは介護・医療系求人のスカウト改善アナリストです。
+以下のスカウト送信データと現在のテンプレートを分析し、具体的な改善提案を行ってください。
+テンプレート内にメモやコメント（「※」「//」「【メモ】」等）があれば、それもディレクターの意図として読み取ってください。
+
+{summary_text}
+
+### 現在使用中のテンプレート（全文）
+{template_context if template_context else "(テンプレート情報なし)"}
+
+以下の形式で**必ず最後まで**回答してください:
+
+## 発見したパターン
+- 送信データから読み取れる傾向を3つまで箇条書き
+- 数値の根拠を添える
+
+## テンプレート改善案
+各改善案について以下の3点をセットで提示:
+1. **変更理由（仮説）**: なぜこの変更が必要か — データやテンプレートの文脈に基づく根拠
+2. **現状の表現**: テンプレートから該当箇所を引用
+3. **修正後の表現例**: 具体的な書き換え案
+
+パーツ別（冒頭文 / 施設紹介 / 待遇 / 行動喚起CTA / その他）に分けて、優先度順に提案。
+
+## 次サイクルの検証ポイント
+- 改善実施後に見るべき指標を箇条書き"""
+
+    try:
+        result = await generate_personalized_text(
+            analysis_prompt,
+            "上記のデータとテンプレートを分析してください。",
+            max_output_tokens=8192,
+        )
+        analysis_text = result.text
+    except Exception as e:
+        return {
+            "status": "ok",
+            "company": company,
+            "period": f"{date_from}〜{date_to}",
+            "summary": {"total": total, "replied": replied, "reply_rate": f"{reply_rate*100:.1f}%"},
+            "cross_tabs": cross_tabs,
+            "analysis": f"AI分析エラー: {e}",
+        }
+
+    return {
+        "status": "ok",
+        "company": company,
+        "period": f"{date_from}〜{date_to}",
+        "summary": {"total": total, "replied": replied, "reply_rate": f"{reply_rate*100:.1f}%"},
+        "cross_tabs": cross_tabs,
+        "analysis": analysis_text,
+    }
+
+
 @router.post("/{sheet_slug}")
 async def create_row(sheet_slug: str, data: dict, operator=Depends(verify_api_key)):
     sheet_name = SHEET_MAP.get(sheet_slug)
@@ -755,11 +1303,45 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
 
     # Merge: only overwrite fields present in incoming data
     merged = {col: data[col] if col in data else existing.get(col, "") for col in columns}
+
+    # Template versioning: auto-increment version + log history on body change
+    if sheet_slug == "templates" and "body" in data and data["body"] != existing.get("body", ""):
+        from datetime import datetime, timedelta, timezone
+        JST = timezone(timedelta(hours=9))
+
+        old_version = existing.get("version", "1")
+        try:
+            new_version = str(int(old_version) + 1)
+        except (ValueError, TypeError):
+            new_version = "2"
+        merged["version"] = new_version
+
+        # Log old version to history sheet
+        try:
+            sheets_writer.ensure_sheet_exists("テンプレート変更履歴", [
+                "timestamp", "company", "job_category", "type",
+                "old_version", "new_version", "reason", "old_body",
+            ])
+            reason = data.get("_change_reason", "管理画面から更新")
+            sheets_writer.append_row("テンプレート変更履歴", [
+                datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
+                existing.get("company", ""),
+                existing.get("job_category", ""),
+                existing.get("type", ""),
+                old_version,
+                new_version,
+                reason,
+                existing.get("body", ""),
+            ])
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to log template history: {e}")
+
     values = [merged[col] for col in columns]
 
     sheets_writer.update_row(sheet_name, row_index, values)
     sheets_client.reload()
-    return {"status": "updated", "merged_fields": list(data.keys())}
+    return {"status": "updated", "merged_fields": list(data.keys()), "version": merged.get("version", "")}
 
 
 @router.delete("/{sheet_slug}/{row_index}")

@@ -175,6 +175,7 @@ class SheetsClient:
                 "type": ttype,
                 "job_category": jc,
                 "body": row.get("body", "").replace("\\n", "\n"),
+                "version": row.get("version", "1"),
             }
         return result
 
