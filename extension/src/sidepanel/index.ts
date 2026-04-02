@@ -211,6 +211,9 @@ function setupMessageHandlers(debugPanel: DebugPanel, confirmPopup: Confirmation
     } else if (msg.type === 'DRY_RUN_COMPLETE') {
       // ドライラン完了 → ステータスをskippedに更新
       candidateList.updateStatusExternal(msg.memberId, 'skipped');
+    } else if (msg.type === 'COMPANY_DETECTED') {
+      // ページから会社を自動検出 → セレクトを更新
+      handleCompanyDetected(msg.companyId);
     } else if (msg.type === 'COMPANY_MISMATCH') {
       // 会社不一致警告
       showCompanyMismatchWarning(msg.companyId);
@@ -277,6 +280,24 @@ function showJobOfferFailedNotification(error: string): void {
     notification.remove();
     chrome.runtime.sendMessage({ type: 'RESUME_AFTER_JOB_OFFER' } satisfies Message);
   });
+}
+
+/** ページから検出した会社IDで会社セレクトを自動更新 */
+async function handleCompanyDetected(detectedCompanyId: string): Promise<void> {
+  const select = document.getElementById('company') as HTMLSelectElement | null;
+  if (!select) return;
+
+  const currentCompany = select.value;
+  if (currentCompany === detectedCompanyId) return; // 既に一致
+
+  // セレクトのオプションに存在するか確認
+  const optionExists = Array.from(select.options).some(o => o.value === detectedCompanyId);
+  if (!optionExists) return;
+
+  // 自動切替
+  select.value = detectedCompanyId;
+  select.dispatchEvent(new Event('change'));
+  console.log(`[Scout Assistant] Auto-switched company: ${currentCompany} -> ${detectedCompanyId}`);
 }
 
 /** 会社不一致警告を表示 */

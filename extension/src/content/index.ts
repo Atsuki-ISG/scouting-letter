@@ -8,6 +8,7 @@ import * as extraction from './extraction';
 import * as continuousSender from './continuous-sender';
 import { extractJobOffers } from './job-offer-extractor';
 import { extractFacilityList, extractFacilityInfo, abortFacilityExtraction } from './facility-scraper';
+import { detectCompanyFromPage } from './company-detector';
 
 /** メッセージリスナー */
 chrome.runtime.onMessage.addListener(
@@ -132,4 +133,13 @@ chrome.runtime.onMessage.addListener(
 
 // 初期化
 setupOverlayObserver();
+
+// ページ読み込み後に会社を自動検出
+setTimeout(() => {
+  const detected = detectCompanyFromPage();
+  if (detected) {
+    safeSendMessage({ type: 'COMPANY_DETECTED', companyId: detected });
+  }
+}, 1000); // DOM安定後に実行
+
 console.log('[Scout Assistant] Content script loaded');
