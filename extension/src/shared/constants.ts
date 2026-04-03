@@ -105,7 +105,7 @@ export const STORAGE_KEYS = {
 
 /** 会社IDから施設名キーワード（求人ドロップダウンのテキストに含まれるべき文字列） */
 export const COMPANY_FACILITY_KEYWORDS: Record<string, string[]> = {
-  'ark-visiting-nurse': ['アーク'],
+  'ark-visiting-nurse': ['アーク', '優希'],
   'lcc-visiting-nurse': ['LCC', 'ＬＣＣ'],
   'ichigo-visiting-nurse': ['いちご'],
   'ichigo-care-home': ['いちごの里'],
