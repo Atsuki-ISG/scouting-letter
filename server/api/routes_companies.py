@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from auth.api_key import verify_api_key
 from db.sheets_client import sheets_client
+from db.sheets_writer import sheets_writer
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["companies"])
@@ -34,6 +35,8 @@ async def get_company_config(
 async def reload_config(
     operator: dict = Depends(verify_api_key),
 ):
-    """Reload config from Google Sheets."""
+    """Reload config from Google Sheets and ensure sheet headers are up to date."""
+    # Update profile sheet header to include detection_keywords
+    sheets_writer.ensure_sheet_exists("プロフィール", ["company", "content", "detection_keywords"])
     sheets_client.reload()
     return {"status": "reloaded"}
