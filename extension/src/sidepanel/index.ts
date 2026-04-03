@@ -701,6 +701,9 @@ async function init(): Promise<void> {
   setupFacilityExtraction();
   setupMessageHandlers(debugPanel, confirmPopup, candidateList);
 
+  // サイドパネル起動時に会社自動検出をリクエスト
+  chrome.runtime.sendMessage({ type: 'DETECT_COMPANY' } satisfies Message);
+
   // 確認ポップアップ内の停止ボタンから連続送信を停止
   confirmPopup.setStopCallback(() => {
     chrome.runtime.sendMessage({ type: 'STOP_CONTINUOUS_SEND' } satisfies Message);

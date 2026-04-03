@@ -112,6 +112,13 @@ chrome.runtime.onMessage.addListener(
         return false;
       }
 
+      // サイドパネル → Content Script: 会社自動検出リクエスト
+      case 'DETECT_COMPANY': {
+        forwardToContentScript(message);
+        sendResponse({ ok: true });
+        return false;
+      }
+
       // Content Script → サイドパネル（そのままbroadcast）
       case 'DEBUG_LOG':
       case 'CONFIRM_BEFORE_SEND':

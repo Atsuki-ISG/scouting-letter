@@ -125,6 +125,15 @@ chrome.runtime.onMessage.addListener(
         sendResponse({ ok: true });
         return false;
 
+      case 'DETECT_COMPANY': {
+        const detected = detectCompanyFromPage();
+        if (detected) {
+          safeSendMessage({ type: 'COMPANY_DETECTED', companyId: detected });
+        }
+        sendResponse({ ok: true, companyId: detected });
+        return false;
+      }
+
       default:
         return false;
     }
