@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<style>
+body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; color: #333; line-height: 1.8; }
+h1 { font-size: 28px; border-bottom: 3px solid #2c3e50; padding-bottom: 10px; }
+h2 { font-size: 20px; color: #2c3e50; margin-top: 40px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+h3 { font-size: 17px; color: #2c3e50; margin-top: 25px; }
+h4 { font-size: 15px; color: #34495e; margin-top: 20px; }
+table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+th { background: #2c3e50; color: white; padding: 10px 15px; text-align: left; }
+td { border: 1px solid #ddd; padding: 10px 15px; }
+tr:nth-child(even) { background: #f9f9f9; }
+code { background: #f0e6e6; color: #c0392b; padding: 2px 6px; border-radius: 3px; font-size: 14px; }
+ol, ul { padding-left: 25px; }
+li { margin: 8px 0; }
+blockquote { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; margin: 15px 0; }
+hr { border: none; border-top: 2px solid #2c3e50; margin: 30px 0; }
+.subtitle { color: #666; font-size: 15px; margin-top: -5px; }
+.new-badge { display: inline-block; background: #e74c3c; color: white; font-size: 11px; font-weight: bold; padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<h1>Scout Assistant 取扱説明書</h1>
+<p class="subtitle">オペレーター向け</p>
+
+<div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px 25px; margin: 25px 0;">
+<p style="font-weight: bold; font-size: 16px; margin: 0 0 12px 0; color: #2c3e50;">目次</p>
+<ol style="margin: 0; padding-left: 20px; line-height: 2.2;">
+<li><a href="#sec1" style="text-decoration: none; color: #2c3e50;">この拡張機能について</a></li>
+<li><a href="#sec2" style="text-decoration: none; color: #2c3e50;">サイドパネルを開く</a></li>
+<li><a href="#sec3" style="text-decoration: none; color: #2c3e50;">会社を選ぶ</a></li>
+<li><a href="#sec4" style="text-decoration: none; color: #2c3e50;">基本操作: 抽出 → 生成 → 送信</a>
+  <ol style="margin: 4px 0 0 0; padding-left: 20px; line-height: 2.0;">
+    <li><a href="#sec4-1" style="text-decoration: none; color: #555;">Step 1: プロフィール抽出</a></li>
+    <li><a href="#sec4-2" style="text-decoration: none; color: #555;">Step 2: API生成</a></li>
+    <li><a href="#sec4-3" style="text-decoration: none; color: #555;">Step 3: 送信</a></li>
+  </ol>
+</li>
+<li><a href="#sec5" style="text-decoration: none; color: #2c3e50;">CSVインポートによる送信（代替フロー）</a></li>
+<li><a href="#sec6" style="text-decoration: none; color: #2c3e50;">やりとり取得（返信タブ）</a></li>
+<li><a href="#sec7" style="text-decoration: none; color: #2c3e50;">設定（設定タブ）</a></li>
+<li><a href="#sec8" style="text-decoration: none; color: #2c3e50;">トラブルシューティング</a></li>
+<li><a href="#sec9" style="text-decoration: none; color: #2c3e50;">用語集</a></li>
+</ol>
+</div>
+
+<hr>
+
+<!-- ===== 1. この拡張機能について ===== -->
+
+<h2 id="sec1">1. この拡張機能について</h2>
+
+<p>Scout Assistant は、ジョブメドレーでのスカウト送信作業をサポートするChrome拡張機能です。</p>
+
+<p style="text-align: center; font-size: 16px; font-weight: bold; margin: 20px 0; padding: 12px; background: #f0f4f8; border-radius: 6px;">
+&#x1f4cb; プロフィール抽出 → &#x1f916; スカウト文生成 → &#x1f4e4; 連続送信
+</p>
+
+<p><strong>主な機能:</strong></p>
+<ul>
+<li>ジョブメドレーの候補者一覧から、プロフィール情報を自動で読み取ります（最大50件）</li>
+<li>読み取った情報をもとに、AIが候補者ごとのスカウト文を自動生成します</li>
+<li>生成されたスカウト文を1件ずつ確認しながら、連続で送信できます</li>
+</ul>
+
+<p><strong>画面構成:</strong> サイドパネル（ブラウザの右側に表示）に5つのタブがあります。</p>
+
+<table>
+<tr><th>タブ</th><th>役割</th></tr>
+<tr><td>&#x1f4cb; 抽出</td><td>候補者のプロフィールを読み取る</td></tr>
+<tr><td>&#x1f916; API生成</td><td>スカウト文を一括生成する</td></tr>
+<tr><td>&#x1f4e4; 送信</td><td>スカウト文を確認・編集・送信する</td></tr>
+<tr><td>&#x1f4ac; 返信</td><td>候補者とのやりとりを取得・保存する</td></tr>
+<tr><td>&#x2699; 設定</td><td>APIの接続先やパスワードを設定する</td></tr>
+</table>
+
+<blockquote>初期設定（インストール・API接続・会社登録等）は管理者が行います。手順は管理者向けセットアップガイドを参照してください。</blockquote>
+
+<hr>
+
+<!-- ===== 2. サイドパネルを開く ===== -->
+
+<h2 id="sec2">2. サイドパネルを開く</h2>
+
+<ol>
+<li>Chromeツールバーの <strong>Scout Assistant アイコン</strong> をクリック</li>
+<li>ポップアップが表示されるので、<strong>「サイドパネルを開く」</strong> ボタンを押す</li>
+<li>ブラウザの右側にサイドパネルが開きます</li>
+</ol>
+
+<blockquote>サイドパネルは一度開くと、別のタブに移動しても表示されたままです。</blockquote>
+
+<hr>
+
+<!-- ===== 3. 会社を選ぶ ===== -->
+
+<h2 id="sec3">3. 会社を選ぶ</h2>
+
+<p>サイドパネル上部の <strong>「会社」</strong> ドロップダウンで、スカウトを送る会社を選択してください。</p>
+
+<h3>会社の自動判定 <span class="new-badge">NEW</span></h3>
+
+<p>ジョブメドレーのページを開くと、ページ上の会社名・施設名から自動的に会社ドロップダウンが切り替わります。ページを移動するたびに自動判定が行われるため、通常は手動で会社を選ぶ必要はありません。</p>
+
+<blockquote>自動判定が正しくない場合は、手動でドロップダウンから正しい会社を選択してください。手動で選択した値が優先されます。</blockquote>
+
+<hr>
+
+<!-- ===== 4. 基本操作 ===== -->
+
+<h2 id="sec4">4. 基本操作: 抽出 → 生成 → 送信</h2>
+
+<!-- Step 1 -->
+
+<h3 id="sec4-1">Step 1: プロフィール抽出（&#x1f4cb; 抽出タブ）</h3>
+
+<p><strong>前提:</strong> ジョブメドレーの候補者検索ページを開いた状態で操作してください。</p>
+
+<table>
+<tr><th>項目</th><th>説明</th></tr>
+<tr><td>開始会員番号</td><td>途中から抽出したい場合に入力（空欄＝先頭から）</td></tr>
+<tr><td>抽出件数</td><td>1〜50件（デフォルト5件）</td></tr>
+</table>
+
+<p><strong>手順:</strong></p>
+<ol>
+<li>件数を設定</li>
+<li><strong>「抽出開始」</strong> を押す</li>
+<li>拡張機能が候補者カードを順番にクリックし、プロフィールを自動で読み取ります</li>
+<li>進捗バーで「進捗: X/Y」が表示されます</li>
+<li>完了後、候補者一覧が表示されます</li>
+</ol>
+
+<p><strong>途中停止:</strong> <strong>「停止」</strong> ボタンで中断できます。抽出済み分は保持されます。</p>
+
+<p><strong>CSVダウンロード:</strong> 抽出完了後に <strong>「CSVダウンロード」</strong> ボタンが表示されます。外部ツールでスカウト文を生成する場合に使用します。</p>
+
+<!-- Step 2 -->
+
+<h3 id="sec4-2">Step 2: API生成（&#x1f916; API生成タブ）</h3>
+
+<p>抽出したプロフィールからスカウト文をAIで一括生成します。</p>
+
+<p><strong>画面表示:</strong> 「抽出済み: N件」で対象件数を確認できます。</p>
+
+<p><strong>手順:</strong></p>
+<ol>
+<li><strong>「一括生成」</strong> を押す</li>
+<li><strong>生成設定モーダル</strong> が表示されます。必要に応じて設定を変更してください:</li>
+</ol>
+
+<table>
+<tr><th>設定項目</th><th>説明</th></tr>
+<tr><td>会社</td><td>サイドパネル上部と連動（変更可）</td></tr>
+<tr><td>雇用形態</td><td>自動判定 / パート / 正社員 から選択</td></tr>
+<tr><td>職種カテゴリ</td><td>全て / 看護師 / PT / ST / OT / 医療事務 から選択</td></tr>
+<tr><td>送信タイプ</td><td>初回 / 再送 から選択</td></tr>
+</table>
+
+<blockquote>前回の設定が保存されています。変更がなければそのまま生成できます。</blockquote>
+
+<ol start="3">
+<li>モーダル内の <strong>「一括生成」</strong> を押す</li>
+<li>「生成中... X/Y」の進捗バーが表示されます</li>
+<li>完了後、結果サマリーが表示されます:
+<ul>
+<li><strong>合計:</strong> 処理した総数</li>
+<li><strong>AI生成:</strong> 経歴情報からAIが文章を生成した件数</li>
+<li><strong>型はめ:</strong> 定型パターンで生成した件数</li>
+<li><strong>除外:</strong> バリデーションで対象外になった件数</li>
+</ul>
+</li>
+<li>生成結果は自動で &#x1f4e4; 送信 タブの候補者リストにセットされます</li>
+</ol>
+
+<!-- Step 3 -->
+
+<h3 id="sec4-3">Step 3: 送信（&#x1f4e4; 送信タブ）</h3>
+
+<p>生成されたスカウト文を確認し、ジョブメドレーから送信します。</p>
+
+<h4>候補者リストの見方</h4>
+
+<p>各候補者の行には以下が表示されます:</p>
+
+<table>
+<tr><th>表示</th><th>意味</th></tr>
+<tr><td>&#x1f535;</td><td>未送信（送信待ち）</td></tr>
+<tr><td>&#x2705;</td><td>送信済み</td></tr>
+<tr><td>&#x23e9;</td><td>スキップ</td></tr>
+<tr><td>テンプレートバッジ</td><td>パート/正社員、初回/再送の種別</td></tr>
+<tr><td>&#x2b50; バッジ <span class="new-badge">NEW</span></td><td>候補者が求人に「気になる」を押している（お気に入り）</td></tr>
+<tr><td>&#x26a0; 警告バッジ</td><td>バリデーション警告（送信可能だが注意が必要）</td></tr>
+<tr><td>&#x274c; エラーバッジ</td><td>バリデーションエラー（対象外候補者）</td></tr>
+</table>
+
+<h4>「気になる」候補者の検出 <span class="new-badge">NEW</span></h4>
+
+<p>候補者がジョブメドレーで求人に「気になる」を押している場合、候補者リストの名前の横に <strong>&#x2b50; バッジ</strong> が表示されます。</p>
+<ul>
+<li>抽出時に自動検出されるため、手動操作は不要です</li>
+<li>「気になる」候補者には、件名に感謝を含むお気に入り用テンプレートが自動選択されます</li>
+<li>通常のテンプレートに変更したい場合は、確認ポップアップ内で手動で切り替えられます</li>
+</ul>
+
+<h4>対象求人の自動選択</h4>
+
+<p><strong>「求人自動選択」</strong> がONの場合、候補者の職種カテゴリと雇用形態に応じて適切な求人が自動選択されます。</p>
+
+<p><strong>自動選択の仕組み:</strong></p>
+<ul>
+<li>ジョブメドレーの求人ドロップダウンを検索キーワードで開く</li>
+<li>ドロップダウン内の求人テキストを、職種カテゴリ（看護師、理学療法士 等）＋雇用形態（パート、正職員 等）のキーワードで照合</li>
+<li>両方一致する求人が優先、なければ職種カテゴリのみで選択、1件のみの場合はそのまま選択</li>
+</ul>
+
+<blockquote>うまく選択されない場合は <strong>「求人自動選択」</strong> をOFFにして、手動で求人を選んでください。</blockquote>
+
+<h4>手動送信（1件ずつ）</h4>
+
+<p>各候補者の行にあるボタンで操作します:</p>
+
+<table>
+<tr><th>ボタン</th><th>動作</th></tr>
+<tr><td>コピー</td><td>スカウト文全文をクリップボードにコピー</td></tr>
+<tr><td>本文セット</td><td>ジョブメドレーのスカウト画面にテキストを自動入力</td></tr>
+<tr><td>求人+本文</td><td>求人選択＋テキスト入力を同時に実行</td></tr>
+<tr><td>送信済</td><td>ステータスを「送信済み」に変更</td></tr>
+<tr><td>スキップ</td><td>この候補者をスキップ</td></tr>
+</table>
+
+<p><strong>「求人+本文」の流れ:</strong></p>
+<ol>
+<li>ボタンを押すとジョブメドレーのスカウトフォームが開きます</li>
+<li>求人が自動選択され、テキストエリアにスカウト文が自動入力されます</li>
+<li>確認ポップアップが表示されます:
+<ul>
+<li>候補者情報（資格、経験、希望雇用、エリア、自己PR、職歴）</li>
+<li>会員番号、対象求人、パーソナライズ文、全文プレビュー</li>
+</ul>
+</li>
+<li>チェックリスト（会員番号・求人・パーソナライズ文）を確認してチェック</li>
+<li><strong>OK（送信する）</strong> → ジョブメドレーの送信ボタンをクリックして送信</li>
+<li><strong>NG（スキップ）</strong> → この候補者をスキップ</li>
+</ol>
+
+<h4>連続送信アシスト</h4>
+
+<p>複数の候補者を順番に処理する場合に使います。</p>
+
+<ol>
+<li><strong>「連続送信アシスト」</strong> トグルをONにする → <strong>「開始」</strong> ボタンが表示される</li>
+<li><strong>「開始」</strong> を押す</li>
+<li>最初の未送信候補者から順番に確認ポップアップが表示されます</li>
+<li>各候補者ごとに:
+<ul>
+<li><strong>OK</strong> → 送信して次の候補者へ</li>
+<li><strong>NG</strong> → スキップして次の候補者へ</li>
+</ul>
+</li>
+<li>全件処理すると完了通知が表示されます</li>
+</ol>
+
+<p><strong>途中停止:</strong> 連続送信中は確認ポップアップ内に <strong>「連続送信を停止」</strong> ボタンが表示されます。サイドパネルの <strong>「停止」</strong> ボタンでも中断できます。</p>
+
+<p><strong>スキップ:</strong> サイドパネルの <strong>「スキップ」</strong> ボタンで現在の候補者を飛ばして次へ進みます。</p>
+
+<h4>文面の編集</h4>
+
+<p>候補者リストのパーソナライズ文プレビューをクリックすると、インライン編集モードになります。</p>
+<ul>
+<li>テキストを修正して保存できます</li>
+<li>修正理由を入力するフィールドもあります（任意）</li>
+<li>修正すると修正記録が自動保存されます</li>
+<li><strong>「修正履歴エクスポート」</strong> ボタンで修正内容をMarkdown形式でエクスポートできます</li>
+</ul>
+
+<p>確認ポップアップ内でも直接テキストを編集できます。</p>
+
+<h4>ドライランモード</h4>
+
+<p><strong>「ドライランモード」</strong> をONにすると、実際には送信せずに送信フローをシミュレートします。初回利用時の練習や動作確認に使用してください。</p>
+
+<h4>デバッグログ</h4>
+
+<p><strong>「デバッグログ」</strong> をONにすると、各ステップの詳細ログが表示されます。問題発生時のトラブルシューティングに使用します。</p>
+
+<hr>
+
+<!-- ===== 5. CSVインポートによる送信 ===== -->
+
+<h2 id="sec5">5. CSVインポートによる送信（代替フロー）</h2>
+
+<p>外部ツール（Claude.ai、ChatGPT等）で生成したスカウト文を送信する場合に使用します。</p>
+
+<h3>インポート方法</h3>
+
+<h4>方法1: CSVファイル選択</h4>
+<ol>
+<li>&#x1f4e4; 送信タブの <strong>「CSVファイル」</strong> ボタンを押す</li>
+<li>ファイル選択ダイアログでCSVファイルを選択</li>
+</ol>
+
+<h4>方法2: テキスト貼り付け</h4>
+<ol>
+<li><strong>「貼り付け」</strong> ボタンを押す → テキストエリアが表示される</li>
+<li>CSVテキストを貼り付け（コードブロック <code>csv</code> 付きでもOK）</li>
+<li><strong>「インポート」</strong> ボタンを押す</li>
+</ol>
+
+<h3>CSVの必須列</h3>
+
+<table>
+<tr><th>列名</th><th>説明</th></tr>
+<tr><td><code>member_id</code></td><td>会員番号</td></tr>
+<tr><td><code>template_type</code></td><td>テンプレート種別（例: <code>part_first</code>, <code>seishain_first</code>）</td></tr>
+<tr><td><code>personalized_text</code></td><td>パーソナライズ文（AI生成部分）</td></tr>
+<tr><td><code>full_scout_text</code></td><td>スカウト文全文（テンプレート＋パーソナライズ文）</td></tr>
+</table>
+
+<p><strong>クリア:</strong> <strong>「クリア」</strong> ボタンで候補者リストを全て削除できます。</p>
+
+<hr>
+
+<!-- ===== 6. やりとり取得 ===== -->
+
+<h2 id="sec6">6. やりとり取得（&#x1f4ac; 返信タブ）</h2>
+
+<p>候補者との返信やりとりを取得・保存し、分析用にエクスポートします。</p>
+
+<h3>自動取得（1件）</h3>
+<ol>
+<li>ジョブメドレーのメッセージページで対象の会話を開く</li>
+<li><strong>「やりとりを取得」</strong> を押す</li>
+<li>現在表示中の会話が自動で読み取られます</li>
+</ol>
+
+<h3>自動取得（一括）</h3>
+<ol>
+<li>ジョブメドレーのメッセージページを開く</li>
+<li><strong>「一括取得」</strong> を押す</li>
+<li>サイドバーの会話リストを順番に自動取得します</li>
+<li>「取得中... X/Y件」で進捗が表示されます</li>
+</ol>
+
+<h3>手動入力</h3>
+<ol>
+<li><strong>「手動入力」</strong> を押す → 入力フォームが表示される</li>
+<li><strong>会員番号</strong> を入力</li>
+<li><strong>やりとり内容</strong> を以下のフォーマットで入力:</li>
+</ol>
+
+<pre style="background: #f5f5f5; border: 1px solid #ddd; padding: 12px 16px; border-radius: 4px; font-size: 13px; line-height: 1.6; overflow-x: auto;">2026-03-01
+事業所: スカウト文の内容...
+求職者: 返信の内容...
+事業所: 返答の内容...</pre>
+
+<ol start="4">
+<li><strong>「保存」</strong> を押す</li>
+</ol>
+
+<h3>サーバーへの同期 <span class="new-badge">NEW</span></h3>
+
+<p>取得したやりとりデータをAPIサーバーに送信し、分析用に蓄積できます。</p>
+
+<ol>
+<li>やりとりを取得した状態で、<strong>「サーバーに同期」</strong> ボタンを押す</li>
+<li>取得済みのやりとりデータがAPIサーバーに送信・保存されます</li>
+<li>同期完了後、件数が表示されます</li>
+</ol>
+
+<blockquote>同期されたデータは管理画面の分析機能で活用されます。返信率やテンプレート効果の分析に使用するため、定期的に同期してください。</blockquote>
+
+<h3>エクスポート</h3>
+
+<table>
+<tr><th>ボタン</th><th>出力内容</th></tr>
+<tr><td>全件YAMLエクスポート</td><td>全会話をYAMLファイルとしてダウンロード</td></tr>
+<tr><td>返信スカウト記録エクスポート</td><td>分析用の構造化データとしてエクスポート</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 7. 設定 ===== -->
+
+<h2 id="sec7">7. 設定（&#x2699; 設定タブ）</h2>
+
+<p>通常のオペレーション時は設定変更不要です。管理者がセットアップ済みの状態で使用します。</p>
+
+<h3>API設定</h3>
+
+<table>
+<tr><th>項目</th><th>説明</th></tr>
+<tr><td>APIエンドポイント</td><td>Cloud RunサーバーのURL</td></tr>
+<tr><td>パスワード</td><td>API認証用パスワード</td></tr>
+<tr><td>接続テスト</td><td>接続が正常か確認（緑=OK、赤=NG）</td></tr>
+</table>
+
+<h3>GAS連携</h3>
+
+<table>
+<tr><th>項目</th><th>説明</th></tr>
+<tr><td>有効化</td><td>GAS（Google Apps Script）連携のON/OFF</td></tr>
+<tr><td>GAS Web App URL</td><td>GASデプロイURL</td></tr>
+<tr><td>接続テスト</td><td>GASへの接続確認</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 8. トラブルシューティング ===== -->
+
+<h2 id="sec8">8. トラブルシューティング</h2>
+
+<table>
+<tr><th>症状</th><th>対処法</th></tr>
+<tr><td>「Content Scriptと通信できません」エラー</td><td>ジョブメドレーのページをリロードしてください</td></tr>
+<tr><td>API接続テスト失敗</td><td>エンドポイントURLとパスワードが正しいか管理者に確認してください</td></tr>
+<tr><td>一括生成ボタンが押せない</td><td>先に&#x1f4cb; 抽出タブでプロフィールを抽出してください</td></tr>
+<tr><td>生成結果が全て「除外」</td><td>管理者にバリデーション設定を確認してもらってください</td></tr>
+<tr><td>求人自動選択が失敗する</td><td>「求人自動選択」をOFFにして手動で求人を選択してください</td></tr>
+<tr><td>連続送信が途中で止まる</td><td>ジョブメドレーのページがアクティブか確認してください</td></tr>
+<tr><td>本文セットしてもテキストが入力されない</td><td>ページをリロードしてから再試行してください</td></tr>
+<tr><td>抽出中にエラーが出る</td><td>候補者検索結果ページを表示した状態で実行してください</td></tr>
+<tr><td>拡張機能が動作しない</td><td><code>chrome://extensions</code> で拡張機能が有効か確認してください</td></tr>
+<tr><td>会社が自動判定されない</td><td>手動でドロップダウンから会社を選択してください</td></tr>
+</table>
+
+<hr>
+
+<!-- ===== 9. 用語集 ===== -->
+
+<h2 id="sec9">9. 用語集</h2>
+
+<table>
+<tr><th>用語</th><th>説明</th></tr>
+<tr><td>パーソナライズ文</td><td>候補者の経歴に合わせてAIが生成する個別メッセージ部分</td></tr>
+<tr><td>テンプレート</td><td>スカウト文の外枠（挨拶・会社紹介・締め等）。パーソナライズ文が挿入される</td></tr>
+<tr><td>型はめ</td><td>経歴情報が少ない候補者向けに、定型パターンから機械的に文章を生成する方式</td></tr>
+<tr><td>AI生成</td><td>経歴情報がある候補者向けに、AIが個別にパーソナライズ文を生成する方式</td></tr>
+<tr><td>バリデーション</td><td>候補者が送信対象かどうかを判定するルール（年齢・資格等）</td></tr>
+<tr><td>求人自動選択</td><td>職種カテゴリと雇用形態に応じて、適切な求人を自動的に選択する機能</td></tr>
+<tr><td>会社自動判定</td><td>ジョブメドレーのページ内容から会社を自動的に検出し、ドロップダウンを切り替える機能</td></tr>
+<tr><td>「気になる」</td><td>求職者が求人に興味を示した状態。候補者リストに&#x2b50;バッジで表示される</td></tr>
+<tr><td>ドライラン</td><td>実際には送信せず、送信フローの動作だけを確認するテストモード</td></tr>
+<tr><td>GAS連携</td><td>Google Apps Scriptを使った送信記録の連携（オプション機能）</td></tr>
+<tr><td>職種カテゴリ</td><td>資格から自動分類される職種（看護師、PT、ST、OT、医療事務）</td></tr>
+<tr><td>返信同期</td><td>取得したやりとりデータをAPIサーバーに送信し、分析用に蓄積する機能</td></tr>
+</table>
+
+</body>
+</html>

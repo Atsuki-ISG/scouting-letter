@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<style>
+body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; color: #333; line-height: 1.8; }
+h1 { font-size: 28px; border-bottom: 3px solid #2c3e50; padding-bottom: 10px; }
+h2 { font-size: 20px; color: #2c3e50; margin-top: 40px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+h3 { font-size: 17px; color: #2c3e50; margin-top: 30px; }
+h4 { font-size: 15px; color: #34495e; margin-top: 20px; }
+table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+th { background: #2c3e50; color: white; padding: 10px 15px; text-align: left; }
+td { border: 1px solid #ddd; padding: 10px 15px; }
+tr:nth-child(even) { background: #f9f9f9; }
+code { background: #f0e6e6; color: #c0392b; padding: 2px 6px; border-radius: 3px; font-size: 14px; }
+ol, ul { padding-left: 25px; }
+li { margin: 8px 0; }
+blockquote { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; margin: 15px 0; }
+hr { border: none; border-top: 2px solid #2c3e50; margin: 30px 0; }
+.toc { background: #f4f6f7; border: 1px solid #ddd; border-radius: 6px; padding: 20px 30px; margin: 20px 0; }
+.toc h2 { margin-top: 0; border-bottom: none; font-size: 18px; }
+.toc ol { padding-left: 20px; }
+.toc li { margin: 4px 0; }
+.toc a { color: #2c3e50; text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+.toc ol ol { margin-top: 4px; }
+.new-badge { background: #e74c3c; color: white; font-size: 11px; padding: 2px 7px; border-radius: 3px; margin-left: 6px; vertical-align: middle; font-weight: bold; }
+pre { background: #f4f4f4; border: 1px solid #ddd; border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 13px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<h1>Scout Admin 取扱説明書（管理画面）</h1>
+
+<div class="toc">
+<h2>目次</h2>
+<ol>
+<li><a href="#about">この管理画面について</a></li>
+<li><a href="#login">アクセスとログイン</a></li>
+<li><a href="#header">画面の見方（ヘッダー）</a></li>
+<li><a href="#flow-view">フロービュー</a>
+  <ol>
+    <li><a href="#pipeline">パイプライン全体像</a></li>
+    <li><a href="#node">ノードの見方</a></li>
+    <li><a href="#pipeline-test">パイプラインテスト</a></li>
+  </ol>
+</li>
+<li><a href="#table-view">テーブルビュー</a>
+  <ol>
+    <li><a href="#table-common">共通操作</a></li>
+    <li><a href="#table-template">テンプレート</a></li>
+    <li><a href="#table-validation">バリデーション</a></li>
+    <li><a href="#table-ai">AI生成設定</a></li>
+    <li><a href="#table-pattern">型はめ設定</a></li>
+    <li><a href="#table-job">求人</a></li>
+    <li><a href="#table-log">生成ログ</a></li>
+    <li><a href="#table-analysis">分析</a> <span class="new-badge">NEW</span></li>
+    <li><a href="#table-profile">プロフィール管理</a> <span class="new-badge">NEW</span></li>
+  </ol>
+</li>
+<li><a href="#howto">よくある操作手順</a></li>
+<li><a href="#cache">キャッシュ更新</a></li>
+<li><a href="#troubleshooting">トラブルシューティング</a></li>
+</ol>
+</div>
+
+<hr>
+
+<h2 id="about">1. この管理画面について</h2>
+
+<p>Scout Admin は、スカウト文の自動生成に使われる設定（テンプレート、パターン、AIのプロンプト、送信条件など）を管理するWebアプリです。</p>
+
+<p>Chrome拡張やAPIから送られるスカウト文は、すべてこの管理画面で設定した内容に基づいて生成されます。設定を変えれば、生成されるスカウト文の内容も変わります。</p>
+
+<p>主な機能:</p>
+<ul>
+<li>スカウト文のテンプレート（外枠）の編集</li>
+<li>送信対象を絞るバリデーションルールの設定</li>
+<li>AIが文章を生成するときのプロンプト（指示文）の調整</li>
+<li>経歴情報が少ない候補者向けの定型パターン管理</li>
+<li>対象求人の登録・管理</li>
+<li>生成ログの閲覧</li>
+<li>新しい会社の設定をAIで一括生成（既存会社の設定を参考にして生成）</li>
+<li>送信データの分析とテンプレート改善 <span class="new-badge">NEW</span></li>
+<li>会社プロフィール・検出キーワードの管理 <span class="new-badge">NEW</span></li>
+</ul>
+
+<p>画面モードは2種類あります:</p>
+<table>
+<tr><th>モード</th><th>どんなとき使う？</th></tr>
+<tr><td>フロービュー</td><td>生成の流れを全体像で把握したいとき。テスト実行もここから</td></tr>
+<tr><td>テーブルビュー</td><td>テンプレートやパターンを具体的に追加・編集・削除したいとき</td></tr>
+</table>
+
+<p>初期セットアップ（新会社追加・求人登録等）は管理者向けセットアップガイド（<code>server/admin/SETUP.md</code>）を参照してください。</p>
+
+<hr>
+
+<h2 id="login">2. アクセスとログイン</h2>
+
+<h3>URLを開く</h3>
+<p>ブラウザで以下のURLにアクセスします:</p>
+<pre>https://scout-api-1080076995871.asia-northeast1.run.app/admin/</pre>
+
+<h3>ログイン</h3>
+<p>初回アクセス時に「パスワードを入力してください」と表示されます。</p>
+<ol>
+<li>Chrome拡張のAPI設定と同じ <strong>パスワード</strong> を入力</li>
+<li><strong>「ログイン」</strong> を押す</li>
+</ol>
+
+<p>ログインに成功すると管理画面が表示されます。パスワードはブラウザに保存されるので、同じブラウザからは次回以降自動でログインできます。</p>
+
+<p>「パスワードが違います」と表示される場合は、管理者にパスワードを確認してください。</p>
+
+<p>パスワードを変更したい場合は、ログイン後にヘッダー右側の <strong>「パスワード設定」</strong> ボタンから変更できます。</p>
+
+<hr>
+
+<h2 id="header">3. 画面の見方（ヘッダー）</h2>
+
+<p>ログイン後、画面の一番上にヘッダーバー（緑色）が表示されます。ここで会社の切り替えやビューの切り替えを行います。</p>
+
+<h3>ヘッダーの各ボタン</h3>
+<table>
+<tr><th>要素</th><th>説明</th></tr>
+<tr><td>会社ドロップダウン（左側）</td><td>操作対象の会社を切り替えます。選んだ会社のデータだけが表示されます</td></tr>
+<tr><td>＋ 新規会社</td><td>新しい会社を追加するウィザードを開きます（セットアップガイド参照）</td></tr>
+<tr><td>フロー / テーブル</td><td>画面の表示モードを切り替えます</td></tr>
+<tr><td>キャッシュ更新（右側）</td><td>設定変更後にこのボタンを押すと、変更がスカウト生成に反映されます</td></tr>
+<tr><td>パスワード設定（右側）</td><td>ログインパスワードを変更できます</td></tr>
+</table>
+
+<blockquote><strong>重要:</strong> テンプレートやパターンを編集した後は、必ず <strong>「キャッシュ更新」</strong> を押してください。押さないと、Chrome拡張からのスカウト生成に変更が反映されません。</blockquote>
+
+<hr>
+
+<h2 id="flow-view">4. フロービュー</h2>
+
+<p>スカウト文生成の7ステップを視覚的に表示します。</p>
+
+<h3 id="pipeline">パイプライン全体像</h3>
+
+<pre>1. 候補者データ取得
+↓
+2. バリデーション（送信対象チェック）
+↓
+3. テンプレート判定（パート/正社員 × 初回/再送）
+↓
+4. 経歴情報の有無でAI生成か型はめか判定
+↓
+┌─────────────────────────────┐
+↓                             ↓
+5a. AI生成              5b. 型はめ
+（経歴あり）            （経歴なし）
+↓                             ↓
+└─────────────────────────────┘
+↓
+6. テンプレートにパーソナライズ文を挿入
+↓
+7. 求人情報とID情報を付与して完成</pre>
+
+<h3 id="node">ノードの見方</h3>
+<p>各ステップはカード形式で表示されます。</p>
+<ul>
+<li>クリック → 詳細が展開され、設定内容のサマリーが表示されます</li>
+<li>編集可能なノード（3, 4, 5a, 5b, 7）は「テーブルで編集」リンク付き</li>
+<li>テスト結果の色:
+  <ul>
+    <li>緑 = このステップを通過</li>
+    <li>赤 = このステップで失敗/除外</li>
+    <li>灰 = このステップを通過していない</li>
+  </ul>
+</li>
+</ul>
+
+<h3 id="pipeline-test">パイプラインテスト</h3>
+<p>画面上部のテストパネルで、候補者プロフィールを入力してパイプラインの動作を確認できます。</p>
+
+<h4>入力項目:</h4>
+<table>
+<tr><th>項目</th><th>説明</th></tr>
+<tr><td>資格</td><td>複数選択可（看護師、准看護師 等）。選択するとタグ表示され、×で解除</td></tr>
+<tr><td>希望雇用</td><td>複数選択可（パート、正社員 等）</td></tr>
+<tr><td>年齢</td><td>数値入力（例: 35）</td></tr>
+<tr><td>経験年数</td><td>数値入力（例: 5）</td></tr>
+<tr><td>経歴タイプ</td><td>訪問看護、病棟 等</td></tr>
+<tr><td>就業状態</td><td>ドロップダウンから選択（就業中、離職中 等）</td></tr>
+<tr><td>職務経歴（空=型はめ）</td><td>テキスト入力。空欄にすると型はめパスで処理されます</td></tr>
+<tr><td>自己PR</td><td>テキスト入力</td></tr>
+<tr><td>AI生成をスキップ（モック）</td><td>チェックを入れるとAI呼び出しをスキップ（高速テスト用）</td></tr>
+</table>
+
+<h4>手順:</h4>
+<ol>
+<li>テスト用のプロフィール情報を入力</li>
+<li><strong>「テスト実行」</strong> を押す</li>
+<li>各ステップの通過/失敗がノードの色で可視化されます</li>
+<li>AI生成またはパターン型はめの結果テキストが表示されます</li>
+</ol>
+
+<hr>
+
+<h2 id="table-view">5. テーブルビュー</h2>
+
+<p>8つのタブでデータを管理します。</p>
+
+<h3 id="table-common">共通操作</h3>
+<table>
+<tr><th>操作</th><th>方法</th></tr>
+<tr><td>新規追加</td><td>ツールバーの <strong>「＋ 追加」</strong> ボタン</td></tr>
+<tr><td>編集</td><td>行の <strong>「編集」</strong> ボタン → 編集ダイアログ → <strong>「保存」</strong></td></tr>
+<tr><td>削除</td><td>行の <strong>「削除」</strong> ボタン → 確認ダイアログ → OK</td></tr>
+<tr><td>ロック/ロック解除</td><td>ツールバーの <strong>「ロック解除」</strong> / <strong>「ロック」</strong> ボタン。ロック中は他社データや全社共通データの編集・削除が無効になります</td></tr>
+</table>
+
+<p>長いテキストは先頭部分のみ表示されます。<strong>「もっと見る」</strong> で全文を確認できます。</p>
+
+<h3 id="table-template">テンプレート</h3>
+
+<p>スカウト文の外枠（挨拶・会社紹介・締め等）を管理します。</p>
+
+<p>4種類:</p>
+<ul>
+<li>パート初回 / パート再送</li>
+<li>正社員初回 / 正社員再送</li>
+</ul>
+
+<h4>テーブルの列:</h4>
+<table>
+<tr><th>列名</th><th>説明</th></tr>
+<tr><td>会社</td><td>会社ID（例: <code>ark-visiting-nurse</code>）</td></tr>
+<tr><td>職種カテゴリ</td><td>対象職種（例: <code>nurse</code>）</td></tr>
+<tr><td>テンプレート種別</td><td>パート_初回 / パート_再送 / 正社員_初回 / 正社員_再送</td></tr>
+<tr><td>テンプレート本文</td><td>スカウト文の外枠テキスト</td></tr>
+<tr><td>操作</td><td>「編集」「削除」ボタン</td></tr>
+</table>
+
+<blockquote><strong>重要:</strong> テンプレート本文内の <code>{ここに生成した文章を挿入}</code> がAI生成文や型はめ文の挿入位置です。この記述を必ず含めてください。</blockquote>
+
+<h4>テンプレートバージョニング <span class="new-badge">NEW</span></h4>
+
+<p>テンプレートを編集・保存すると、以下の自動バージョニングが行われます:</p>
+<ul>
+<li><strong>バージョン番号の自動インクリメント:</strong> テンプレートを保存するたびに、バージョン番号が自動的に上がります（v1 → v2 → v3 ...）。テーブル上でも現在のバージョンが確認できます。</li>
+<li><strong>変更履歴の自動保存:</strong> 変更内容は「テンプレート変更履歴」シート（Google Sheets）に自動記録されます。</li>
+<li><strong>追跡可能な情報:</strong> いつ変更されたか、どのテンプレートが変更されたか、変更前後の内容が記録されるため、過去の状態をいつでも確認できます。</li>
+</ul>
+
+<blockquote>バージョニングは自動で行われるため、特別な操作は不要です。テンプレートを編集して「保存」を押すだけで、バージョンが自動的に管理されます。</blockquote>
+
+<h3 id="table-validation">バリデーション</h3>
+
+<p>スカウト対象外の条件（年齢制限・資格ルール・AI判定条件）を管理します。</p>
+
+<h4>テーブルの列:</h4>
+<table>
+<tr><th>列名</th><th>説明</th></tr>
+<tr><td>会社</td><td>会社ID</td></tr>
+<tr><td>年齢下限</td><td>スカウト対象の最低年齢（例: 20）</td></tr>
+<tr><td>年齢上限</td><td>スカウト対象の最高年齢（例: 55）</td></tr>
+<tr><td>資格ルール（JSON）</td><td>求人ごとの必須資格・除外資格（下記参照）</td></tr>
+<tr><td>操作</td><td>「編集」「削除」ボタン</td></tr>
+</table>
+
+<h4>編集ダイアログの設定項目</h4>
+
+<p><strong>ルールベース（チェックボックス）:</strong></p>
+<table>
+<tr><th>ルール</th><th>説明</th></tr>
+<tr><td>資格不一致NG</td><td>求人の必須資格を持たない候補者を除外</td></tr>
+<tr><td>臨床経験なしNG</td><td>臨床経験がない候補者を除外</td></tr>
+<tr><td>スカウト済みNG</td><td>過去にスカウト送信済みの候補者を除外</td></tr>
+</table>
+
+<p><strong>スカウト上限設定（スカウト済みNGを有効にした場合に表示）:</strong></p>
+<table>
+<tr><th>項目</th><th>説明</th></tr>
+<tr><td>最大送信回数</td><td>同じ候補者へのスカウト上限回数</td></tr>
+<tr><td>再送間隔（日）</td><td>再送までの最低日数</td></tr>
+</table>
+
+<p><strong>資格ルール（求人ごと）:</strong></p>
+<ul>
+<li>必須資格: この資格のいずれかを持つ候補者のみ対象</li>
+<li>除外資格: この資格を持つ候補者を除外</li>
+</ul>
+
+<p><strong>AI判定条件（自由記述）:</strong> テキストで条件を書くとAIが判定します（例:「ブランク10年以上の場合は除外」）</p>
+
+<h3 id="table-ai">AI生成設定</h3>
+
+<p>AI生成パス（経歴あり候補者）で使われるプロンプトの構成パーツを管理します。複数のセクションが表示順に結合されて、AIへの指示文（system prompt）になります。</p>
+
+<h4>テーブルの列:</h4>
+<table>
+<tr><th>列名</th><th>説明</th></tr>
+<tr><td>会社</td><td>会社IDまたは <strong>全社共通</strong>（青色リンク表示）</td></tr>
+<tr><td>セクション種別</td><td>このセクションの種類（後述）</td></tr>
+<tr><td>職種カテゴリ</td><td>対象職種（空欄＝全職種共通）</td></tr>
+<tr><td>表示順</td><td>結合される順番（1が最初）</td></tr>
+<tr><td>内容</td><td>プロンプト本文</td></tr>
+<tr><td>操作</td><td>「編集」「削除」ボタン</td></tr>
+</table>
+
+<p><strong>全社共通</strong> と表示されている行は、全ての会社で共有されるセクションです。会社固有の設定と組み合わせて使われます。</p>
+
+<h4>セクション種別:</h4>
+<table>
+<tr><th>種別</th><th>説明</th><th>補足</th></tr>
+<tr><td><code>role_definition</code></td><td>AIの役割定義</td><td>通常は全社共通</td></tr>
+<tr><td><code>station_features</code></td><td>会社の特色（AI生成の参考情報）</td><td>会社固有</td></tr>
+<tr><td><code>education</code></td><td>教育体制（AI生成の参考情報）</td><td>会社固有</td></tr>
+<tr><td><code>tone_and_manner</code></td><td>文体・トーンのルール</td><td>通常は全社共通</td></tr>
+<tr><td><code>common_rules</code></td><td>共通ルール（文字数等）</td><td>通常は全社共通</td></tr>
+<tr><td><code>ai_guide</code></td><td>AI生成ガイド（生成の細かいルール）</td><td>会社固有</td></tr>
+<tr><td><code>ng_expressions</code></td><td>NG表現リスト</td><td>通常は全社共通</td></tr>
+</table>
+
+<p><strong>職種カテゴリ列:</strong> 空欄の場合は全職種で使われます。特定の職種（例: <code>nurse</code>）を指定すると、その職種の候補者にのみ適用されます。</p>
+
+<p><strong>プロンプトプレビュー:</strong> <strong>「全文プレビュー」</strong> ボタンで、全セクションがどう組み立てられてAIに渡されるか確認できます。</p>
+
+<h3 id="table-pattern">型はめ設定</h3>
+
+<p>経歴が少ない候補者（自己PR・職歴なし）に使う定型文を管理します。候補者の経験年数×年齢で自動的にパターンが選ばれます。</p>
+
+<h4>型の一覧ガイド</h4>
+<p>タブ上部に <strong>▼ 型の一覧ガイド</strong> が表示されます（クリックで開閉）。各パターンの対象がカード形式で確認できます:</p>
+
+<table>
+<tr><th>パターン</th><th>表示名</th><th>対象</th></tr>
+<tr><td>A</td><td>豊富な経験への期待</td><td>経験10年+ / 40代〜×経験6年+</td></tr>
+<tr><td>B1</td><td>確かな経験×特色</td><td>経験6〜9年</td></tr>
+<tr><td>B2</td><td>経験×特色</td><td>経験3〜5年</td></tr>
+<tr><td>C</td><td>経験とのフィット</td><td>40代〜 × 経験1〜2年</td></tr>
+<tr><td>D</td><td>経験ある前提で評価</td><td>40代〜 × 経験未入力</td></tr>
+<tr><td>E</td><td>ポテンシャル+教育体制</td><td>20〜30代 × 経験1〜2年</td></tr>
+<tr><td>F</td><td>教育体制+成長環境</td><td>20〜30代 × 経験未入力</td></tr>
+<tr><td>G</td><td>教育体制メイン</td><td>在学中</td></tr>
+</table>
+
+<h4>テーブルの列:</h4>
+<table>
+<tr><th>列名</th><th>説明</th></tr>
+<tr><td>会社</td><td>会社ID</td></tr>
+<tr><td>職種カテゴリ</td><td>対象職種</td></tr>
+<tr><td>パターン型</td><td>A〜G（色付きバッジで表示）</td></tr>
+<tr><td>就業状態</td><td>就業中/離職中 等のバリエーション</td></tr>
+<tr><td>パターン本文</td><td>型はめ文のテキスト</td></tr>
+<tr><td>特色バリエーション</td><td>自己PR等に応じた差し替えテキスト</td></tr>
+<tr><td>表示名</td><td>パターンの表示名</td></tr>
+<tr><td>対象条件</td><td>このパターンの対象説明</td></tr>
+<tr><td>マッチングルール</td><td>適用条件（経験年数・年齢のJSON）</td></tr>
+<tr><td>資格の組み合わせ</td><td>資格修飾用の資格パターン</td></tr>
+<tr><td>差し替え文</td><td>資格修飾用の差し替えテキスト</td></tr>
+<tr><td>操作</td><td>「編集」「削除」ボタン</td></tr>
+</table>
+
+<h4>AIで一括生成</h4>
+<p>パターンのテキストをAIで一括生成できます。</p>
+<ol>
+<li>ツールバーの <strong>「AIで一括生成」</strong> を押す</li>
+<li><strong>会社情報</strong> テキストエリアに会社の特色・教育体制等を入力（<code>profile.md</code>の内容を貼り付け）</li>
+<li><strong>「生成する」</strong> を押す → AIがパターンA〜Gのテキストを生成</li>
+<li>プレビューを確認</li>
+<li><strong>「保存する」</strong> を押す → 既存パターンが上書きされます</li>
+</ol>
+
+<h3 id="table-job">求人</h3>
+
+<p>ジョブメドレーの求人情報を管理します。</p>
+
+<h4>テーブルの列:</h4>
+<table>
+<tr><th>列名</th><th>説明</th></tr>
+<tr><td>会社</td><td>会社ID</td></tr>
+<tr><td>職種カテゴリ</td><td>対象職種</td></tr>
+<tr><td>求人ID</td><td>ジョブメドレーの求人ID（例: <code>1550716</code>）</td></tr>
+<tr><td>求人名</td><td>求人の正式名称</td></tr>
+<tr><td>表示ラベル</td><td>短い表示名</td></tr>
+<tr><td>雇用形態</td><td>パート / 正社員</td></tr>
+<tr><td>有効</td><td>TRUE（使用中）/ FALSE（無効）</td></tr>
+<tr><td>操作</td><td>「編集」「削除」ボタン</td></tr>
+</table>
+
+<p><strong>求人の追加方法:</strong></p>
+<ul>
+<li><strong>Chrome拡張から:</strong> 設定タブの「求人抽出・登録」でジョブメドレーから自動取得して登録（推奨）</li>
+<li><strong>管理画面から:</strong> 「＋ 追加」で手動入力</li>
+</ul>
+
+<h3 id="table-log">生成ログ</h3>
+
+<p>スカウト文の生成履歴を閲覧できます。読み取り専用（追加・編集・削除不可）。</p>
+
+<h4>テーブルの列:</h4>
+<table>
+<tr><th>列名</th><th>説明</th></tr>
+<tr><td>会社</td><td>会社ID</td></tr>
+<tr><td>会員番号</td><td>候補者の会員番号</td></tr>
+<tr><td>生成ステータス</td><td>生成の成否</td></tr>
+<tr><td>パス</td><td>AI生成 / 型はめ のどちらで生成されたか</td></tr>
+<tr><td>生成テキスト</td><td>生成されたパーソナライズ文のプレビュー</td></tr>
+</table>
+
+<p>生成の監査や問題調査に使用します。</p>
+
+<h3 id="table-analysis">分析 <span class="new-badge">NEW</span></h3>
+
+<p>送信データの集計・分析と、分析結果に基づくテンプレート改善を行うタブです。</p>
+
+<h4>クロス集計</h4>
+<p>送信済みスカウトデータを様々な切り口で集計・可視化できます。</p>
+<ul>
+<li><strong>職種×テンプレートVer:</strong> どの職種でどのバージョンのテンプレートが使われたかを集計</li>
+<li><strong>地域別:</strong> エリアごとの送信数を集計</li>
+<li><strong>AI生成 vs 型はめ:</strong> 生成パス（AI生成/型はめ）ごとの送信数・割合を比較</li>
+<li><strong>その他の軸:</strong> 雇用形態別、経験年数帯別など</li>
+</ul>
+
+<h4>Geminiによる自動分析</h4>
+<p>送信データをGemini（AI）が分析し、改善提案を自動生成します。</p>
+<ol>
+<li><strong>「分析を実行」</strong> ボタンを押す</li>
+<li>Geminiが送信データの傾向やパターンを分析</li>
+<li>分析結果と改善提案がテキストで表示されます</li>
+</ol>
+
+<h4>テンプレート改善</h4>
+<p>分析データに基づいて、AIがテンプレートの改善案を生成します。</p>
+<ol>
+<li><strong>「テンプレート改善」</strong> ボタンを押す</li>
+<li>AIが現在のテンプレートと分析データを踏まえて改善案を作成</li>
+<li>改善案が <strong>diff形式</strong>（変更前→変更後）で表示されます</li>
+<li>内容を確認し、<strong>「承認して反映」</strong> を押すとテンプレートに反映されます</li>
+</ol>
+
+<blockquote>テンプレート改善を承認すると、テンプレートのバージョンが自動的にインクリメントされ、変更履歴にも記録されます。反映後は <strong>「キャッシュ更新」</strong> を忘れずに。</blockquote>
+
+<h4>全社横断分析</h4>
+<p>ヘッダーの会社ドロップダウンで「全社」を選択すると、全ての会社のデータを横断して分析できます。会社間の比較や全体の傾向把握に利用できます。</p>
+
+<h3 id="table-profile">プロフィール管理 <span class="new-badge">NEW</span></h3>
+
+<p>各会社のプロフィール情報（会社の特色・教育体制等）と、Chrome拡張の会社自動判定で使われる検出キーワードを管理します。</p>
+
+<h4>テーブルの列:</h4>
+<table>
+<tr><th>列名</th><th>説明</th></tr>
+<tr><td>会社</td><td>会社ID</td></tr>
+<tr><td>プロフィール内容</td><td>会社の特色・教育体制・アピールポイントなど（<code>profile.md</code>に相当する内容）</td></tr>
+<tr><td>検出キーワード</td><td>Chrome拡張が求人ページから会社を自動判定するためのキーワード一覧</td></tr>
+</table>
+
+<h4>プロフィール内容</h4>
+<p>会社の特色や強みをテキストで管理します。この情報は以下の場面で参照されます:</p>
+<ul>
+<li>AI生成時のプロンプトに会社情報として注入</li>
+<li>型はめパターンのAI一括生成時の参考情報</li>
+<li>テンプレート改善提案時の会社コンテキスト</li>
+</ul>
+
+<h4>検出キーワード</h4>
+<p>Chrome拡張は、ジョブメドレーの求人ページ上のテキストからこのキーワードを照合し、どの会社のスカウト設定を使うかを自動判定します。</p>
+<ul>
+<li>キーワードは会社名・施設名・法人名など、求人ページに表示される文字列を登録します</li>
+<li>複数キーワードを登録可能（いずれか1つがヒットすれば判定されます）</li>
+<li>キーワードが正しく設定されていれば、オペレーターが手動で会社を選択する必要がなくなります</li>
+</ul>
+
+<h4>操作方法:</h4>
+<table>
+<tr><th>操作</th><th>方法</th></tr>
+<tr><td>プロフィール編集</td><td>行の <strong>「編集」</strong> ボタン → プロフィール内容を修正 → <strong>「保存」</strong></td></tr>
+<tr><td>キーワード追加</td><td>行の <strong>「編集」</strong> ボタン → 検出キーワード欄にキーワードを追加 → <strong>「保存」</strong></td></tr>
+<tr><td>新規会社プロフィール追加</td><td>ツールバーの <strong>「＋ 追加」</strong> ボタン</td></tr>
+</table>
+
+<blockquote>検出キーワードを変更した場合は <strong>「キャッシュ更新」</strong> を押してください。Chrome拡張はAPIからキーワードを取得するため、キャッシュ更新後に反映されます。</blockquote>
+
+<hr>
+
+<h2 id="howto">6. よくある操作手順</h2>
+
+<h3>テンプレートの文言を変更する</h3>
+<ol>
+<li>テーブルビューで <strong>テンプレート</strong> タブを選択</li>
+<li>対象行の <strong>「編集」</strong> を押す</li>
+<li>body フィールドでテキストを修正</li>
+<li><strong>「保存」</strong> → <strong>「キャッシュ更新」</strong></li>
+</ol>
+
+<h3>バリデーションルールを追加・変更する</h3>
+<ol>
+<li>テーブルビューで <strong>バリデーション</strong> タブを選択</li>
+<li>対象行の <strong>「編集」</strong> を押す</li>
+<li>年齢範囲やルールを変更</li>
+<li><strong>「保存」</strong> → <strong>「キャッシュ更新」</strong></li>
+</ol>
+
+<h3>パターンをAIで一括生成する</h3>
+<ol>
+<li>テーブルビューで <strong>型はめ設定</strong> タブを選択</li>
+<li><strong>「AIで一括生成」</strong> を押す</li>
+<li>会社情報を入力 → <strong>「生成する」</strong></li>
+<li>プレビュー確認 → <strong>「保存する」</strong> → <strong>「キャッシュ更新」</strong></li>
+</ol>
+
+<h3>パイプラインの動作を確認する</h3>
+<ol>
+<li>フロービューに切り替え</li>
+<li>テストパネルに候補者情報を入力</li>
+<li><strong>「テスト実行」</strong> を押す</li>
+<li>各ステップの通過/失敗を確認</li>
+</ol>
+
+<h3>求人を追加する</h3>
+<p><strong>推奨:</strong> Chrome拡張の⚙ 設定タブ →「求人を取得」→「選択した求人をAPIに登録」</p>
+<p><strong>手動:</strong> テーブルビューの <strong>求人</strong> タブ → 「＋ 追加」 でジョブメドレーの求人IDを入力</p>
+
+<h3>送信データを分析してテンプレートを改善する <span class="new-badge">NEW</span></h3>
+<ol>
+<li>テーブルビューで <strong>分析</strong> タブを選択</li>
+<li>クロス集計で送信データの傾向を確認</li>
+<li><strong>「分析を実行」</strong> でAIによる分析と改善提案を取得</li>
+<li><strong>「テンプレート改善」</strong> でdiff形式の改善案を確認</li>
+<li>問題なければ <strong>「承認して反映」</strong> → <strong>「キャッシュ更新」</strong></li>
+</ol>
+
+<h3>会社プロフィール・検出キーワードを更新する <span class="new-badge">NEW</span></h3>
+<ol>
+<li>テーブルビューで <strong>プロフィール管理</strong> タブを選択</li>
+<li>対象会社の行で <strong>「編集」</strong> を押す</li>
+<li>プロフィール内容や検出キーワードを修正</li>
+<li><strong>「保存」</strong> → <strong>「キャッシュ更新」</strong></li>
+</ol>
+
+<hr>
+
+<h2 id="cache">7. キャッシュ更新</h2>
+
+<p>管理画面での設定変更は Google Sheets に書き込まれますが、APIサーバーはメモリ上のキャッシュを使用しています。</p>
+
+<p><strong>設定変更後は必ずヘッダーの「キャッシュ更新」を押してください。</strong> これにより、APIサーバーがGoogle Sheetsから最新データを再読み込みします。</p>
+
+<hr>
+
+<h2 id="troubleshooting">8. トラブルシューティング</h2>
+
+<table>
+<tr><th>症状</th><th>対処法</th></tr>
+<tr><td>パスワードを忘れた</td><td>管理者に確認してください</td></tr>
+<tr><td>設定変更が生成結果に反映されない</td><td>ヘッダーの <strong>「キャッシュ更新」</strong> を押してください</td></tr>
+<tr><td>AI一括生成が失敗する</td><td>会社情報テキストが短すぎないか確認してください（500文字以上推奨）</td></tr>
+<tr><td>テスト実行でエラーが出る</td><td>APIサーバーが起動しているか確認してください</td></tr>
+<tr><td>「パスワードが違います」と表示される</td><td>正しいパスワードを管理者に確認してください</td></tr>
+<tr><td>テーブルに他社のデータが表示される</td><td>ヘッダーの会社ドロップダウンを確認してください</td></tr>
+<tr><td>編集ボタンが効かない</td><td>ロックがONになっていないか確認してください</td></tr>
+<tr><td>Chrome拡張で会社が自動判定されない <span class="new-badge">NEW</span></td><td>プロフィール管理タブで検出キーワードが正しく登録されているか確認し、「キャッシュ更新」を押してください</td></tr>
+<tr><td>テンプレート改善が反映されない <span class="new-badge">NEW</span></td><td>改善案を「承認して反映」した後に「キャッシュ更新」を押してください</td></tr>
+</table>
+
+</body>
+</html>
