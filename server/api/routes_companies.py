@@ -36,7 +36,10 @@ async def reload_config(
     operator: dict = Depends(verify_api_key),
 ):
     """Reload config from Google Sheets and ensure sheet headers are up to date."""
-    # Update profile sheet header to include detection_keywords
-    sheets_writer.ensure_sheet_exists("プロフィール", ["company", "content", "detection_keywords"])
+    # Directly update profile sheet header row
+    try:
+        sheets_writer.update_row("プロフィール", 1, ["company", "content", "detection_keywords"])
+    except Exception as e:
+        logger.warning(f"Profile header update failed: {e}")
     sheets_client.reload()
     return {"status": "reloaded"}
