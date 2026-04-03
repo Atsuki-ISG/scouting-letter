@@ -12,7 +12,7 @@ Expected sheets and columns:
   プロンプト: company, section_type, job_category, order, content
   求人: company, job_category, id, name, label, employment_type, active
   バリデーション: company, age_min, age_max, qualification_rules
-  プロフィール: company, content
+  プロフィール: company, content, detection_keywords
 """
 
 from __future__ import annotations
@@ -166,6 +166,22 @@ class SheetsClient:
                 if c:
                     companies.add(c)
         return sorted(companies)
+
+    def get_companies_with_keywords(self) -> list[dict[str, Any]]:
+        """Return company list with detection keywords from profile sheet."""
+        self._ensure_cache()
+        # Build keyword map from profiles
+        keyword_map: dict[str, list[str]] = {}
+        for row in self._cache.get(SHEET_PROFILES, []):
+            c = row.get("company", "").strip()
+            kw = row.get("detection_keywords", "").strip()
+            if c and kw:
+                keyword_map[c] = [k.strip() for k in kw.split(",") if k.strip()]
+
+        return [
+            {"id": c, "detection_keywords": keyword_map.get(c, [])}
+            for c in self.get_company_list()
+        ]
 
     def get_company_config(self, company_id: str) -> dict[str, Any]:
         """Get all config for a company."""

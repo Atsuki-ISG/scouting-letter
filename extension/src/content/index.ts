@@ -126,12 +126,13 @@ chrome.runtime.onMessage.addListener(
         return false;
 
       case 'DETECT_COMPANY': {
-        const detected = detectCompanyFromPage();
-        if (detected) {
-          safeSendMessage({ type: 'COMPANY_DETECTED', companyId: detected });
-        }
-        sendResponse({ ok: true, companyId: detected });
-        return false;
+        detectCompanyFromPage().then(detected => {
+          if (detected) {
+            safeSendMessage({ type: 'COMPANY_DETECTED', companyId: detected });
+          }
+          sendResponse({ ok: true, companyId: detected });
+        });
+        return true; // async response
       }
 
       default:
@@ -144,8 +145,8 @@ chrome.runtime.onMessage.addListener(
 setupOverlayObserver();
 
 // ページ読み込み後に会社を自動検出
-setTimeout(() => {
-  const detected = detectCompanyFromPage();
+setTimeout(async () => {
+  const detected = await detectCompanyFromPage();
   if (detected) {
     safeSendMessage({ type: 'COMPANY_DETECTED', companyId: detected });
   }

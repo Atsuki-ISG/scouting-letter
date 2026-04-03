@@ -29,7 +29,7 @@ COLUMNS = {
     "job_offers": ["company", "job_category", "id", "name", "label", "employment_type", "active"],
     "validation": ["company", "age_min", "age_max", "qualification_rules", "category_exclusions", "category_config"],
     "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview"],
-    "profiles": ["company", "content"],
+    "profiles": ["company", "content", "detection_keywords"],
 }
 
 

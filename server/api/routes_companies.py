@@ -13,8 +13,8 @@ router = APIRouter(tags=["companies"])
 async def list_companies(
     operator: dict = Depends(verify_api_key),
 ):
-    """Return list of unique company IDs from all sheets."""
-    return {"companies": sheets_client.get_company_list()}
+    """Return list of companies with detection keywords."""
+    return {"companies": sheets_client.get_companies_with_keywords()}
 
 
 @router.get("/companies/{company_id}/config")

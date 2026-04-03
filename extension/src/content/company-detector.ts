@@ -1,16 +1,29 @@
 /**
  * ページのDOMからジョブメドレーの施設名を検出し、対応する会社IDを推定する。
  *
+ * 検出キーワードはAPIから取得しstorageに保存されたものを使用。
+ * storageになければハードコードのフォールバックを使用。
+ *
  * 検出ソース:
  * 1. document.title
  * 2. サイドバーのナビリンク (.c-sub-side-nav__link)
  * 3. ヘッダー/パンくずリスト内のテキスト
- * 4. URLのfacility_idパラメータ（将来用）
+ * 4. 求人選択の入力値
  */
-import { COMPANY_FACILITY_KEYWORDS } from '../shared/constants';
+import { COMPANY_FACILITY_KEYWORDS, STORAGE_KEYS } from '../shared/constants';
 
 /** 会社IDを推定して返す。見つからなければnull */
-export function detectCompanyFromPage(): string | null {
+export async function detectCompanyFromPage(): Promise<string | null> {
+  // storageから検出キーワードを取得（API経由で保存済み）、なければフォールバック
+  let keywordMap: Record<string, string[]> = COMPANY_FACILITY_KEYWORDS;
+  try {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.DETECTION_KEYWORDS);
+    const stored = result[STORAGE_KEYS.DETECTION_KEYWORDS];
+    if (stored && Object.keys(stored).length > 0) {
+      keywordMap = stored;
+    }
+  } catch { /* ignore */ }
+
   // ページ全体から効率よくテキストを収集
   const textSources: string[] = [];
 
@@ -38,7 +51,7 @@ export function detectCompanyFromPage(): string | null {
   const combinedText = textSources.join(' ');
 
   // キーワードマッチで会社IDを推定
-  for (const [companyId, keywords] of Object.entries(COMPANY_FACILITY_KEYWORDS)) {
+  for (const [companyId, keywords] of Object.entries(keywordMap)) {
     if (keywords.some(kw => combinedText.includes(kw))) {
       console.log(`[Scout Assistant] Detected company: ${companyId} (keyword match in page text)`);
       return companyId;

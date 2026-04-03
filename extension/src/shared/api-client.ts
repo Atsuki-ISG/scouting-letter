@@ -120,6 +120,11 @@ export const apiClient = {
   },
 
   async getCompanies(): Promise<string[]> {
+    const data = await this.getCompaniesWithKeywords();
+    return data.map(c => c.id);
+  },
+
+  async getCompaniesWithKeywords(): Promise<Array<{ id: string; detection_keywords: string[] }>> {
     const endpoint = await this.getEndpoint();
     const headers = await this.getHeaders();
     const res = await fetchWithTimeout(`${endpoint}/api/v1/companies`, {
@@ -131,7 +136,12 @@ export const apiClient = {
       throw new Error(formatApiError(res.status, text));
     }
     const data = await res.json();
-    return data.companies;
+    // 後方互換: 旧形式(string[])も新形式(object[])も対応
+    const companies = data.companies || [];
+    if (companies.length > 0 && typeof companies[0] === 'string') {
+      return companies.map((id: string) => ({ id, detection_keywords: [] }));
+    }
+    return companies;
   },
 
   async getCompanyConfig(companyId: string): Promise<CompanyConfig> {

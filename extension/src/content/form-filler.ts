@@ -145,9 +145,10 @@ export async function selectJobOffer(
   if (!companyMismatchChecked) {
     companyMismatchChecked = true;
     try {
-      const result = await chrome.storage.local.get(STORAGE_KEYS.COMPANY);
+      const result = await chrome.storage.local.get([STORAGE_KEYS.COMPANY, STORAGE_KEYS.DETECTION_KEYWORDS]);
       const companyId = result[STORAGE_KEYS.COMPANY] || '';
-      const keywords = COMPANY_FACILITY_KEYWORDS[companyId];
+      const storedKw: Record<string, string[]> = result[STORAGE_KEYS.DETECTION_KEYWORDS] || {};
+      const keywords: string[] | undefined = storedKw[companyId] || COMPANY_FACILITY_KEYWORDS[companyId];
       if (keywords && keywords.length > 0) {
         const allText = Array.from(options).map(o => o.textContent || '').join(' ');
         const found = keywords.some(kw => allText.includes(kw));

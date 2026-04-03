@@ -4,7 +4,7 @@
  */
 import { apiClient, CompanyConfig } from './api-client';
 import { storage } from './storage';
-import { FALLBACK_COMPANY_JOB_OFFERS, FALLBACK_VALIDATION_CONFIG, JobOffer } from './constants';
+import { FALLBACK_COMPANY_JOB_OFFERS, FALLBACK_VALIDATION_CONFIG, STORAGE_KEYS, COMPANY_FACILITY_KEYWORDS, JobOffer } from './constants';
 import { CompanyValidationConfig } from './types';
 
 export const configProvider = {
@@ -15,7 +15,8 @@ export const configProvider = {
   async getCompanyList(): Promise<string[]> {
     // 1. APIから取得を試みる
     try {
-      const companies = await apiClient.getCompanies();
+      const companiesWithKw = await apiClient.getCompaniesWithKeywords();
+      const companies = companiesWithKw.map(c => c.id);
       // キャッシュに保存
       const cache = await storage.getConfigCache();
       await storage.setConfigCache({
@@ -23,6 +24,14 @@ export const configProvider = {
         companies,
         configs: cache?.configs || {},
       });
+      // 検出キーワードをstorageに保存（Content Scriptが使用）
+      const kwMap: Record<string, string[]> = {};
+      for (const c of companiesWithKw) {
+        if (c.detection_keywords.length > 0) {
+          kwMap[c.id] = c.detection_keywords;
+        }
+      }
+      await chrome.storage.local.set({ [STORAGE_KEYS.DETECTION_KEYWORDS]: kwMap });
       return companies;
     } catch {
       // API失敗
