@@ -3845,8 +3845,9 @@ async function loadCompanies() {
     select.innerHTML = '';
     for (const c of data.companies) {
       const opt = document.createElement('option');
-      opt.value = c;
-      opt.textContent = c;
+      const id = typeof c === 'string' ? c : c.id;
+      opt.value = id;
+      opt.textContent = id;
       select.appendChild(opt);
     }
   } catch {

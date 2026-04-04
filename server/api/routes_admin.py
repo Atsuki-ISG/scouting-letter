@@ -141,6 +141,81 @@ async def validate_config(
     return {"results": results, "all_ok": all_ok}
 
 
+# --- Send summary endpoint ---
+
+@router.get("/send_summary")
+async def send_summary(
+    company: Optional[str] = None,
+    operator: dict = Depends(verify_api_key),
+):
+    """今月の送信数サマリー（職種カテゴリ別）を返す。"""
+    from datetime import datetime, timedelta, timezone
+    from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
+    from pipeline.job_category_resolver import resolve_job_category
+
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST)
+    current_month = now.strftime("%Y-%m")
+
+    # カテゴリ表示名
+    CATEGORY_DISPLAY = {
+        "nurse": "看護師",
+        "rehab_pt": "PT",
+        "rehab_st": "ST",
+        "rehab_ot": "OT",
+        "medical_office": "医療事務",
+        "care": "介護",
+        "counselor": "相談員",
+    }
+
+    companies_to_scan = [company] if company else list(COMPANY_DISPLAY_NAMES.keys())
+    total = 0
+    by_category: dict[str, int] = {}
+
+    for cid in companies_to_scan:
+        sheet_name = _send_data_sheet_name(cid)
+        try:
+            all_rows = sheets_writer.get_all_rows(sheet_name)
+        except Exception:
+            continue
+        if len(all_rows) < 2:
+            continue
+
+        headers = all_rows[0]
+        col_map = {h.strip(): i for i, h in enumerate(headers)}
+        date_idx = col_map.get("日時", 0)
+        cat_idx = col_map.get("職種カテゴリ")
+        qual_idx = col_map.get("資格")
+
+        for row in all_rows[1:]:
+            if len(row) <= date_idx:
+                continue
+            row_date = row[date_idx][:7]  # YYYY-MM
+            if row_date != current_month:
+                continue
+            total += 1
+
+            # 職種カテゴリ取得（列があれば使う、なければ資格から推定）
+            cat = ""
+            if cat_idx is not None and cat_idx < len(row):
+                cat = row[cat_idx].strip()
+            if not cat and qual_idx is not None and qual_idx < len(row):
+                cat = resolve_job_category(row[qual_idx]) or ""
+
+            display = CATEGORY_DISPLAY.get(cat, cat) or "不明"
+            by_category[display] = by_category.get(display, 0) + 1
+
+    # 件数降順でソート
+    by_category_sorted = dict(sorted(by_category.items(), key=lambda x: -x[1]))
+
+    return {
+        "month": current_month,
+        "month_display": f"{now.month}月",
+        "total": total,
+        "by_category": by_category_sorted,
+    }
+
+
 @router.get("/{sheet_slug}")
 async def list_rows(sheet_slug: str, company: Optional[str] = None, operator=Depends(verify_api_key)):
     sheet_name = SHEET_MAP.get(sheet_slug)
@@ -1602,81 +1677,6 @@ async def delete_row(sheet_slug: str, row_index: int, operator=Depends(verify_ap
     sheets_writer.delete_row(sheet_name, row_index)
     sheets_client.reload()
     return {"status": "deleted"}
-
-
-# --- Send summary endpoint ---
-
-@router.get("/send_summary")
-async def send_summary(
-    company: Optional[str] = None,
-    operator: dict = Depends(verify_api_key),
-):
-    """今月の送信数サマリー（職種カテゴリ別）を返す。"""
-    from datetime import datetime, timedelta, timezone
-    from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
-    from pipeline.job_category_resolver import resolve_job_category
-
-    JST = timezone(timedelta(hours=9))
-    now = datetime.now(JST)
-    current_month = now.strftime("%Y-%m")
-
-    # カテゴリ表示名
-    CATEGORY_DISPLAY = {
-        "nurse": "看護師",
-        "rehab_pt": "PT",
-        "rehab_st": "ST",
-        "rehab_ot": "OT",
-        "medical_office": "医療事務",
-        "care": "介護",
-        "counselor": "相談員",
-    }
-
-    companies_to_scan = [company] if company else list(COMPANY_DISPLAY_NAMES.keys())
-    total = 0
-    by_category: dict[str, int] = {}
-
-    for cid in companies_to_scan:
-        sheet_name = _send_data_sheet_name(cid)
-        try:
-            all_rows = sheets_writer.get_all_rows(sheet_name)
-        except Exception:
-            continue
-        if len(all_rows) < 2:
-            continue
-
-        headers = all_rows[0]
-        col_map = {h.strip(): i for i, h in enumerate(headers)}
-        date_idx = col_map.get("日時", 0)
-        cat_idx = col_map.get("職種カテゴリ")
-        qual_idx = col_map.get("資格")
-
-        for row in all_rows[1:]:
-            if len(row) <= date_idx:
-                continue
-            row_date = row[date_idx][:7]  # YYYY-MM
-            if row_date != current_month:
-                continue
-            total += 1
-
-            # 職種カテゴリ取得（列があれば使う、なければ資格から推定）
-            cat = ""
-            if cat_idx is not None and cat_idx < len(row):
-                cat = row[cat_idx].strip()
-            if not cat and qual_idx is not None and qual_idx < len(row):
-                cat = resolve_job_category(row[qual_idx]) or ""
-
-            display = CATEGORY_DISPLAY.get(cat, cat) or "不明"
-            by_category[display] = by_category.get(display, 0) + 1
-
-    # 件数降順でソート
-    by_category_sorted = dict(sorted(by_category.items(), key=lambda x: -x[1]))
-
-    return {
-        "month": current_month,
-        "month_display": f"{now.month}月",
-        "total": total,
-        "by_category": by_category_sorted,
-    }
 
 
 # --- Cost monitoring endpoints ---
