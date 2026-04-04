@@ -37,7 +37,7 @@ export async function detectCompanyFromPage(): Promise<string | null> {
   }
 
   // 3. ヘッダー・パンくず
-  const headers = document.querySelectorAll('h1, h2, .c-breadcrumb, .c-header__title, [class*="header"] [class*="title"]');
+  const headers = document.querySelectorAll('h1, h2, .c-breadcrumb, .c-header, .c-header__title, [class*="header"] [class*="title"]');
   for (const el of headers) {
     textSources.push(el.textContent || '');
   }
