@@ -36,7 +36,7 @@ LOG_HEADERS = [
 
 SEND_DATA_HEADERS = [
     # 自動（生成時に書き込み）— 会社列不要（シート自体が会社）
-    "日時", "会員番号", "テンプレート種別", "テンプレートVer", "生成パス", "パターン",
+    "日時", "会員番号", "職種カテゴリ", "テンプレート種別", "テンプレートVer", "生成パス", "パターン",
     "年齢層", "資格", "経験区分", "希望雇用形態", "就業状況", "地域",
     "曜日", "時間帯",
     # 自動（返信同期で書き込み）
@@ -208,6 +208,7 @@ def _write_send_data(
             rows.append([
                 now_str,
                 r.member_id,
+                r.job_category or "",
                 r.template_type or "",
                 tver,  # テンプレートVer
                 r.generation_path or "",

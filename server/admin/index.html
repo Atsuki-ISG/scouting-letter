@@ -1133,6 +1133,50 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   color: rgba(255,255,255,0.85);
 }
 
+/* Send Summary Bar */
+.send-summary-bar {
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+  padding: 10px 24px;
+}
+.send-summary-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  font-size: 13px;
+}
+.send-summary-total {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--c-text);
+}
+.send-summary-categories {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.send-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: var(--c-surface-alt);
+  border: 1px solid var(--c-border);
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+.send-summary-badge .count {
+  font-weight: 700;
+  color: var(--c-text);
+}
+.send-summary-loading {
+  color: var(--c-text-muted);
+  font-size: 12px;
+}
+
 /* Help View */
 .help-container {
   max-width: 860px;
@@ -1826,6 +1870,10 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
     <button class="btn btn-secondary" onclick="showApiKeyDialog()">パスワード設定</button>
   </div>
 </header>
+
+<div id="sendSummaryBar" class="send-summary-bar" style="display:none;">
+  <div class="send-summary-content" id="sendSummaryContent"></div>
+</div>
 
 <nav class="tabs" id="tabs"></nav>
 
@@ -3997,6 +4045,35 @@ async function loadServerInfo() {
   return _serverInfo;
 }
 
+// --- Send Summary ---
+async function loadSendSummary() {
+  const bar = document.getElementById('sendSummaryBar');
+  const content = document.getElementById('sendSummaryContent');
+  const company = document.getElementById('companySelect').value;
+  if (!company) { bar.style.display = 'none'; return; }
+
+  bar.style.display = 'block';
+  content.innerHTML = '<span class="send-summary-loading">読み込み中...</span>';
+
+  try {
+    const data = await api('GET', `/api/v1/admin/send_summary?company=${company}`);
+    if (data.total === 0) {
+      content.innerHTML = `<span class="send-summary-total">${escHtml(data.month_display)}の送信: 0件</span>`;
+      return;
+    }
+    let badges = '';
+    for (const [cat, count] of Object.entries(data.by_category)) {
+      badges += `<span class="send-summary-badge">${escHtml(cat)} <span class="count">${count}</span></span>`;
+    }
+    content.innerHTML = `
+      <span class="send-summary-total">${escHtml(data.month_display)}の送信: ${data.total}件</span>
+      <div class="send-summary-categories">${badges}</div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<span class="send-summary-loading">送信数の取得に失敗</span>`;
+  }
+}
+
 function renderHelpView() {
   const el = document.getElementById('helpView');
   if (_helpRendered) return;
@@ -5081,6 +5158,7 @@ document.getElementById('companySelect').addEventListener('change', () => {
   if (viewMode === 'flow') loadFlowView();
   else if (viewMode === 'analysis') loadAnalysisView();
   else loadData();
+  loadSendSummary();
 });
 renderTabs();
 
@@ -5089,6 +5167,7 @@ if (!getApiKey()) {
 } else {
   loadCompanies().then(() => {
     setViewMode('flow');
+    loadSendSummary();
   });
 }
 
