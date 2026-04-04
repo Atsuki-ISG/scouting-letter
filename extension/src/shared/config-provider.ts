@@ -40,7 +40,8 @@ export const configProvider = {
     // 2. キャッシュから取得
     const cache = await storage.getConfigCache();
     if (cache && cache.companies.length > 0) {
-      return cache.companies;
+      // キャッシュ破損対策: オブジェクトが混入していても文字列に変換
+      return cache.companies.map(c => typeof c === 'string' ? c : (c as any).id ?? String(c));
     }
 
     // 3. フォールバック
