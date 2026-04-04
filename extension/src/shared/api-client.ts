@@ -4,7 +4,7 @@ import type { CandidateProfile } from './types';
 export interface GenerateOptions {
   is_resend?: boolean;
   force_employment?: string;  // "パート" | "正社員" | undefined (auto)
-  job_category_filter?: string;  // "nurse" | "pt" | "st" | "ot" | "medical_office" | undefined (all)
+  job_category_filter?: string;  // "nurse" | "rehab_pt" | "rehab_st" | "rehab_ot" | "medical_office" | undefined (all)
 }
 
 export interface GenerateResponse {

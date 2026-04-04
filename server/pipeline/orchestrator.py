@@ -348,13 +348,16 @@ async def _process_candidate(
 
     # 5. Generate personalized text
     # Filter patterns and prompt_sections by job_category
+    # rehab_pt/rehab_st also match parent category "rehab"
+    jc_parent = job_category.rsplit("_", 1)[0] if "_" in job_category else None
+    jc_match = {job_category, jc_parent} if jc_parent else {job_category}
     jc_patterns = [
         p for p in config["patterns"]
-        if not p.get("job_category") or p["job_category"] == job_category
+        if not p.get("job_category") or p["job_category"] in jc_match
     ]
     jc_prompt_sections = [
         s for s in config["prompt_sections"]
-        if not s.get("job_category") or s["job_category"] == job_category
+        if not s.get("job_category") or s["job_category"] in jc_match
     ]
 
     # Check if patterns have actual content (template_text filled in)
