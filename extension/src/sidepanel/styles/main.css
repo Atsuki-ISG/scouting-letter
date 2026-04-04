@@ -305,7 +305,7 @@ body {
 }
 
 /* Empty state */
-.candidate-list:empty::after {
+#candidate-list:empty::after {
   content: 'CSVをインポートしてください';
   display: block;
   text-align: center;
