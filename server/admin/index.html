@@ -4026,6 +4026,7 @@ ${helpSection('overview', '管理画面の概要', `
 <tr><td><strong>フロー</strong></td><td>生成パイプラインの全体像を把握。テスト実行もここから</td></tr>
 <tr><td><strong>テーブル</strong></td><td>テンプレート・パターン等を追加・編集・削除</td></tr>
 <tr><td><strong>ヘルプ</strong></td><td>このページ</td></tr>
+<tr><td><strong>分析</strong></td><td>送信データのクロス集計・AI分析・テンプレート改善提案</td></tr>
 </table>
 `, true)}
 
@@ -4033,7 +4034,7 @@ ${helpSection('header', 'ヘッダーの操作', `
 <table><tr><th>ボタン</th><th>説明</th></tr>
 <tr><td><strong>会社ドロップダウン</strong></td><td>操作対象の会社を切り替え</td></tr>
 <tr><td><strong>＋ 新規会社</strong></td><td>新しい会社を追加するウィザードを起動</td></tr>
-<tr><td><strong>フロー / テーブル / ヘルプ</strong></td><td>画面モードの切り替え</td></tr>
+<tr><td><strong>フロー / テーブル / ヘルプ / 分析</strong></td><td>画面モードの切り替え</td></tr>
 <tr><td><strong>キャッシュ更新</strong></td><td>設定変更をAPI生成に反映させる（必須）</td></tr>
 <tr><td><strong>パスワード設定</strong></td><td>ログインパスワードの変更</td></tr>
 </table>
@@ -4129,6 +4130,32 @@ ${helpSection('table-jobs', '求人', `
 <li><strong>Chrome拡張から（推奨）</strong>: 設定タブの「求人抽出・登録」でジョブメドレーから自動取得して登録</li>
 <li><strong>管理画面から</strong>: 「＋ 追加」で求人IDを手動入力</li>
 </ul>
+`)}
+
+${helpSection('table-profiles', 'プロフィール', `
+<p>会社のプロフィール情報を管理します。AI生成時の会社情報やテンプレート改善の参照に使われます。</p>
+<table><tr><th>列</th><th>説明</th></tr>
+<tr><td>会社</td><td>会社ID</td></tr>
+<tr><td>プロフィール内容</td><td>会社の特色・教育体制・福利厚生などの情報</td></tr>
+<tr><td>検出キーワード</td><td>Chrome拡張の会社自動検出に使うキーワード（カンマ区切り）</td></tr>
+</table>
+`)}
+
+${helpSection('analysis', '分析タブ', `
+<p>送信データを分析し、スカウト文の効果を可視化します。</p>
+<h4>できること</h4>
+<ul>
+<li><strong>クロス集計</strong>: テンプレート種別×職種カテゴリ別の送信数を表形式で確認</li>
+<li><strong>AI分析</strong>: 送信データの傾向をAIが自動分析し、改善提案を生成</li>
+<li><strong>テンプレート改善</strong>: 分析データに基づいてテンプレートの改善案を生成</li>
+<li><strong>全社横断分析</strong>: 全社の送信データを横断的に比較</li>
+</ul>
+<h4>使い方</h4>
+<ol>
+<li>会社を選択（または「全社」）</li>
+<li>「分析を実行」を押す</li>
+<li>クロス集計表とAI分析結果が表示される</li>
+</ol>
 `)}
 
 ${helpSection('common-ops', 'よくある操作', `
