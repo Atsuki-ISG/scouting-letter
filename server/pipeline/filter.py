@@ -9,9 +9,9 @@ from models.profile import CandidateProfile
 # Qualifications required for each job category
 _REQUIRED_QUALIFICATIONS: dict[str, list[str]] = {
     "nurse": ["看護師", "准看護師"],
-    "pt": ["理学療法士"],
-    "st": ["言語聴覚士"],
-    "ot": ["作業療法士"],
+    "rehab_pt": ["理学療法士"],
+    "rehab_st": ["言語聴覚士"],
+    "rehab_ot": ["作業療法士"],
     # medical_office: no additional qualification check needed
 }
 

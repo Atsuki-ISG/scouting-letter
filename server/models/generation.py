@@ -9,7 +9,7 @@ class GenerateOptions(BaseModel):
     is_resend: bool = False
     force_seishain: bool = False  # deprecated: use force_employment instead
     force_employment: Optional[str] = None  # "パート" or "正社員" or None (auto)
-    job_category_filter: Optional[str] = None  # "nurse", "pt", etc. or None (all)
+    job_category_filter: Optional[str] = None  # "nurse", "rehab_pt", etc. or None (all)
     mock_ai: bool = False
 
 

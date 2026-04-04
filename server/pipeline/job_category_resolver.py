@@ -7,9 +7,9 @@ import re
 _QUALIFICATION_MAP: list[tuple[str, str]] = [
     ("看護師", "nurse"),
     ("准看護師", "nurse"),
-    ("理学療法士", "pt"),
-    ("言語聴覚士", "st"),
-    ("作業療法士", "ot"),
+    ("理学療法士", "rehab_pt"),
+    ("言語聴覚士", "rehab_st"),
+    ("作業療法士", "rehab_ot"),
     ("医療事務", "medical_office"),
 ]
 

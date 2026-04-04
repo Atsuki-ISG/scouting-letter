@@ -1158,9 +1158,9 @@ async def expand_template(
     # 4. Build adaptation prompt
     JOB_CATEGORY_NAMES = {
         "nurse": "看護師/准看護師",
-        "pt": "理学療法士",
-        "st": "言語聴覚士",
-        "ot": "作業療法士",
+        "rehab_pt": "理学療法士",
+        "rehab_st": "言語聴覚士",
+        "rehab_ot": "作業療法士",
         "medical_office": "医療事務",
     }
 
