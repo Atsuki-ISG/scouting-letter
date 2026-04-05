@@ -49,6 +49,16 @@ SHEET_VALIDATION = "バリデーション"
 SHEET_PROFILES = "プロフィール"
 SHEET_LOGS = "生成ログ"
 
+_JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
+    "nurse": "看護師",
+    "rehab_pt": "理学療法士",
+    "rehab_st": "言語聴覚士",
+    "rehab_ot": "作業療法士",
+    "medical_office": "医療事務",
+    "dietitian": "管理栄養士",
+    "counselor": "相談支援専門員",
+}
+
 ALL_SHEETS = [
     SHEET_TEMPLATES,
     SHEET_PATTERNS,
@@ -186,15 +196,30 @@ class SheetsClient:
     def get_company_config(self, company_id: str) -> dict[str, Any]:
         """Get all config for a company."""
         self._ensure_cache()
+        templates = self._get_templates(company_id)
         return {
-            "templates": self._get_templates(company_id),
+            "templates": templates,
             "patterns": self._get_patterns(company_id),
             "qualification_modifiers": self._get_qualification_modifiers(company_id),
             "prompt_sections": self._get_prompt_sections(company_id),
             "job_offers": self._get_job_offers(company_id),
             "validation_config": self._get_validation_config(company_id),
+            "job_categories": self._get_job_categories(templates),
             "examples": [],  # examples are managed via /save-example skill
         }
+
+    def _get_job_categories(self, templates: dict[str, dict]) -> list[dict[str, str]]:
+        """Extract unique job categories from templates with display names."""
+        categories: set[str] = set()
+        for tpl in templates.values():
+            jc = tpl.get("job_category", "")
+            if jc:
+                categories.add(jc)
+        return sorted(
+            [{"id": c, "display_name": _JOB_CATEGORY_DISPLAY_NAMES.get(c, c)} for c in categories],
+            key=lambda x: list(_JOB_CATEGORY_DISPLAY_NAMES.keys()).index(x["id"])
+            if x["id"] in _JOB_CATEGORY_DISPLAY_NAMES else 999,
+        )
 
     def get_company_profile(self, company_id: str) -> str:
         """Return the profile markdown text for a company, or empty string if not found."""

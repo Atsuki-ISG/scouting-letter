@@ -1,5 +1,6 @@
 import { storage } from '../../shared/storage';
 import { apiClient, GenerateOptions, GenerateResponse } from '../../shared/api-client';
+import { configProvider } from '../../shared/config-provider';
 import { CandidateList } from './CandidateList';
 import { CandidateItem } from '../../shared/types';
 
@@ -43,6 +44,8 @@ export class GeneratePanel {
     document.getElementById('gen-setting-start')!.addEventListener('click', () => this.confirmAndGenerate());
     // Close on backdrop click
     this.modal.querySelector('.confirmation-backdrop')!.addEventListener('click', () => this.hideModal());
+    // Refresh job categories when company changes
+    this.modalCompany.addEventListener('change', () => this.populateJobCategories(this.modalCompany.value));
 
     this.updateProfileCount();
 
@@ -79,6 +82,9 @@ export class GeneratePanel {
     // Profile count
     this.modalProfileCount.textContent = String(profiles.length);
 
+    // Populate job category dropdown from API
+    await this.populateJobCategories(this.modalCompany.value);
+
     // Restore previous settings
     const prev = await storage.getGenerateSettings();
     if (prev) {
@@ -98,6 +104,30 @@ export class GeneratePanel {
 
   private hideModal(): void {
     this.modal.classList.add('hidden');
+  }
+
+  private async populateJobCategories(companyId: string): Promise<void> {
+    const savedValue = this.modalJobCategory.value;
+    // Keep only the first option (全職種)
+    while (this.modalJobCategory.options.length > 1) {
+      this.modalJobCategory.remove(1);
+    }
+    try {
+      const config = await configProvider.getCompanyConfig(companyId);
+      if (config?.job_categories && config.job_categories.length > 0) {
+        for (const jc of config.job_categories) {
+          const option = document.createElement('option');
+          option.value = jc.id;
+          option.textContent = jc.display_name;
+          this.modalJobCategory.appendChild(option);
+        }
+      }
+    } catch { /* API failure: show only 全職種 */ }
+    // Restore previous selection if still available
+    this.modalJobCategory.value = savedValue;
+    if (this.modalJobCategory.selectedIndex === -1) {
+      this.modalJobCategory.value = '';
+    }
   }
 
   private async confirmAndGenerate(): Promise<void> {
