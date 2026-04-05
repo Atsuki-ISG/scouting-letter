@@ -9,11 +9,16 @@ import { escapeHtml } from '../../shared/utils';
 /** フォールバック用: サーバー設定がない場合のデフォルト */
 const FALLBACK_SEARCH_TERMS: Record<string, string> = {
   nurse: '看護',
+  rehab_pt: '理学療法',
   pt: '理学療法',
+  rehab_st: '言語聴覚',
   st: '言語聴覚',
+  rehab_ot: '作業療法',
   ot: '作業療法',
   medical_office: '医療事務',
   dietitian: '管理栄養士',
+  counselor: '相談支援',
+  sales: '相談員',
 };
 
 /** job_categoryからDropdown検索キーワードを導出（categoryConfigがあればそちらを優先） */

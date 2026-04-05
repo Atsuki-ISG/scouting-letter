@@ -72,10 +72,15 @@ export function resetCompanyMismatchCheck(): void {
 const FALLBACK_CATEGORY_KEYWORDS: Record<string, string[]> = {
   nurse: ['看護師', '准看護師'],
   rehab_pt: ['理学療法士'],
+  pt: ['理学療法士'],
   rehab_st: ['言語聴覚士'],
+  st: ['言語聴覚士'],
   rehab_ot: ['作業療法士'],
+  ot: ['作業療法士'],
   medical_office: ['医療事務', '受付'],
   dietitian: ['管理栄養士', '栄養士'],
+  counselor: ['相談支援専門員', '相談支援'],
+  sales: ['入居相談員', '相談員', '営業'],
 };
 
 /** employment_type → 求人テキストのマッチングキーワード */
