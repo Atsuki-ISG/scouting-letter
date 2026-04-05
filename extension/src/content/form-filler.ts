@@ -75,6 +75,7 @@ const FALLBACK_CATEGORY_KEYWORDS: Record<string, string[]> = {
   rehab_st: ['言語聴覚士'],
   rehab_ot: ['作業療法士'],
   medical_office: ['医療事務', '受付'],
+  dietitian: ['管理栄養士', '栄養士'],
 };
 
 /** employment_type → 求人テキストのマッチングキーワード */

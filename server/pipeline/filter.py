@@ -12,6 +12,7 @@ _REQUIRED_QUALIFICATIONS: dict[str, list[str]] = {
     "rehab_pt": ["理学療法士"],
     "rehab_st": ["言語聴覚士"],
     "rehab_ot": ["作業療法士"],
+    "dietitian": ["管理栄養士"],
     # medical_office: no additional qualification check needed
 }
 
@@ -244,7 +245,8 @@ async def filter_candidate(
             return f"資格不一致: {job_category}に必要な資格がありません"
 
     # Check 2: Non-clinical only exclusion (builtin, can be disabled)
-    if builtin.get("reject_non_clinical", True):
+    # Only applies to nurse category — non-clinical roles like dietitian skip this check
+    if builtin.get("reject_non_clinical", True) and job_category == "nurse":
         if _is_non_clinical_only(profile.experience_type or "", profile.employment_status or ""):
             return "非臨床経験のみ: 臨床看護経験がありません"
 

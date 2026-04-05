@@ -13,6 +13,7 @@ const FALLBACK_SEARCH_TERMS: Record<string, string> = {
   st: '言語聴覚',
   ot: '作業療法',
   medical_office: '医療事務',
+  dietitian: '管理栄養士',
 };
 
 /** job_categoryからDropdown検索キーワードを導出（categoryConfigがあればそちらを優先） */
