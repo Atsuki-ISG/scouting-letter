@@ -470,9 +470,29 @@ async def _process_candidate(
         config["job_offers"], job_category, template_type
     )
 
+    # 9. Check employment type mismatch (always, not just on fallback)
     warnings = []
     if employment_mismatch_warning:
+        # Fallback case: already has a specific warning
         warnings.append(employment_mismatch_warning)
+    else:
+        # Normal match case: compare candidate's desired vs template's employment type
+        desired = (profile.desired_employment_type or "").strip()
+        if desired:
+            template_emp = template_type.split("_")[0] if "_" in template_type else ""
+            # Map desired employment keywords to template employment type
+            if "正職員" in desired or "正社員" in desired:
+                desired_emp = "正社員"
+            elif "契約" in desired:
+                desired_emp = "契約"
+            elif "パート" in desired or "非常勤" in desired:
+                desired_emp = "パート"
+            else:
+                desired_emp = ""
+            if desired_emp and template_emp and desired_emp != template_emp:
+                warnings.append(
+                    f"希望雇用形態「{desired}」≠ 求人の雇用形態「{template_emp}」"
+                )
 
     return GenerateResponse(
         member_id=profile.member_id,
