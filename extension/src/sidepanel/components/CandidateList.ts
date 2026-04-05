@@ -207,7 +207,10 @@ export class CandidateList {
 
     for (const candidate of this.candidates) {
       const profile = profiles.find((p) => p.member_id === candidate.member_id) || null;
-      candidate.validationResults = validateCandidate(candidate, profile, null, config);
+      const localResults = validateCandidate(candidate, profile, null, config);
+      // Preserve API-originating warnings (ruleId=api_warning) and merge with local validation
+      const apiWarnings = (candidate.validationResults || []).filter((v) => v.ruleId === 'api_warning');
+      candidate.validationResults = [...apiWarnings, ...localResults];
     }
   }
 

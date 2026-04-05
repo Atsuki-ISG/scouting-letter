@@ -236,6 +236,11 @@ export class GeneratePanel {
             template_type: r.template_type || '',
           };
         }
+        const apiWarnings = (r.validation_warnings || []).map((msg: string) => ({
+          ruleId: 'api_warning',
+          severity: 'warning' as const,
+          message: msg,
+        }));
         return {
           member_id: r.member_id,
           label: `${r.template_type} ${(r.personalized_text || '').slice(0, 30)}...`,
@@ -245,6 +250,7 @@ export class GeneratePanel {
           template_type: r.template_type,
           job_category: r.job_category,
           is_favorite: r.is_favorite,
+          validationResults: apiWarnings.length > 0 ? apiWarnings : undefined,
         };
       });
 

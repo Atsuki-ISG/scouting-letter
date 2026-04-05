@@ -329,6 +329,8 @@ async def _process_candidate(
         ), _empty_usage
 
     # 4. Get template body (prefer job_category-specific, fallback to generic)
+    employment_mismatch_warning = ""
+    original_template_type = template_type
     template_data = config["templates"].get(f"{job_category}:{template_type}")
     if template_data is None:
         template_data = config["templates"].get(template_type)
@@ -344,10 +346,16 @@ async def _process_candidate(
         for key, tpl in config["templates"].items():
             if tpl.get("job_category") == job_category and tpl["type"].endswith(f"_{send_type}"):
                 template_data = tpl
+                original_employment = template_type.split("_")[0]
+                actual_employment = tpl["type"].split("_")[0]
                 template_type = tpl["type"]
+                desired = profile.desired_employment_type or "未入力"
+                employment_mismatch_warning = (
+                    f"希望雇用形態「{desired}」≠ 求人の雇用形態「{actual_employment}」"
+                )
                 logger.info(
                     f"[{profile.member_id}] employment fallback: "
-                    f"requested '{template_type}' → using '{tpl['type']}'"
+                    f"'{original_template_type}' → '{tpl['type']}' (desired={desired})"
                 )
                 break
     if template_data is None:
@@ -462,6 +470,10 @@ async def _process_candidate(
         config["job_offers"], job_category, template_type
     )
 
+    warnings = []
+    if employment_mismatch_warning:
+        warnings.append(employment_mismatch_warning)
+
     return GenerateResponse(
         member_id=profile.member_id,
         template_type=template_type,
@@ -472,6 +484,7 @@ async def _process_candidate(
         job_offer_id=job_offer_id,
         job_category=job_category,
         is_favorite=profile.is_favorite,
+        validation_warnings=warnings,
     ), token_usage
 
 
