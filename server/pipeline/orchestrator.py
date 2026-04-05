@@ -285,13 +285,17 @@ async def _process_candidate(
 
     Returns (response, token_usage) where token_usage has prompt_tokens, output_tokens, estimated_cost.
     """
-    # 1. Resolve job category
-    job_category = resolve_job_category(
-        profile.qualifications or "",
-        profile.desired_job or "",
-    )
-
     _empty_usage = {}
+
+    # 1. Resolve job category
+    if options.job_category_filter:
+        # User explicitly selected a category — use it directly
+        job_category = options.job_category_filter
+    else:
+        job_category = resolve_job_category(
+            profile.qualifications or "",
+            profile.desired_job or "",
+        )
 
     if job_category is None:
         return GenerateResponse(
@@ -301,18 +305,6 @@ async def _process_candidate(
             personalized_text="",
             full_scout_text="",
             filter_reason="職種カテゴリを特定できません",
-        ), _empty_usage
-
-    # 1.5. Filter by job_category if specified
-    if options.job_category_filter and job_category != options.job_category_filter:
-        return GenerateResponse(
-            member_id=profile.member_id,
-            template_type="",
-            generation_path="filtered_out",
-            personalized_text="",
-            full_scout_text="",
-            job_category=job_category,
-            filter_reason=f"職種フィルタ: {job_category} ≠ {options.job_category_filter}",
         ), _empty_usage
 
     # 2. Resolve template type
