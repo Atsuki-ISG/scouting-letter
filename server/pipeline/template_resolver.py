@@ -17,8 +17,13 @@ def resolve_template_type(
     Returns:
         Template type string like "パート_初回", "正社員_再送", etc.
     """
+    # Categories with only part-time templates
+    part_only_categories = {"counselor"}
+
     # Determine employment type
-    if options.force_employment:
+    if job_category in part_only_categories:
+        employment = "パート"
+    elif options.force_employment:
         employment = options.force_employment
     elif options.force_seishain:
         employment = "正社員"
@@ -30,7 +35,7 @@ def resolve_template_type(
             employment = "パート"
 
     # Determine send type
-    if profile.is_favorite:
+    if profile.is_favorite and job_category not in part_only_categories:
         send_type = "お気に入り"
     elif options.is_resend:
         send_type = "再送"
