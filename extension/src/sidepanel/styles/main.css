@@ -389,6 +389,11 @@ body {
   color: #9d174d;
 }
 
+.template-badge.keiyaku {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
 .template-badge.resend {
   background: var(--c-accent-light);
   color: #92400e;

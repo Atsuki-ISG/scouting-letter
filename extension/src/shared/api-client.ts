@@ -35,6 +35,7 @@ export interface CompanyConfig {
   templates: Record<string, { type: string; job_category: string; body: string }>;
   job_offers: Array<{ id: string; name: string; label: string; job_category: string; employment_type: string }>;
   job_categories?: Array<{ id: string; display_name: string }>;
+  employment_types?: Array<{ id: string; display_name: string }>;
   validation_config: {
     age_range?: { min: number; max: number };
     qualification_rules?: Record<string, unknown>;

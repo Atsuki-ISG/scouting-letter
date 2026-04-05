@@ -205,6 +205,7 @@ class SheetsClient:
             "job_offers": self._get_job_offers(company_id),
             "validation_config": self._get_validation_config(company_id),
             "job_categories": self._get_job_categories(templates),
+            "employment_types": self._get_employment_types(templates),
             "examples": [],  # examples are managed via /save-example skill
         }
 
@@ -219,6 +220,29 @@ class SheetsClient:
             [{"id": c, "display_name": _JOB_CATEGORY_DISPLAY_NAMES.get(c, c)} for c in categories],
             key=lambda x: list(_JOB_CATEGORY_DISPLAY_NAMES.keys()).index(x["id"])
             if x["id"] in _JOB_CATEGORY_DISPLAY_NAMES else 999,
+        )
+
+    _EMPLOYMENT_TYPE_DISPLAY_NAMES: dict[str, str] = {
+        "パート": "パート",
+        "正社員": "正社員",
+        "契約": "契約社員",
+    }
+
+    _EMPLOYMENT_TYPE_ORDER = ["パート", "正社員", "契約"]
+
+    def _get_employment_types(self, templates: dict[str, dict]) -> list[dict[str, str]]:
+        """Extract unique employment types from template type field (prefix before '_')."""
+        types: set[str] = set()
+        for tpl in templates.values():
+            ttype = tpl.get("type", "")
+            if "_" in ttype:
+                emp = ttype.split("_")[0]
+                if emp:
+                    types.add(emp)
+        return sorted(
+            [{"id": t, "display_name": self._EMPLOYMENT_TYPE_DISPLAY_NAMES.get(t, t)} for t in types],
+            key=lambda x: self._EMPLOYMENT_TYPE_ORDER.index(x["id"])
+            if x["id"] in self._EMPLOYMENT_TYPE_ORDER else 999,
         )
 
     def get_company_profile(self, company_id: str) -> str:

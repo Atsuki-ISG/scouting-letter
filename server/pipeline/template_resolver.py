@@ -31,6 +31,8 @@ def resolve_template_type(
         desired = profile.desired_employment_type or ""
         if "正職員" in desired or "正社員" in desired:
             employment = "正社員"
+        elif "契約" in desired:
+            employment = "契約"
         else:
             employment = "パート"
 

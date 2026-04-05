@@ -82,6 +82,7 @@ const FALLBACK_CATEGORY_KEYWORDS: Record<string, string[]> = {
 const EMPLOYMENT_KEYWORDS: Record<string, string[]> = {
   'パート': ['パート', 'バイト'],
   '正社員': ['正職員', '正社員'],
+  '契約': ['契約社員', '契約職員', '契約'],
 };
 
 /**

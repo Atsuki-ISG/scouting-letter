@@ -84,7 +84,7 @@ export class CandidateList {
     const company = await storage.getCompany();
     const validationConfig = await configProvider.getValidationConfig(company);
     const jobCategory = candidate.job_category || 'nurse';
-    const employmentType = candidate.template_type.includes('正社員') ? '正社員' : 'パート';
+    const employmentType = candidate.template_type.includes('契約') ? '契約' : candidate.template_type.includes('正社員') ? '正社員' : 'パート';
     const searchTerm = deriveSearchTerm(jobCategory, validationConfig);
     const categoryKeywords = deriveCategoryKeywords(jobCategory, validationConfig);
 
@@ -366,7 +366,7 @@ export class CandidateList {
     const company = await storage.getCompany();
     const validationConfig = await configProvider.getValidationConfig(company);
     const jobCategory = candidate.job_category || 'nurse';
-    const employmentType = candidate.template_type.includes('正社員') ? '正社員' : 'パート';
+    const employmentType = candidate.template_type.includes('契約') ? '契約' : candidate.template_type.includes('正社員') ? '正社員' : 'パート';
     const searchTerm = deriveSearchTerm(jobCategory, validationConfig);
     const categoryKeywords = deriveCategoryKeywords(jobCategory, validationConfig);
 
@@ -522,10 +522,11 @@ export class CandidateList {
 
   private renderTemplateBadge(templateType: string): string {
     if (!templateType) return '';
+    const isKeiyaku = templateType.includes('契約');
     const isSeishain = templateType.includes('正社員');
     const isResend = templateType.includes('再送');
-    const typeCls = isSeishain ? 'seishain' : 'part';
-    const label = isSeishain ? '正社員' : 'パート';
+    const typeCls = isKeiyaku ? 'keiyaku' : isSeishain ? 'seishain' : 'part';
+    const label = isKeiyaku ? '契約' : isSeishain ? '正社員' : 'パート';
     let html = `<span class="template-badge ${typeCls}">${label}</span>`;
     if (isResend) {
       html += `<span class="template-badge resend">再送</span>`;

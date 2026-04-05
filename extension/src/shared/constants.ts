@@ -40,12 +40,15 @@ export function resolveJobOffer(templateType: string, jobOffers: JobOffer[]): Jo
   if (jobOffers.length === 0) return undefined;
   if (jobOffers.length === 1) return jobOffers[0];
 
+  const isKeiyaku = templateType.includes('契約');
   const isSeishain = templateType.includes('正社員');
+  const keiyakuOffer = jobOffers.find((j) => j.name.includes('契約'));
   const seishainOffer = jobOffers.find((j) => j.name.includes('正職員'));
   const partOffer = jobOffers.find((j) => j.name.includes('パート'));
 
+  if (isKeiyaku && keiyakuOffer) return keiyakuOffer;
   if (isSeishain && seishainOffer) return seishainOffer;
-  if (!isSeishain && partOffer) return partOffer;
+  if (!isSeishain && !isKeiyaku && partOffer) return partOffer;
 
   return undefined;
 }

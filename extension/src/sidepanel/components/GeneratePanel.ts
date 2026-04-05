@@ -44,8 +44,11 @@ export class GeneratePanel {
     document.getElementById('gen-setting-start')!.addEventListener('click', () => this.confirmAndGenerate());
     // Close on backdrop click
     this.modal.querySelector('.confirmation-backdrop')!.addEventListener('click', () => this.hideModal());
-    // Refresh job categories when company changes
-    this.modalCompany.addEventListener('change', () => this.populateJobCategories(this.modalCompany.value));
+    // Refresh dropdowns when company changes
+    this.modalCompany.addEventListener('change', () => {
+      this.populateJobCategories(this.modalCompany.value);
+      this.populateEmploymentTypes(this.modalCompany.value);
+    });
 
     this.updateProfileCount();
 
@@ -82,8 +85,11 @@ export class GeneratePanel {
     // Profile count
     this.modalProfileCount.textContent = String(profiles.length);
 
-    // Populate job category dropdown from API
-    await this.populateJobCategories(this.modalCompany.value);
+    // Populate dropdowns from API
+    await Promise.all([
+      this.populateJobCategories(this.modalCompany.value),
+      this.populateEmploymentTypes(this.modalCompany.value),
+    ]);
 
     // Restore previous settings
     const prev = await storage.getGenerateSettings();
@@ -130,6 +136,30 @@ export class GeneratePanel {
     }
   }
 
+  private async populateEmploymentTypes(companyId: string): Promise<void> {
+    const savedValue = this.modalEmployment.value;
+    // Keep only the first option (自動判定)
+    while (this.modalEmployment.options.length > 1) {
+      this.modalEmployment.remove(1);
+    }
+    try {
+      const config = await configProvider.getCompanyConfig(companyId);
+      if (config?.employment_types && config.employment_types.length > 0) {
+        for (const et of config.employment_types) {
+          const option = document.createElement('option');
+          option.value = et.id;
+          option.textContent = et.display_name;
+          this.modalEmployment.appendChild(option);
+        }
+      }
+    } catch { /* API failure: show only 自動判定 */ }
+    // Restore previous selection if still available
+    this.modalEmployment.value = savedValue;
+    if (this.modalEmployment.selectedIndex === -1) {
+      this.modalEmployment.value = 'auto';
+    }
+  }
+
   private async confirmAndGenerate(): Promise<void> {
     const employment = this.modalEmployment.value;
     const jobCategory = this.modalJobCategory.value;
@@ -155,7 +185,7 @@ export class GeneratePanel {
     // Build options
     const options: GenerateOptions = {
       is_resend: sendType === 'resend',
-      force_employment: employment === 'auto' ? undefined : (employment === 'seishain' ? '正社員' : 'パート'),
+      force_employment: employment === 'auto' ? undefined : employment,
       job_category_filter: jobCategory || undefined,
     };
 

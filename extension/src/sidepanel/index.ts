@@ -444,7 +444,7 @@ function setupJobOfferExtraction(): void {
             id: offer.id,
             name: offer.name,
             label: offer.name.split(/\s+/).slice(-2).join(' '),
-            employment_type: offer.name.includes('パート') ? 'part' : 'full',
+            employment_type: offer.name.includes('パート') ? 'part' : offer.name.includes('契約') ? 'contract' : 'full',
             active: 'TRUE',
           }),
         });

@@ -243,14 +243,17 @@ def _resolve_job_offer_id(
 
     # job_offers is a list of dicts from sheets
     if isinstance(job_offers, list):
+        is_keiyaku = "契約" in template_type
         is_seishain = "正社員" in template_type
         for offer in job_offers:
             if offer.get("job_category") != job_category:
                 continue
             emp = offer.get("employment_type", "")
+            if is_keiyaku and "契約" in emp:
+                return offer.get("id")
             if is_seishain and "正" in emp:
                 return offer.get("id")
-            if not is_seishain and "パート" in emp:
+            if not is_seishain and not is_keiyaku and "パート" in emp:
                 return offer.get("id")
         # Fallback: first offer matching job_category
         for offer in job_offers:
@@ -334,6 +337,19 @@ async def _process_candidate(
         template_data = config["templates"].get(f"{job_category}:{base}")
         if template_data is None:
             template_data = config["templates"].get(base)
+    # Employment type fallback: if no matching template, try any template
+    # for the same job_category and send_type (e.g. 正社員_初回 not found → 契約_初回)
+    if template_data is None:
+        send_type = template_type.split("_", 1)[1] if "_" in template_type else "初回"
+        for key, tpl in config["templates"].items():
+            if tpl.get("job_category") == job_category and tpl["type"].endswith(f"_{send_type}"):
+                template_data = tpl
+                template_type = tpl["type"]
+                logger.info(
+                    f"[{profile.member_id}] employment fallback: "
+                    f"requested '{template_type}' → using '{tpl['type']}'"
+                )
+                break
     if template_data is None:
         raise ValueError(f"テンプレート '{template_type}' が見つかりません")
 
