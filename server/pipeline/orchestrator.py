@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 JST = timezone(timedelta(hours=9))
 
+# Cap on time spent awaiting post-generation Sheets writes before returning
+# the HTTP response. Sheets API hangs have caused client timeouts even after
+# generation succeeded. Writes continue in the background on timeout.
+SHEETS_WRITE_TIMEOUT = 15.0
+
 LOG_SHEET = "生成ログ"
 LOG_HEADERS = [
     "timestamp", "company", "member_id", "job_category",
@@ -533,25 +538,34 @@ async def generate_single(
         except Exception as e:
             logger.warning(f"Failed to record cost: {e}")
 
-    # Write logs
+    # Write logs (with timeout so Sheets hangs don't block the HTTP response)
     loop = asyncio.get_event_loop()
-    await asyncio.gather(
-        loop.run_in_executor(
-            None,
-            _write_generation_logs,
-            request.company_id,
-            [response],
-            {response.member_id: token_usage} if token_usage else {},
-        ),
-        loop.run_in_executor(
-            None,
-            _write_send_data,
-            request.company_id,
-            [request.profile],
-            [response],
-            config,
-        ),
-    )
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(
+                loop.run_in_executor(
+                    None,
+                    _write_generation_logs,
+                    request.company_id,
+                    [response],
+                    {response.member_id: token_usage} if token_usage else {},
+                ),
+                loop.run_in_executor(
+                    None,
+                    _write_send_data,
+                    request.company_id,
+                    [request.profile],
+                    [response],
+                    config,
+                ),
+            ),
+            timeout=SHEETS_WRITE_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"Sheets write timed out after {SHEETS_WRITE_TIMEOUT}s; "
+            f"returning response without waiting (writes continue in background)"
+        )
 
     return response
 
@@ -619,24 +633,33 @@ async def generate_batch(
         "filtered_out": sum(1 for r in results if r.generation_path == "filtered_out"),
     }
 
-    # Write logs to Sheets (must await before response on Cloud Run)
+    # Write logs to Sheets (with timeout so hangs don't block the HTTP response)
     loop = asyncio.get_event_loop()
-    await asyncio.gather(
-        loop.run_in_executor(
-            None,
-            _write_generation_logs,
-            request.company_id,
-            list(results),
-            all_token_usage,
-        ),
-        loop.run_in_executor(
-            None,
-            _write_send_data,
-            request.company_id,
-            list(request.profiles),
-            list(results),
-            config,
-        ),
-    )
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(
+                loop.run_in_executor(
+                    None,
+                    _write_generation_logs,
+                    request.company_id,
+                    list(results),
+                    all_token_usage,
+                ),
+                loop.run_in_executor(
+                    None,
+                    _write_send_data,
+                    request.company_id,
+                    list(request.profiles),
+                    list(results),
+                    config,
+                ),
+            ),
+            timeout=SHEETS_WRITE_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"Sheets write timed out after {SHEETS_WRITE_TIMEOUT}s; "
+            f"returning response without waiting (writes continue in background)"
+        )
 
     return BatchGenerateResponse(results=list(results), summary=summary)
