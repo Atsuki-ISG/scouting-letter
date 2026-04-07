@@ -74,6 +74,7 @@ export const FIELD_LABELS = {
   desiredStart: '希望入職時期',
   selfPr: '自己PR',
   specialConditions: 'こだわり条件',
+  favorite: '気になる',
 } as const;
 
 /**
