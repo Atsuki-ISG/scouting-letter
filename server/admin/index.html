@@ -4331,6 +4331,17 @@ function _isStale(iso) {
   return (Date.now() - t) > 24 * 60 * 60 * 1000;
 }
 
+function _stalenessLevel(iso) {
+  // 0 = fresh (< 24h), 1 = stale (24-48h), 2 = very stale (>= 48h or missing)
+  if (!iso) return 2;
+  const t = new Date(iso.replace('+09:00', '+0900')).getTime();
+  if (isNaN(t)) return 2;
+  const hours = (Date.now() - t) / (60 * 60 * 1000);
+  if (hours < 24) return 0;
+  if (hours < 48) return 1;
+  return 2;
+}
+
 async function loadDashboardView() {
   if (!_dashYearMonth) _dashYearMonth = _ymNow();
   const body = document.getElementById('dashboardBody');
@@ -4381,11 +4392,12 @@ function renderDashboardTable() {
       }).join('')
     }</div>`;
 
-    const stale = _isStale(c.snapshot_at);
+    const staleLevel = _stalenessLevel(c.snapshot_at);
+    const rowStaleClass = staleLevel === 2 ? 'row-very-stale' : staleLevel === 1 ? 'row-stale' : '';
     const expanded = _dashExpanded.has(c.company_id);
 
     return `
-      <tr class="${expanded ? 'expanded' : ''}" data-company="${escHtml(c.company_id)}" onclick="toggleDashRow('${escHtml(c.company_id)}')">
+      <tr class="${expanded ? 'expanded ' : ''}${rowStaleClass}" data-company="${escHtml(c.company_id)}" onclick="toggleDashRow('${escHtml(c.company_id)}')">
         <td><strong>${escHtml(c.company_name)}</strong><div style="font-size:11px;color:var(--c-text-muted)">${escHtml(c.company_id)}</div></td>
         <td class="dashboard-num">${remaining != null ? remaining : '—'}</td>
         <td class="dashboard-num ${used == null ? 'muted' : ''}">${used != null ? used : '—'}</td>
@@ -4393,13 +4405,25 @@ function renderDashboardTable() {
         <td class="dash-progress-cell">${progressHtml}</td>
         <td>${trendHtml}</td>
         <td class="dashboard-num ${c.tool_sent_total ? '' : 'muted'}">${c.tool_sent_total || 0}</td>
-        <td><span class="dash-staleness${stale ? ' stale' : ''}">${_formatRelative(c.snapshot_at)}</span></td>
+        <td><span class="dash-staleness${staleLevel >= 1 ? ' stale' : ''}${staleLevel === 2 ? ' very-stale' : ''}">${_formatRelative(c.snapshot_at)}</span></td>
       </tr>
       ${expanded ? `<tr class="dash-detail-row"><td colspan="8"><div class="dash-detail-inner" id="dash-detail-${escHtml(c.company_id)}"><div class="loading"><div class="spinner"></div></div></div></td></tr>` : ''}
     `;
   }).join('');
 
+  // Stale companies banner
+  const staleCount = _dashData.companies.filter(c => _stalenessLevel(c.snapshot_at) >= 1).length;
+  const veryStaleCount = _dashData.companies.filter(c => _stalenessLevel(c.snapshot_at) === 2).length;
+  const banner = staleCount > 0
+    ? `<div class="stale-banner ${veryStaleCount > 0 ? 'critical' : 'warning'}">
+        <strong>⚠️ 残数が古い会社が ${staleCount} 社</strong>
+        ${veryStaleCount > 0 ? `（うち ${veryStaleCount} 社は 48時間以上未更新）` : ''}
+        — 該当会社のジョブメドレー画面を Chrome 拡張で1度開いて残数を更新してください
+      </div>`
+    : '';
+
   body.innerHTML = `
+    ${banner}
     <table class="dashboard-table">
       <thead>
         <tr>
@@ -4419,8 +4443,31 @@ function renderDashboardTable() {
       ・<strong>残数</strong>: ジョブメドレー画面の「今月のスカウト残数」を Chrome 拡張がスクレイプして送信した値。<br>
       ・<strong>使用</strong>: 月初残数 − 現在残数（手動送信込み）。<br>
       ・<strong>ツール送信</strong>: 拡張経由で送信した数（参考値）。<br>
-      ・行をクリックすると求人別・テンプレート別の内訳を表示します。
+      ・行をクリックすると求人別・テンプレート別の内訳を表示します。<br>
+      ・行の黄色 = 24時間以上未更新、赤 = 48時間以上未更新。残数が古いと「使用」「進捗」も実態とズレます。
     </p>
+    <style>
+      .row-stale { background: #fffbeb !important; }
+      .row-very-stale { background: #fef2f2 !important; }
+      .row-stale:hover, .row-very-stale:hover { filter: brightness(0.97); }
+      .dash-staleness.very-stale { color: #dc2626; font-weight: 600; }
+      .stale-banner {
+        padding: 10px 14px;
+        border-radius: 6px;
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
+      .stale-banner.warning {
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
+      }
+      .stale-banner.critical {
+        background: #fee2e2;
+        color: #991b1b;
+        border: 1px solid #fca5a5;
+      }
+    </style>
   `;
 
   // Lazy load details for already-expanded rows

@@ -503,6 +503,52 @@ def append_quota_history(
     return row
 
 
+def find_stale_quota_companies(max_hours: float = 24) -> list[dict[str, Any]]:
+    """Return companies whose quota snapshot is older than `max_hours` (or missing entirely).
+
+    Each result has: company_id, company_name, snapshot_at (str|None),
+    hours_since_update (float|None), remaining (int|None).
+
+    Used by:
+    - Dashboard UI to highlight stale rows
+    - Cron job to fire chat/email alerts
+    """
+    companies = list_companies()
+    if not companies:
+        return []
+    snapshots = load_quota_snapshots(current_year_month())
+    now = now_jst()
+    stale: list[dict[str, Any]] = []
+    for company_id, company_name in companies:
+        snap = snapshots.get(company_id)
+        if not snap:
+            stale.append({
+                "company_id": company_id,
+                "company_name": company_name,
+                "snapshot_at": None,
+                "hours_since_update": None,
+                "remaining": None,
+            })
+            continue
+        snapshot_at = snap.get("snapshot_at", "")
+        try:
+            ts = datetime.fromisoformat(snapshot_at)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=JST)
+            hours = (now - ts).total_seconds() / 3600
+        except (ValueError, TypeError):
+            hours = None
+        if hours is None or hours >= max_hours:
+            stale.append({
+                "company_id": company_id,
+                "company_name": company_name,
+                "snapshot_at": snapshot_at,
+                "hours_since_update": hours,
+                "remaining": snap.get("remaining"),
+            })
+    return stale
+
+
 def load_quota_history(
     company_id: str, year_month: Optional[str] = None
 ) -> list[dict[str, Any]]:

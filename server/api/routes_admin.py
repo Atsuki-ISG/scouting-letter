@@ -495,6 +495,21 @@ async def delete_send_data_row(
     return {"status": "deleted", "company_id": company_id, "row_index": row_index}
 
 
+@router.get("/stale_quota_companies")
+async def get_stale_quota_companies(
+    max_hours: float = 24,
+    operator: dict = Depends(verify_api_key),
+):
+    """Return companies whose quota snapshot is older than `max_hours` (default 24).
+
+    Used by the dashboard to highlight stale rows and (later) by Cloud Scheduler
+    to fire alerts.
+    """
+    from api import _dashboard_helpers as dh
+    items = dh.find_stale_quota_companies(max_hours=max_hours)
+    return {"max_hours": max_hours, "items": items, "count": len(items)}
+
+
 @router.get("/quota_history")
 async def get_quota_history(
     company: str,
