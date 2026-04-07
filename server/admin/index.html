@@ -1177,6 +1177,168 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   font-size: 12px;
 }
 
+/* Dashboard View (送信通数) */
+.dashboard-container {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 24px 28px 80px;
+}
+.dashboard-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.dashboard-month {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--c-text);
+  min-width: 90px;
+  text-align: center;
+}
+.dashboard-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 13px;
+}
+.dashboard-table th,
+.dashboard-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border);
+  vertical-align: middle;
+}
+.dashboard-table th {
+  background: var(--c-surface-alt);
+  font-size: 12px;
+  color: var(--c-text-muted);
+  font-weight: 600;
+  text-transform: none;
+}
+.dashboard-table tbody tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.dashboard-table tbody tr:hover {
+  background: var(--c-surface-alt);
+}
+.dashboard-table tbody tr.expanded {
+  background: var(--c-surface-alt);
+}
+.dashboard-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.dashboard-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}
+.dashboard-num.muted {
+  color: var(--c-text-muted);
+  font-weight: 500;
+}
+.dash-progress-cell {
+  min-width: 140px;
+}
+.dash-progress {
+  height: 8px;
+  background: var(--c-border);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+.dash-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #059669);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.dash-progress-bar.over {
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+.dash-progress-label {
+  font-size: 11px;
+  color: var(--c-text-muted);
+  margin-top: 2px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.dash-trend {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 24px;
+}
+.dash-trend-bar {
+  width: 6px;
+  background: #94a3b8;
+  border-radius: 1px;
+}
+.dash-staleness {
+  font-size: 11px;
+  color: var(--c-text-muted);
+}
+.dash-staleness.stale {
+  color: #ef4444;
+}
+.dash-detail-row td {
+  padding: 0 !important;
+  background: #fafafa;
+}
+.dash-detail-inner {
+  padding: 16px 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 24px;
+}
+.dash-detail-block h4 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 8px;
+}
+.dash-detail-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+}
+.dash-detail-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--c-border);
+}
+.dash-detail-list li:last-child { border-bottom: none; }
+.dash-detail-list .label { color: var(--c-text); }
+.dash-detail-list .count { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--c-text); }
+.dash-detail-empty { color: var(--c-text-muted); font-size: 12px; padding: 4px 0; }
+.dash-target-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.dash-target-table th,
+.dash-target-table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--c-border);
+  text-align: left;
+}
+.dash-target-table input[type=number] {
+  width: 100px;
+  padding: 6px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  text-align: right;
+}
+
 /* Help View */
 .help-container {
   max-width: 860px;
@@ -1862,6 +2024,7 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   <div class="view-toggle">
     <button id="viewFlowBtn" class="active" onclick="setViewMode('flow')">フロー</button>
     <button id="viewTableBtn" onclick="setViewMode('table')">テーブル</button>
+    <button id="viewDashboardBtn" onclick="setViewMode('dashboard')">通数</button>
     <button id="viewHelpBtn" onclick="setViewMode('help')">ヘルプ</button>
     <button id="viewAnalysisBtn" onclick="setViewMode('analysis')">分析</button>
   </div>
@@ -1894,6 +2057,23 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 
 <!-- Table View -->
 <main class="content" id="content" style="display:none"></main>
+
+<!-- Dashboard View (送信通数) -->
+<div id="dashboardView" style="display:none">
+  <div class="dashboard-container">
+    <div class="dashboard-toolbar">
+      <button class="btn btn-secondary btn-sm" id="dashPrevMonth">‹ 前月</button>
+      <span class="dashboard-month" id="dashMonthLabel">—</span>
+      <button class="btn btn-secondary btn-sm" id="dashNextMonth">翌月 ›</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-secondary btn-sm" id="dashRefresh">↻ 再読込</button>
+      <button class="btn btn-primary btn-sm" id="dashEditTargets">🎯 目標を編集</button>
+    </div>
+    <div id="dashboardBody">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+  </div>
+</div>
 
 <!-- Help View -->
 <div id="helpView" style="display:none"></div>
@@ -2142,15 +2322,19 @@ function setViewMode(mode) {
   viewMode = mode;
   document.getElementById('viewFlowBtn').classList.toggle('active', mode === 'flow');
   document.getElementById('viewTableBtn').classList.toggle('active', mode === 'table');
+  document.getElementById('viewDashboardBtn').classList.toggle('active', mode === 'dashboard');
   document.getElementById('viewHelpBtn').classList.toggle('active', mode === 'help');
   document.getElementById('viewAnalysisBtn').classList.toggle('active', mode === 'analysis');
   document.getElementById('tabs').style.display = mode === 'table' ? 'flex' : 'none';
   document.getElementById('content').style.display = mode === 'table' ? 'block' : 'none';
   document.getElementById('flowView').style.display = mode === 'flow' ? 'block' : 'none';
+  document.getElementById('dashboardView').style.display = mode === 'dashboard' ? 'block' : 'none';
   document.getElementById('helpView').style.display = mode === 'help' ? 'block' : 'none';
   document.getElementById('analysisView').style.display = mode === 'analysis' ? 'block' : 'none';
   if (mode === 'flow') {
     loadFlowView();
+  } else if (mode === 'dashboard') {
+    loadDashboardView();
   } else if (mode === 'help') {
     renderHelpView();
   } else if (mode === 'analysis') {
@@ -4074,6 +4258,246 @@ async function loadSendSummary() {
     content.innerHTML = `<span class="send-summary-loading">送信数の取得に失敗</span>`;
   }
 }
+
+// --- Dashboard View (送信通数) ---
+let _dashYearMonth = null;
+let _dashData = null;
+let _dashCompanyDetails = {};
+let _dashExpanded = new Set();
+
+function _ymNow() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function _shiftYm(ym, delta) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function _formatRelative(iso) {
+  if (!iso) return '未取得';
+  const t = new Date(iso.replace('+09:00', '+0900')).getTime();
+  if (isNaN(t)) return iso;
+  const diff = Date.now() - t;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'たった今';
+  if (min < 60) return `${min}分前`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}時間前`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}日前`;
+  return iso.slice(0, 10);
+}
+
+function _isStale(iso) {
+  if (!iso) return true;
+  const t = new Date(iso.replace('+09:00', '+0900')).getTime();
+  if (isNaN(t)) return true;
+  return (Date.now() - t) > 24 * 60 * 60 * 1000;
+}
+
+async function loadDashboardView() {
+  if (!_dashYearMonth) _dashYearMonth = _ymNow();
+  const body = document.getElementById('dashboardBody');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  document.getElementById('dashMonthLabel').textContent = _dashYearMonth;
+  try {
+    _dashData = await api('GET', `/api/v1/admin/send_dashboard?year_month=${_dashYearMonth}`);
+    renderDashboardTable();
+  } catch (e) {
+    body.innerHTML = `<div class="empty-msg">読み込みに失敗しました: ${escHtml(e.message || String(e))}</div>`;
+  }
+}
+
+function renderDashboardTable() {
+  if (!_dashData) return;
+  const body = document.getElementById('dashboardBody');
+  document.getElementById('dashMonthLabel').textContent = `${_dashData.year_month} (${_dashData.month_display})`;
+
+  const rows = _dashData.companies.map(c => {
+    const remaining = c.remaining;
+    const used = c.used;
+    const target = c.target;
+    const quota = c.quota_hint;
+
+    // Progress: prefer target as denominator, fall back to quota_hint
+    let progressPct = null;
+    let denomLabel = '';
+    if (target && used != null) {
+      progressPct = Math.min(100, Math.round((used / target) * 100));
+      denomLabel = `${used} / ${target}`;
+    } else if (quota != null && used != null) {
+      progressPct = Math.min(100, Math.round((used / quota) * 100));
+      denomLabel = `${used} / ${quota}`;
+    } else if (target && c.tool_sent_total != null) {
+      progressPct = Math.min(100, Math.round((c.tool_sent_total / target) * 100));
+      denomLabel = `${c.tool_sent_total} / ${target}（ツール）`;
+    }
+
+    const progressHtml = progressPct != null
+      ? `<div class="dash-progress"><div class="dash-progress-bar${progressPct >= 100 ? ' over' : ''}" style="width:${progressPct}%"></div></div><div class="dash-progress-label">${denomLabel}（${progressPct}%）</div>`
+      : `<div class="dash-progress-label">—</div>`;
+
+    const trendMax = Math.max(1, ...c.trend.map(t => t.tool_sent || 0));
+    const trendHtml = `<div class="dash-trend" title="${c.trend.map(t => `${t.year_month}: ${t.tool_sent}`).join(' / ')}">${
+      c.trend.map(t => {
+        const h = Math.max(2, Math.round((t.tool_sent / trendMax) * 22));
+        return `<div class="dash-trend-bar" style="height:${h}px"></div>`;
+      }).join('')
+    }</div>`;
+
+    const stale = _isStale(c.snapshot_at);
+    const expanded = _dashExpanded.has(c.company_id);
+
+    return `
+      <tr class="${expanded ? 'expanded' : ''}" data-company="${escHtml(c.company_id)}" onclick="toggleDashRow('${escHtml(c.company_id)}')">
+        <td><strong>${escHtml(c.company_name)}</strong><div style="font-size:11px;color:var(--c-text-muted)">${escHtml(c.company_id)}</div></td>
+        <td class="dashboard-num">${remaining != null ? remaining : '—'}</td>
+        <td class="dashboard-num ${used == null ? 'muted' : ''}">${used != null ? used : '—'}</td>
+        <td class="dashboard-num ${target == null ? 'muted' : ''}">${target != null ? target : '—'}</td>
+        <td class="dash-progress-cell">${progressHtml}</td>
+        <td>${trendHtml}</td>
+        <td class="dashboard-num ${c.tool_sent_total ? '' : 'muted'}">${c.tool_sent_total || 0}</td>
+        <td><span class="dash-staleness${stale ? ' stale' : ''}">${_formatRelative(c.snapshot_at)}</span></td>
+      </tr>
+      ${expanded ? `<tr class="dash-detail-row"><td colspan="8"><div class="dash-detail-inner" id="dash-detail-${escHtml(c.company_id)}"><div class="loading"><div class="spinner"></div></div></div></td></tr>` : ''}
+    `;
+  }).join('');
+
+  body.innerHTML = `
+    <table class="dashboard-table">
+      <thead>
+        <tr>
+          <th>会社</th>
+          <th style="text-align:right">残数</th>
+          <th style="text-align:right">使用</th>
+          <th style="text-align:right">目標</th>
+          <th>進捗</th>
+          <th>推移（直近6ヶ月）</th>
+          <th style="text-align:right">ツール送信</th>
+          <th>最終更新</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <p style="font-size:11px;color:var(--c-text-muted);margin-top:12px;">
+      ・<strong>残数</strong>: ジョブメドレー画面の「今月のスカウト残数」を Chrome 拡張がスクレイプして送信した値。<br>
+      ・<strong>使用</strong>: 月初残数 − 現在残数（手動送信込み）。<br>
+      ・<strong>ツール送信</strong>: 拡張経由で送信した数（参考値）。<br>
+      ・行をクリックすると求人別・テンプレート別の内訳を表示します。
+    </p>
+  `;
+
+  // Lazy load details for already-expanded rows
+  for (const cid of _dashExpanded) {
+    if (_dashData.companies.find(c => c.company_id === cid)) {
+      loadDashCompanyDetail(cid);
+    }
+  }
+}
+
+async function toggleDashRow(companyId) {
+  if (_dashExpanded.has(companyId)) {
+    _dashExpanded.delete(companyId);
+  } else {
+    _dashExpanded.add(companyId);
+  }
+  renderDashboardTable();
+}
+
+async function loadDashCompanyDetail(companyId) {
+  const container = document.getElementById(`dash-detail-${companyId}`);
+  if (!container) return;
+  try {
+    const data = await api('GET', `/api/v1/admin/send_dashboard/company?company_id=${encodeURIComponent(companyId)}&year_month=${_dashYearMonth}`);
+    _dashCompanyDetails[companyId] = data;
+    const company = _dashData.companies.find(c => c.company_id === companyId);
+    const byCategory = company ? company.by_category || {} : {};
+
+    const catItems = Object.entries(byCategory).map(([k, v]) =>
+      `<li><span class="label">${escHtml(k)}</span><span class="count">${v}</span></li>`
+    ).join('') || '<div class="dash-detail-empty">データなし</div>';
+
+    const offerItems = (data.by_job_offer || []).map(o =>
+      `<li><span class="label">${escHtml(o.label || `${o.job_category_display || o.job_category} ${o.template_type}`)}</span><span class="count">${o.count}</span></li>`
+    ).join('') || '<div class="dash-detail-empty">データなし</div>';
+
+    const tplItems = (data.by_template || []).map(t =>
+      `<li><span class="label">${escHtml(t.template_type)} ${t.version ? `<span style="color:var(--c-text-muted);font-size:11px">v${escHtml(t.version)}</span>` : ''}</span><span class="count">${t.count}</span></li>`
+    ).join('') || '<div class="dash-detail-empty">データなし</div>';
+
+    container.innerHTML = `
+      <div class="dash-detail-block">
+        <h4>職種カテゴリ別</h4>
+        <ul class="dash-detail-list">${catItems}</ul>
+      </div>
+      <div class="dash-detail-block">
+        <h4>求人別</h4>
+        <ul class="dash-detail-list">${offerItems}</ul>
+      </div>
+      <div class="dash-detail-block">
+        <h4>テンプレート別</h4>
+        <ul class="dash-detail-list">${tplItems}</ul>
+      </div>
+    `;
+  } catch (e) {
+    container.innerHTML = `<div class="dash-detail-empty">読み込みに失敗: ${escHtml(e.message || String(e))}</div>`;
+  }
+}
+
+async function openTargetEditor() {
+  if (!_dashData) return;
+  const ym = _dashYearMonth;
+  const rows = _dashData.companies.map(c => `
+    <tr>
+      <td>${escHtml(c.company_name)}<div style="font-size:11px;color:var(--c-text-muted)">${escHtml(c.company_id)}</div></td>
+      <td><input type="number" min="0" step="10" value="${c.target != null ? c.target : ''}" data-company="${escHtml(c.company_id)}" placeholder="未設定"></td>
+    </tr>
+  `).join('');
+  document.getElementById('modalTitle').textContent = `${ym} の月次目標を編集`;
+  document.getElementById('modalBody').innerHTML = `
+    <p style="font-size:12px;color:var(--c-text-muted);margin:0 0 12px;">空欄にすると未設定として扱われます（ただし保存はされません）。</p>
+    <table class="dash-target-table">
+      <thead><tr><th>会社</th><th style="text-align:right">目標通数</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  const saveBtn = document.getElementById('modalSave');
+  saveBtn.textContent = '保存';
+  saveBtn.onclick = async () => {
+    const inputs = document.querySelectorAll('#modalBody input[type=number]');
+    const targets = [];
+    for (const inp of inputs) {
+      const v = inp.value.trim();
+      if (!v) continue;
+      targets.push({ company_id: inp.dataset.company, target_count: parseInt(v, 10) });
+    }
+    saveBtn.disabled = true;
+    try {
+      await api('POST', '/api/v1/admin/send_targets', { year_month: ym, targets });
+      closeModal();
+      await loadDashboardView();
+    } catch (e) {
+      alert('保存に失敗: ' + (e.message || String(e)));
+    } finally {
+      saveBtn.disabled = false;
+    }
+  };
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const prevBtn = document.getElementById('dashPrevMonth');
+  const nextBtn = document.getElementById('dashNextMonth');
+  const refreshBtn = document.getElementById('dashRefresh');
+  const editBtn = document.getElementById('dashEditTargets');
+  if (prevBtn) prevBtn.addEventListener('click', () => { _dashYearMonth = _shiftYm(_dashYearMonth || _ymNow(), -1); _dashExpanded.clear(); loadDashboardView(); });
+  if (nextBtn) nextBtn.addEventListener('click', () => { _dashYearMonth = _shiftYm(_dashYearMonth || _ymNow(), 1); _dashExpanded.clear(); loadDashboardView(); });
+  if (refreshBtn) refreshBtn.addEventListener('click', () => loadDashboardView());
+  if (editBtn) editBtn.addEventListener('click', () => openTargetEditor());
+});
 
 function renderHelpView() {
   const el = document.getElementById('helpView');

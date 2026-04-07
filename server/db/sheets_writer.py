@@ -134,27 +134,5 @@ class SheetsWriter:
             body={"values": rows}
         ).execute()
 
-    def ensure_sheet_exists(self, sheet_name: str, headers: list[str]) -> None:
-        """Create a sheet with headers if it doesn't exist yet."""
-        service = self._get_service()
-        spreadsheet = service.spreadsheets().get(
-            spreadsheetId=SPREADSHEET_ID
-        ).execute()
-        existing = [s["properties"]["title"] for s in spreadsheet.get("sheets", [])]
-        if sheet_name in existing:
-            return
-        service.spreadsheets().batchUpdate(
-            spreadsheetId=SPREADSHEET_ID,
-            body={"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
-        ).execute()
-        # Write header row
-        service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID,
-            range=f"'{sheet_name}'!A1",
-            valueInputOption="RAW",
-            body={"values": [headers]}
-        ).execute()
-        logger.info(f"Created sheet '{sheet_name}' with {len(headers)} columns")
-
 
 sheets_writer = SheetsWriter()

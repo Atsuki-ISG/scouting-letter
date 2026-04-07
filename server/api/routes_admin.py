@@ -216,6 +216,113 @@ async def send_summary(
     }
 
 
+# --- Send dashboard endpoints ---
+
+@router.get("/send_dashboard")
+async def send_dashboard(
+    year_month: Optional[str] = None,
+    operator: dict = Depends(verify_api_key),
+):
+    """Return per-company send-count dashboard data for a given month."""
+    from api import _dashboard_helpers as dh
+
+    ym = year_month or dh.current_year_month()
+    targets = dh.load_targets(ym)
+    snapshots = dh.load_quota_snapshots(ym)
+
+    companies = []
+    for cid, name in dh.list_companies():
+        summary = dh.summarize_company_month(cid, ym)
+        snap = snapshots.get(cid, {}) or {}
+        remaining = snap.get("remaining")
+        quota_hint = snap.get("quota_hint")
+        used = (quota_hint - remaining) if (remaining is not None and quota_hint is not None) else None
+        companies.append({
+            "company_id": cid,
+            "company_name": name,
+            "remaining": remaining,
+            "quota_hint": quota_hint,
+            "used": used,
+            "snapshot_at": snap.get("snapshot_at", ""),
+            "target": targets.get(cid),
+            "tool_sent_total": summary["total"],
+            "by_category": summary["by_category"],
+            "trend": dh.trend_company(cid, ym, months=6),
+        })
+
+    return {
+        "year_month": ym,
+        "month_display": dh.month_display(ym),
+        "companies": companies,
+    }
+
+
+@router.get("/send_dashboard/company")
+async def send_dashboard_company(
+    company_id: str,
+    year_month: Optional[str] = None,
+    operator: dict = Depends(verify_api_key),
+):
+    """Return job-offer-level and template-level breakdowns for one company."""
+    from api import _dashboard_helpers as dh
+
+    ym = year_month or dh.current_year_month()
+    detail = dh.detail_company_month(company_id, ym)
+    return {
+        "company_id": company_id,
+        "year_month": ym,
+        **detail,
+    }
+
+
+@router.post("/scout_quota_snapshot")
+async def post_scout_quota_snapshot(
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    """Receive a scout-remaining snapshot from the Chrome extension."""
+    from api import _dashboard_helpers as dh
+
+    company_id = str(data.get("company_id", "")).strip()
+    if not company_id:
+        raise HTTPException(400, "company_id is required")
+    raw_remaining = data.get("remaining")
+    if raw_remaining is None:
+        raise HTTPException(400, "remaining is required")
+    try:
+        remaining = int(raw_remaining)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "remaining must be an integer")
+    if remaining < 0:
+        raise HTTPException(400, "remaining must be >= 0")
+
+    return dh.upsert_quota_snapshot(company_id, remaining)
+
+
+@router.get("/send_targets")
+async def get_send_targets(
+    year_month: Optional[str] = None,
+    operator: dict = Depends(verify_api_key),
+):
+    from api import _dashboard_helpers as dh
+    ym = year_month or dh.current_year_month()
+    return {"year_month": ym, "targets": dh.load_targets(ym)}
+
+
+@router.post("/send_targets")
+async def post_send_targets(
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    from api import _dashboard_helpers as dh
+    ym = str(data.get("year_month", "")).strip() or dh.current_year_month()
+    targets = data.get("targets") or []
+    if not isinstance(targets, list):
+        raise HTTPException(400, "targets must be a list")
+    dh.upsert_targets(ym, targets)
+    return {"year_month": ym, "targets": dh.load_targets(ym)}
+
+
 @router.get("/{sheet_slug}")
 async def list_rows(sheet_slug: str, company: Optional[str] = None, operator=Depends(verify_api_key)):
     sheet_name = SHEET_MAP.get(sheet_slug)
