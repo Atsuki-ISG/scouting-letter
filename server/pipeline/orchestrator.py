@@ -366,36 +366,6 @@ async def _process_candidate(
                     f"'{original_template_type}' → '{tpl['type']}' (desired={desired})"
                 )
                 break
-    # Cross-category fallback: 同じ送信種別の他職種テンプレートを流用
-    if template_data is None:
-        send_type = template_type.split("_", 1)[1] if "_" in template_type else "初回"
-        # Try same employment first across other job_categories
-        target_emp = template_type.split("_")[0] if "_" in template_type else "パート"
-        for tpl in config["templates"].values():
-            if tpl["type"] == f"{target_emp}_{send_type}" and tpl.get("job_category") != job_category:
-                template_data = tpl
-                template_warnings.append(
-                    f"[テンプレート未設定] {job_category}用テンプレートがないため "
-                    f"{tpl.get('job_category') or '汎用'}用を流用しました"
-                )
-                logger.warning(
-                    f"[{profile.member_id}] cross-category template fallback: "
-                    f"{job_category} → {tpl.get('job_category')}"
-                )
-                break
-        # Last resort: any template with same send_type
-        if template_data is None:
-            for tpl in config["templates"].values():
-                if tpl["type"].endswith(f"_{send_type}"):
-                    template_data = tpl
-                    template_warnings.append(
-                        f"[テンプレート未設定] {job_category}/{template_type}用テンプレートがないため "
-                        f"{tpl.get('job_category') or '汎用'}/{tpl['type']}を流用しました"
-                    )
-                    logger.warning(
-                        f"[{profile.member_id}] last-resort template fallback to {tpl['type']}"
-                    )
-                    break
     if template_data is None:
         return GenerateResponse(
             member_id=profile.member_id,
@@ -405,8 +375,25 @@ async def _process_candidate(
             full_scout_text="",
             job_category=job_category,
             filter_reason=(
-                f"[テンプレート未設定] 会社にこの送信種別のテンプレートが1つも登録されていません "
-                f"(求めた: {job_category}:{template_type})"
+                f"[テンプレート未設定] {job_category}/{template_type}用のテンプレートが登録されていません"
+            ),
+            validation_warnings=soft_warnings,
+        ), _empty_usage
+
+    # 4.5 Resolve job offer (求人未登録ならAI生成前にハードブロック)
+    job_offer_id = _resolve_job_offer_id(
+        config["job_offers"], job_category, template_type
+    )
+    if not job_offer_id:
+        return GenerateResponse(
+            member_id=profile.member_id,
+            template_type=template_type,
+            generation_path="filtered_out",
+            personalized_text="",
+            full_scout_text="",
+            job_category=job_category,
+            filter_reason=(
+                f"[求人未登録] {job_category}/{template_type}に該当する求人がサーバーに登録されていません"
             ),
             validation_warnings=soft_warnings,
         ), _empty_usage
@@ -517,19 +504,10 @@ async def _process_candidate(
             validation_warnings=soft_warnings,
         ), {}
 
-    # 8. Resolve job offer
-    job_offer_id = _resolve_job_offer_id(
-        config["job_offers"], job_category, template_type
-    )
-
-    # 9. Combine warnings: filter soft + template fallback + 雇用形態ミスマッチ + 求人未登録
+    # 8. Combine warnings: filter soft + template fallback + 雇用形態ミスマッチ
     warnings: list[str] = []
     warnings.extend(soft_warnings)
     warnings.extend(template_warnings)
-    if not job_offer_id:
-        warnings.append(
-            f"[求人未登録] {job_category}/{template_type}に該当する求人がサーバーに登録されていません"
-        )
     # template_warnings に既に雇用形態ミスマッチ警告が入っている場合はスキップ
     has_employment_warning = any("希望雇用形態" in w for w in template_warnings)
     if not has_employment_warning:
