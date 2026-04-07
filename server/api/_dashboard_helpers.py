@@ -8,8 +8,9 @@ Reads:
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 
 from db.sheets_writer import sheets_writer
 from db.sheets_client import sheets_client
@@ -25,6 +26,12 @@ TARGETS_HEADERS = ["company", "year_month", "target_count"]
 
 QUOTA_SHEET = "送信実績"
 QUOTA_HEADERS = ["company", "year_month", "snapshot_at", "remaining", "quota_hint"]
+
+# Append-only history of quota snapshots — every report from the extension
+# (or future server-side scrapers) lands here as a new row. Used for charting
+# the remaining-count trajectory within a month.
+QUOTA_HISTORY_SHEET = "送信実績履歴"
+QUOTA_HISTORY_HEADERS = ["id", "company", "year_month", "snapshot_at", "remaining", "quota_hint", "source"]
 
 CATEGORY_DISPLAY = {
     "nurse": "看護師",
@@ -437,6 +444,21 @@ def upsert_quota_snapshot(company_id: str, remaining: int) -> dict[str, Any]:
     else:
         sheets_writer.append_row(QUOTA_SHEET, new_row)
 
+    # Always append to the immutable history sheet so we can chart the
+    # remaining-count trajectory later. Failures are non-fatal — if the
+    # history append breaks, the upsert above is still authoritative.
+    try:
+        append_quota_history(
+            company_id=company_id,
+            year_month=year_month,
+            snapshot_at=snapshot_at,
+            remaining=remaining,
+            quota_hint=int(quota_hint_value) if quota_hint_value else None,
+            source="extension",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to append quota history for {company_id}: {e}")
+
     return {
         "company_id": company_id,
         "year_month": year_month,
@@ -444,3 +466,74 @@ def upsert_quota_snapshot(company_id: str, remaining: int) -> dict[str, Any]:
         "remaining": remaining,
         "quota_hint": int(quota_hint_value) if quota_hint_value else None,
     }
+
+
+# ---------- quota history sheet (append-only) ----------
+
+def _ensure_quota_history_sheet() -> None:
+    sheets_writer.ensure_sheet_exists(QUOTA_HISTORY_SHEET, QUOTA_HISTORY_HEADERS)
+
+
+def append_quota_history(
+    company_id: str,
+    year_month: str,
+    snapshot_at: str,
+    remaining: int,
+    quota_hint: Optional[int],
+    source: str = "extension",
+) -> dict[str, Any]:
+    """Append a single snapshot row to the immutable history sheet.
+
+    Caller is responsible for having already computed snapshot_at / quota_hint.
+    """
+    _ensure_quota_history_sheet()
+    snapshot_id = f"qh_{uuid.uuid4().hex[:10]}"
+    row = {
+        "id": snapshot_id,
+        "company": company_id,
+        "year_month": year_month,
+        "snapshot_at": snapshot_at,
+        "remaining": str(remaining),
+        "quota_hint": str(quota_hint) if quota_hint is not None else "",
+        "source": source or "extension",
+    }
+    sheets_writer.append_row(
+        QUOTA_HISTORY_SHEET, [row[col] for col in QUOTA_HISTORY_HEADERS]
+    )
+    return row
+
+
+def load_quota_history(
+    company_id: str, year_month: Optional[str] = None
+) -> list[dict[str, Any]]:
+    """Return all history snapshots for a company, optionally filtered by month.
+
+    Sorted ascending by snapshot_at so the caller can plot directly.
+    """
+    try:
+        rows = sheets_writer.get_all_rows(QUOTA_HISTORY_SHEET)
+    except Exception as e:
+        logger.warning(f"Failed to read {QUOTA_HISTORY_SHEET}: {e}")
+        return []
+    if not rows or len(rows) < 2:
+        return []
+    headers = [h.strip() for h in rows[0]]
+    items: list[dict[str, Any]] = []
+    for row in rows[1:]:
+        item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(headers)}
+        if item.get("company", "") != company_id:
+            continue
+        if year_month and item.get("year_month", "") != year_month:
+            continue
+        # parse numeric fields for convenience
+        try:
+            item["remaining"] = int(item["remaining"]) if item.get("remaining", "") else None
+        except ValueError:
+            item["remaining"] = None
+        try:
+            item["quota_hint"] = int(item["quota_hint"]) if item.get("quota_hint", "") else None
+        except ValueError:
+            item["quota_hint"] = None
+        items.append(item)
+    items.sort(key=lambda r: r.get("snapshot_at", ""))
+    return items

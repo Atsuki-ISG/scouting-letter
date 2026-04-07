@@ -304,6 +304,8 @@ async def post_scout_quota_snapshot(
     return dh.upsert_quota_snapshot(company_id, remaining)
 
 
+
+
 @router.get("/send_targets")
 async def get_send_targets(
     year_month: Optional[str] = None,
@@ -328,8 +330,24 @@ async def post_send_targets(
     return {"year_month": ym, "targets": dh.load_targets(ym)}
 
 
-# 修正フィードバック GET routes — must be defined BEFORE the /{sheet_slug}
+# Specific GET routes — must be defined BEFORE the /{sheet_slug}
 # catch-all below or they will be shadowed.
+@router.get("/quota_history")
+async def get_quota_history(
+    company: str,
+    year_month: Optional[str] = None,
+    operator: dict = Depends(verify_api_key),
+):
+    """Return the append-only history of quota snapshots for a company.
+
+    Used by the dashboard to chart the remaining-count trajectory across
+    a month.
+    """
+    from api import _dashboard_helpers as dh
+    items = dh.load_quota_history(company, year_month)
+    return {"items": items}
+
+
 @router.get("/fix_feedback")
 async def list_fix_feedback(
     company: Optional[str] = None,

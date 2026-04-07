@@ -4588,7 +4588,10 @@ async function loadDashCompanyDetail(companyId) {
   const container = document.getElementById(`dash-detail-${companyId}`);
   if (!container) return;
   try {
-    const data = await api('GET', `/api/v1/admin/send_dashboard/company?company_id=${encodeURIComponent(companyId)}&year_month=${_dashYearMonth}`);
+    const [data, history] = await Promise.all([
+      api('GET', `/api/v1/admin/send_dashboard/company?company_id=${encodeURIComponent(companyId)}&year_month=${_dashYearMonth}`),
+      api('GET', `/api/v1/admin/quota_history?company=${encodeURIComponent(companyId)}&year_month=${_dashYearMonth}`).catch(() => ({items: []})),
+    ]);
     _dashCompanyDetails[companyId] = data;
     const company = _dashData.companies.find(c => c.company_id === companyId);
     const byCategory = company ? company.by_category || {} : {};
@@ -4605,7 +4608,13 @@ async function loadDashCompanyDetail(companyId) {
       `<li><span class="label">${escHtml(t.template_type)} ${t.version ? `<span style="color:var(--c-text-muted);font-size:11px">v${escHtml(t.version)}</span>` : ''}</span><span class="count">${t.count}</span></li>`
     ).join('') || '<div class="dash-detail-empty">データなし</div>';
 
+    const historySvg = renderQuotaHistorySvg(history.items || []);
+
     container.innerHTML = `
+      <div class="dash-detail-block" style="grid-column:1/-1;">
+        <h4>残数の推移</h4>
+        ${historySvg}
+      </div>
       <div class="dash-detail-block">
         <h4>職種カテゴリ別</h4>
         <ul class="dash-detail-list">${catItems}</ul>
@@ -4622,6 +4631,41 @@ async function loadDashCompanyDetail(companyId) {
   } catch (e) {
     container.innerHTML = `<div class="dash-detail-empty">読み込みに失敗: ${escHtml(e.message || String(e))}</div>`;
   }
+}
+
+function renderQuotaHistorySvg(items) {
+  if (!items || items.length === 0) {
+    return '<div class="dash-detail-empty">残数の履歴はまだありません</div>';
+  }
+  const W = 600, H = 120, P = 24;
+  const xs = items.map(i => new Date(i.snapshot_at).getTime()).filter(t => !isNaN(t));
+  const ys = items.map(i => i.remaining || 0);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMax = Math.max(...ys, items[0].quota_hint || 0, 1);
+  const xSpan = xMax - xMin || 1;
+  const points = items.map((it, i) => {
+    const t = new Date(it.snapshot_at).getTime();
+    const x = P + ((t - xMin) / xSpan) * (W - 2 * P);
+    const y = H - P - ((it.remaining || 0) / yMax) * (H - 2 * P);
+    return [x, y, it];
+  });
+  const polyline = points.map(p => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const dots = points.map(p =>
+    `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="var(--c-primary)">
+      <title>${p[2].snapshot_at} → 残${p[2].remaining}</title>
+    </circle>`
+  ).join('');
+  const firstLabel = items[0].snapshot_at?.slice(5, 16).replace('T', ' ') || '';
+  const lastLabel = items[items.length - 1].snapshot_at?.slice(5, 16).replace('T', ' ') || '';
+  return `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:140px;background:#fafbff;border:1px solid #e2e8f0;border-radius:4px;">
+      <polyline fill="none" stroke="var(--c-primary)" stroke-width="2" points="${polyline}" />
+      ${dots}
+      <text x="${P}" y="${H - 4}" font-size="10" fill="#94a3b8">${firstLabel}</text>
+      <text x="${W - P}" y="${H - 4}" font-size="10" text-anchor="end" fill="#94a3b8">${lastLabel}</text>
+      <text x="${P}" y="14" font-size="10" fill="#64748b">残数推移 (${items.length}点 / 上限${yMax})</text>
+    </svg>
+  `;
 }
 
 async function openTargetEditor() {
