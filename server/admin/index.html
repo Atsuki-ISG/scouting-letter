@@ -2284,6 +2284,7 @@ const TABS = [
   { slug: 'job_category_keywords', name: '職種キーワード' },
   { slug: 'logs', name: '生成ログ', readOnly: true },
   { slug: 'profiles', name: 'プロフィール' },
+  { slug: 'send_data', name: '送信履歴', custom: true },
   { slug: 'fix_feedback', name: '修正フィードバック', custom: true },
 ];
 
@@ -3155,6 +3156,10 @@ async function loadData() {
   if (tabDef && tabDef.custom) {
     if (currentTab === 'fix_feedback') {
       await renderFixFeedbackTab(company);
+      return;
+    }
+    if (currentTab === 'send_data') {
+      await renderSendDataTab(company);
       return;
     }
   }
@@ -4433,6 +4438,130 @@ async function toggleDashRow(companyId) {
     _dashExpanded.add(companyId);
   }
   renderDashboardTable();
+}
+
+// ===== 送信履歴 (Phase B) =====
+let _sendDataItems = [];
+let _sendDataHeaders = [];
+let _sendDataMonthFilter = null; // null = all months
+let _sendDataCategoryFilter = ''; // '' = all
+let _sendDataCompany = '';
+
+async function renderSendDataTab(company) {
+  _sendDataCompany = company;
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const data = await api('GET', `/api/v1/admin/send_data/${encodeURIComponent(company)}`);
+    _sendDataItems = data.items || [];
+    _sendDataHeaders = data.headers || [];
+  } catch (e) {
+    content.innerHTML = `<div class="empty-msg">読み込みに失敗しました: ${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  drawSendDataTable();
+}
+
+function drawSendDataTable() {
+  const content = document.getElementById('content');
+  let items = _sendDataItems;
+  if (_sendDataMonthFilter) {
+    items = items.filter(it => (it['日時'] || '').startsWith(_sendDataMonthFilter));
+  }
+  if (_sendDataCategoryFilter) {
+    items = items.filter(it => (it['職種カテゴリ'] || '') === _sendDataCategoryFilter);
+  }
+  // newest first
+  items = [...items].sort((a, b) => (b['日時'] || '').localeCompare(a['日時'] || ''));
+
+  // build month list for filter
+  const months = Array.from(new Set(_sendDataItems
+    .map(it => (it['日時'] || '').slice(0, 7))
+    .filter(Boolean))).sort().reverse();
+  const cats = Array.from(new Set(_sendDataItems
+    .map(it => it['職種カテゴリ'] || '')
+    .filter(Boolean))).sort();
+
+  const rowsHtml = items.length === 0
+    ? `<tr><td colspan="9" style="text-align:center;color:var(--c-text-muted);padding:24px">該当する送信履歴がありません</td></tr>`
+    : items.map(it => {
+        const ts = (it['日時'] || '').replace('T', ' ').slice(0, 16);
+        const isManual = (it['生成パス'] || '') === 'manual';
+        const reply = it['返信'] || '';
+        return `
+          <tr>
+            <td style="white-space:nowrap;font-size:11px;">${escHtml(ts)}</td>
+            <td style="font-family:var(--font-mono);font-size:11px;">${escHtml(it['会員番号'] || '')}</td>
+            <td style="font-size:11px;">${escHtml(labelForCategory(it['職種カテゴリ'] || ''))}</td>
+            <td style="font-size:11px;">${escHtml(it['テンプレート種別'] || '')}${it['テンプレートVer'] ? ` <span style="color:var(--c-text-muted);font-size:10px">v${escHtml(it['テンプレートVer'])}</span>` : ''}</td>
+            <td style="font-size:11px;">${isManual ? '<span style="background:#e0e7ff;color:#3730a3;padding:1px 6px;border-radius:8px;font-size:10px;">手動</span>' : escHtml(it['生成パス'] || '')}</td>
+            <td style="font-size:11px;">${escHtml(it['年齢層'] || '')}</td>
+            <td style="font-size:11px;">${escHtml(it['希望雇用形態'] || '')}</td>
+            <td style="font-size:11px;">${reply ? `<span style="color:#059669;font-weight:600;">${escHtml(reply)}</span>` : '—'}</td>
+            <td>
+              <button class="btn btn-sm btn-secondary" onclick="confirmDeleteSendDataRow(${it._row_index}, '${escHtml(it['会員番号'] || '')}')">削除</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+  content.innerHTML = `
+    <div class="toolbar" style="margin-bottom:12px;">
+      <span class="toolbar-title">送信履歴 (${_sendDataCompany})</span>
+      <span style="margin-left:12px;font-size:12px;color:var(--c-text-muted);">
+        全 ${_sendDataItems.length} 件 / 表示 ${items.length} 件
+      </span>
+      <select onchange="setSendDataMonthFilter(this.value)" style="margin-left:auto;font-size:12px;">
+        <option value="">月で絞り込み（全て）</option>
+        ${months.map(m => `<option value="${escHtml(m)}" ${m === _sendDataMonthFilter ? 'selected' : ''}>${escHtml(m)}</option>`).join('')}
+      </select>
+      <select onchange="setSendDataCategoryFilter(this.value)" style="margin-left:6px;font-size:12px;">
+        <option value="">職種で絞り込み（全て）</option>
+        ${cats.map(c => `<option value="${escHtml(c)}" ${c === _sendDataCategoryFilter ? 'selected' : ''}>${escHtml(labelForCategory(c))}</option>`).join('')}
+      </select>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>日時</th>
+          <th>会員番号</th>
+          <th>職種</th>
+          <th>テンプレート</th>
+          <th>生成パス</th>
+          <th>年齢層</th>
+          <th>希望雇用形態</th>
+          <th>返信</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <p style="font-size:11px;color:var(--c-text-muted);margin-top:12px;">
+      ・<strong>削除</strong>: 行を物理削除します。操作は「操作履歴」シートに監査ログとして残ります<br>
+      ・<strong>手動</strong>バッジは Phase C で実装予定（拡張検知の手動送信記録）
+    </p>
+  `;
+}
+
+function setSendDataMonthFilter(value) {
+  _sendDataMonthFilter = value || null;
+  drawSendDataTable();
+}
+function setSendDataCategoryFilter(value) {
+  _sendDataCategoryFilter = value || '';
+  drawSendDataTable();
+}
+
+async function confirmDeleteSendDataRow(rowIndex, memberId) {
+  if (!confirm(`会員番号 ${memberId} の送信記録を削除します。\n\n削除した行は復元できませんが、操作履歴シートに監査ログが残ります。よろしいですか？`)) {
+    return;
+  }
+  try {
+    await api('DELETE', `/api/v1/admin/send_data/${encodeURIComponent(_sendDataCompany)}/${rowIndex}`);
+    await renderSendDataTab(_sendDataCompany);
+  } catch (e) {
+    alert('削除失敗: ' + (e.message || String(e)));
+  }
 }
 
 // ===== 修正フィードバック (Phase A) =====

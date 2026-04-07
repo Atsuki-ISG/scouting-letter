@@ -330,8 +330,86 @@ async def post_send_targets(
     return {"year_month": ym, "targets": dh.load_targets(ym)}
 
 
-# Specific GET routes — must be defined BEFORE the /{sheet_slug}
-# catch-all below or they will be shadowed.
+# Specific routes — must be defined BEFORE the /{sheet_slug} catch-all
+# below or they will be shadowed.
+
+@router.get("/send_data/{company_id}")
+async def list_send_data(
+    company_id: str,
+    operator: dict = Depends(verify_api_key),
+):
+    """Return all rows from the per-company 送信_<会社名> sheet, with row indices.
+
+    Schema drift handling: production sheets exist in three forms:
+    (1) legacy 15-col headers + legacy 15-col rows
+    (2) headers extended (18 cols) but with new fields appended at the END,
+        while data rows are written by orchestrator in CANONICAL EXPECTED_HEADERS
+        order — header positions don't match row positions
+    (3) clean current schema in canonical order
+
+    Detection: if a row's column count matches EXPECTED_HEADERS (18), trust the
+    canonical positional order regardless of what the header row says. Otherwise
+    fall back to `row_field`'s legacy logic.
+    """
+    from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
+    from api._dashboard_helpers import EXPECTED_HEADERS, row_field
+    if company_id not in COMPANY_DISPLAY_NAMES:
+        raise HTTPException(404, f"Unknown company: {company_id}")
+    sheet_name = _send_data_sheet_name(company_id)
+    try:
+        rows = sheets_writer.get_all_rows(sheet_name)
+    except Exception:
+        return {"items": [], "headers": list(EXPECTED_HEADERS)}
+    if not rows or len(rows) < 2:
+        return {"items": [], "headers": rows[0] if rows else list(EXPECTED_HEADERS)}
+    raw_headers = [h.strip() for h in rows[0]]
+    # Detect drift: if the header row matches EXPECTED set but in a different
+    # order, OR if it has 18 cols already, the data was likely written by
+    # orchestrator using EXPECTED_HEADERS positional order. In all such cases,
+    # we trust EXPECTED_HEADERS as the canonical positional source of truth.
+    use_canonical_positional = (
+        set(raw_headers) == set(EXPECTED_HEADERS)
+        or len(raw_headers) >= len(EXPECTED_HEADERS)
+    )
+    items = []
+    for i, row in enumerate(rows[1:], start=2):
+        if use_canonical_positional:
+            # Pad short rows (Google Sheets API trims trailing empties)
+            padded = list(row) + [""] * (len(EXPECTED_HEADERS) - len(row))
+            item = {
+                field: padded[idx].strip() if idx < len(padded) else ""
+                for idx, field in enumerate(EXPECTED_HEADERS)
+            }
+        else:
+            # Legacy short headers AND short rows — use row_field's fallback chain
+            item = {field: row_field(row, raw_headers, field) for field in EXPECTED_HEADERS}
+        item["_row_index"] = i
+        items.append(item)
+    return {"headers": list(EXPECTED_HEADERS), "items": items}
+
+
+@router.delete("/send_data/{company_id}/{row_index}")
+async def delete_send_data_row(
+    company_id: str,
+    row_index: int,
+    operator: dict = Depends(verify_api_key),
+):
+    """Delete a single row from a per-company 送信_<会社名> sheet.
+
+    The deletion is recorded in the audit log via sheets_writer.delete_row.
+    Row index 1 is the header row and is never deletable.
+    """
+    from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
+    if company_id not in COMPANY_DISPLAY_NAMES:
+        raise HTTPException(404, f"Unknown company: {company_id}")
+    if row_index < 2:
+        raise HTTPException(400, f"row_index must be >= 2 (header is row 1)")
+    sheet_name = _send_data_sheet_name(company_id)
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    sheets_writer.delete_row(sheet_name, row_index, actor=f"delete_send_data:{actor_name}")
+    return {"status": "deleted", "company_id": company_id, "row_index": row_index}
+
+
 @router.get("/quota_history")
 async def get_quota_history(
     company: str,
