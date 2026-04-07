@@ -226,47 +226,56 @@ async def filter_candidate(
     company_id: str,
     job_category: str,
     validation_config: dict,
-) -> str | None:
+) -> tuple[str | None, list[str]]:
     """Filter a candidate based on company validation rules.
 
-    Args:
-        profile: Candidate profile.
-        company_id: Company identifier.
-        job_category: Resolved job category.
-        validation_config: Company-specific validation settings.
-
     Returns:
-        None if candidate passes, or a filter_reason string if excluded.
+        (hard_block_reason, soft_warnings)
+        - hard_block_reason: 生成を中止する必要がある理由 (None なら通過)
+        - soft_warnings: 生成は行うが UI に警告として出すべき理由のリスト
+
+    方針: 「基本全て生成して警告で示す」
+    - 送信済み (スカウト履歴あり) のみハードブロック (送信予算の浪費を防ぐ)
+    - 資格不一致 / 非臨床経験 / 年齢制限 / AI判定NG はソフト (警告で生成は続行)
     """
     builtin = _get_builtin_settings(validation_config)
+    warnings: list[str] = []
 
-    # Check 1: Qualification match (builtin, can be disabled)
+    # --- Soft check 1: 資格一致 ---
     if builtin.get("require_qualification", True):
         if not _has_qualifying_qualification(profile.qualifications or "", job_category):
-            return f"資格不一致: {job_category}に必要な資格がありません"
+            quals = profile.qualifications or "(資格なし)"
+            warnings.append(
+                f"[資格不一致] {job_category}に必要な資格がありません (候補者の資格: {quals})"
+            )
 
-    # Check 2: Non-clinical only exclusion (builtin, can be disabled)
-    # Only applies to nurse category — non-clinical roles like dietitian skip this check
+    # --- Soft check 2: 非臨床経験のみ (nurse のみ対象) ---
     if builtin.get("reject_non_clinical", True) and job_category == "nurse":
         if _is_non_clinical_only(profile.experience_type or "", profile.employment_status or ""):
-            return "非臨床経験のみ: 臨床看護経験がありません"
+            warnings.append(
+                f"[非臨床経験] 臨床看護経験が見当たりません (経験: {profile.experience_type or '未入力'})"
+            )
 
-    # Check 3: Already scouted (builtin, can be disabled)
+    # --- HARD block: 送信済み (送信予算を浪費しないため) ---
     if builtin.get("reject_already_scouted", True):
         scout_dates = _parse_scout_dates(profile.scout_sent_date or "")
         if scout_dates:
             max_count = builtin.get("max_scout_count", 2)
             interval_days = builtin.get("resend_interval_days", 7)
-            # 送信回数が上限以上 → 除外
             if len(scout_dates) >= max_count:
-                return f"スカウト送信済み({len(scout_dates)}回): {profile.scout_sent_date}"
-            # 直近の送信が間隔日数以内 → 除外
+                return (
+                    f"[送信済み] スカウト{len(scout_dates)}回送信済 (上限{max_count}回): {profile.scout_sent_date}",
+                    warnings,
+                )
             latest = scout_dates[-1]
             days_since = (datetime.now() - latest).days
             if days_since < interval_days:
-                return f"スカウト送信から{days_since}日({interval_days}日未満): {profile.scout_sent_date}"
+                return (
+                    f"[送信済み] {days_since}日前に送信済 (再送間隔{interval_days}日未満): {profile.scout_sent_date}",
+                    warnings,
+                )
 
-    # Check 4: Age range
+    # --- Soft check 3: 年齢制限 ---
     age_range = validation_config.get("age_range", {})
     min_age = age_range.get("min") if age_range else validation_config.get("min_age")
     max_age = age_range.get("max") if age_range else validation_config.get("max_age")
@@ -274,18 +283,18 @@ async def filter_candidate(
         age = _parse_age(profile.age)
         if age is not None:
             if min_age is not None and age < min_age:
-                return f"年齢下限: {age}歳 (下限: {min_age}歳)"
-            if max_age is not None and age > max_age:
-                return f"年齢上限: {age}歳 (上限: {max_age}歳)"
+                warnings.append(f"[年齢制限] {age}歳 (下限: {min_age}歳)")
+            elif max_age is not None and age > max_age:
+                warnings.append(f"[年齢制限] {age}歳 (上限: {max_age}歳)")
 
-    # Check 5: AI-based conditions
+    # --- Soft check 4: AI判定 ---
     ai_conditions = _get_ai_conditions(validation_config)
     if ai_conditions:
         reason = await _check_ai_conditions(ai_conditions, profile)
         if reason:
-            return reason
+            warnings.append(f"[AI判定] {reason}")
 
-    return None
+    return None, warnings
 
 
 def _get_ai_conditions(validation_config: dict) -> list[str]:

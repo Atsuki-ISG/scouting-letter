@@ -22,6 +22,17 @@ _DESIRED_JOB_FALLBACK: list[tuple[str, str]] = [
     ("相談支援専門員", "counselor"),
     ("医療事務", "medical_office"),
     ("受付", "medical_office"),
+    # 資格情報がない場合の希望職種フォールバック
+    ("理学療法士", "rehab_pt"),
+    ("PT", "rehab_pt"),
+    ("言語聴覚士", "rehab_st"),
+    ("ST", "rehab_st"),
+    ("作業療法士", "rehab_ot"),
+    ("OT", "rehab_ot"),
+    ("看護師", "nurse"),
+    ("准看護師", "nurse"),
+    ("管理栄養士", "dietitian"),
+    ("栄養士", "dietitian"),
 ]
 
 

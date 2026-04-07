@@ -15,10 +15,9 @@ def ark_validation_config():
 
 @pytest.mark.asyncio
 class TestFilterCandidate:
-    """filter_candidate returns None (pass) or a reason string (exclude)."""
+    """filter_candidate returns (hard_block_reason, soft_warnings)."""
 
     async def test_nurse_with_valid_qualification_passes(self, ark_validation_config):
-        """Nurse with 看護師 qualification should pass all filters."""
         profile = CandidateProfile(
             member_id="001",
             qualifications="看護師",
@@ -27,84 +26,57 @@ class TestFilterCandidate:
             experience_years="5年",
             employment_status="就業中",
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        assert result is None
+        assert block is None
+        assert warns == []
 
-    async def test_non_nurse_qualification_is_filtered(self, ark_validation_config):
-        """PT qualification should not pass nurse filter."""
-        profile = CandidateProfile(
-            member_id="002",
-            qualifications="理学療法士",
-            age="30歳",
+    async def test_non_nurse_qualification_is_warned(self, ark_validation_config):
+        """資格不一致は警告に降格(ハードブロックしない)。"""
+        profile = CandidateProfile(member_id="002", qualifications="理学療法士", age="30歳")
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
-        )
-        assert result is not None
-        assert "資格不一致" in result
+        assert block is None
+        assert any("[資格不一致]" in w for w in warns)
 
     async def test_already_scouted_max_count_reached(self, ark_validation_config):
-        """Candidate with 2+ scout sends should be excluded (default max_scout_count=2)."""
         profile = CandidateProfile(
             member_id="003",
             qualifications="看護師",
             age="40歳",
             scout_sent_date="2026-01-15, 2026-02-20",
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
+        block, _ = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        assert result is not None
-        assert "スカウト送信済み(2回)" in result
+        assert block is not None
+        assert "[送信済み]" in block and "2回" in block
 
     async def test_already_scouted_too_recent(self, ark_validation_config):
-        """Candidate scouted within resend_interval_days should be excluded."""
         yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y/%m/%d")
         profile = CandidateProfile(
-            member_id="003b",
-            qualifications="看護師",
-            age="40歳",
-            scout_sent_date=yesterday,
+            member_id="003b", qualifications="看護師", age="40歳", scout_sent_date=yesterday,
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
+        block, _ = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        assert result is not None
-        assert "日未満" in result
+        assert block is not None
+        assert "[送信済み]" in block
 
     async def test_scouted_once_and_old_enough_passes(self, ark_validation_config):
-        """Candidate scouted once, long ago, should pass (eligible for resend)."""
         old_date = (datetime.now() - timedelta(days=30)).strftime("%Y/%m/%d")
         profile = CandidateProfile(
-            member_id="003c",
-            qualifications="看護師",
-            age="40歳",
-            scout_sent_date=old_date,
+            member_id="003c", qualifications="看護師", age="40歳", scout_sent_date=old_date,
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        assert result is None
+        assert block is None and warns == []
 
-    async def test_non_clinical_only_experience_is_filtered(self, ark_validation_config):
-        """Candidate with only non-clinical experience should be excluded."""
+    async def test_non_clinical_only_experience_is_warned(self, ark_validation_config):
+        """非臨床経験は警告に降格。"""
         profile = CandidateProfile(
             member_id="004",
             qualifications="看護師",
@@ -112,20 +84,13 @@ class TestFilterCandidate:
             experience_type="保健師, 事務",
             employment_status="離職中",
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        assert result is not None
-        assert "非臨床経験のみ" in result
+        assert block is None
+        assert any("[非臨床経験]" in w for w in warns)
 
     async def test_empty_experience_and_employed_passes(self, ark_validation_config):
-        """Candidate with no experience listed but currently employed should pass.
-
-        Per the rules: 経験未入力で就業中の場合は臨床経験ありと推定し、対象とする
-        """
         profile = CandidateProfile(
             member_id="005",
             qualifications="看護師",
@@ -133,64 +98,39 @@ class TestFilterCandidate:
             experience_type="",
             employment_status="就業中",
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        assert result is None
+        assert block is None and warns == []
 
-    async def test_age_below_minimum_is_filtered(self, ark_validation_config):
-        """Candidate below minimum age should be excluded."""
-        profile = CandidateProfile(
-            member_id="006",
-            qualifications="看護師",
-            age="18歳",
+    async def test_age_below_minimum_is_warned(self, ark_validation_config):
+        """年齢下限は警告に降格。"""
+        profile = CandidateProfile(member_id="006", qualifications="看護師", age="18歳")
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
-        )
-        assert result is not None
-        assert "年齢下限" in result
+        assert block is None
+        assert any("[年齢制限]" in w and "下限" in w for w in warns)
 
-    async def test_age_above_maximum_is_filtered(self, ark_validation_config):
-        """Candidate above maximum age should be excluded."""
-        profile = CandidateProfile(
-            member_id="007",
-            qualifications="看護師",
-            age="62歳",
+    async def test_age_above_maximum_is_warned(self, ark_validation_config):
+        """年齢上限は警告に降格。"""
+        profile = CandidateProfile(member_id="007", qualifications="看護師", age="62歳")
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
-        )
-        assert result is not None
-        assert "年齢上限" in result
+        assert block is None
+        assert any("[年齢制限]" in w and "上限" in w for w in warns)
 
     async def test_junkangoushi_passes_nurse_filter(self, ark_validation_config):
-        """准看護師 should also pass the nurse filter."""
         profile = CandidateProfile(
-            member_id="008",
-            qualifications="准看護師",
-            age="45歳",
-            employment_status="就業中",
+            member_id="008", qualifications="准看護師", age="45歳", employment_status="就業中",
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        assert result is None
+        assert block is None and warns == []
 
     async def test_clinical_keyword_overrides_non_clinical(self, ark_validation_config):
-        """Clinical keyword in experience should override non-clinical match."""
         profile = CandidateProfile(
             member_id="009",
             qualifications="看護師",
@@ -198,16 +138,12 @@ class TestFilterCandidate:
             experience_type="保健師, 病棟看護師",
             employment_status="離職中",
         )
-        result = await filter_candidate(
-            profile,
-            company_id="ark-visiting-nurse",
-            job_category="nurse",
-            validation_config=ark_validation_config,
+        block, warns = await filter_candidate(
+            profile, "ark-visiting-nurse", "nurse", ark_validation_config,
         )
-        assert result is None
+        assert block is None and warns == []
 
     async def test_custom_max_scout_count(self):
-        """Custom max_scout_count=3 allows 2 sends."""
         config = {
             "min_age": 20,
             "max_age": 59,
@@ -224,16 +160,13 @@ class TestFilterCandidate:
         old1 = (datetime.now() - timedelta(days=30)).strftime("%Y/%m/%d")
         old2 = (datetime.now() - timedelta(days=14)).strftime("%Y/%m/%d")
         profile = CandidateProfile(
-            member_id="010",
-            qualifications="看護師",
-            age="35歳",
+            member_id="010", qualifications="看護師", age="35歳",
             scout_sent_date=f"{old1}, {old2}",
         )
-        result = await filter_candidate(profile, "ark-visiting-nurse", "nurse", config)
-        assert result is None  # 2回 < max_scout_count=3 → 通過
+        block, _ = await filter_candidate(profile, "ark-visiting-nurse", "nurse", config)
+        assert block is None
 
     async def test_custom_resend_interval_days(self):
-        """Custom resend_interval_days=3 allows resend after 4 days."""
         config = {
             "min_age": 20,
             "max_age": 59,
@@ -249,13 +182,10 @@ class TestFilterCandidate:
         }
         four_days_ago = (datetime.now() - timedelta(days=4)).strftime("%Y/%m/%d")
         profile = CandidateProfile(
-            member_id="011",
-            qualifications="看護師",
-            age="35歳",
-            scout_sent_date=four_days_ago,
+            member_id="011", qualifications="看護師", age="35歳", scout_sent_date=four_days_ago,
         )
-        result = await filter_candidate(profile, "ark-visiting-nurse", "nurse", config)
-        assert result is None  # 4日 >= interval=3 → 通過
+        block, _ = await filter_candidate(profile, "ark-visiting-nurse", "nurse", config)
+        assert block is None
 
 
 class TestParseScoutDates:
