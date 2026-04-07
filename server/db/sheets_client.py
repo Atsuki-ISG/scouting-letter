@@ -58,7 +58,23 @@ _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "medical_office": "医療事務",
     "dietitian": "管理栄養士",
     "counselor": "相談支援専門員",
+    "sales": "入居相談員",
 }
+
+
+def label_for_category(category_id: str) -> str:
+    """Return the Japanese display label for a job category ID.
+
+    Unknown IDs are returned as-is so the caller still gets a non-empty string.
+    """
+    if not category_id:
+        return category_id
+    return _JOB_CATEGORY_DISPLAY_NAMES.get(category_id, category_id)
+
+
+def label_for_categories(category_ids) -> list[str]:
+    """Map an iterable of category IDs to their Japanese display labels."""
+    return [label_for_category(c) for c in category_ids]
 
 ALL_SHEETS = [
     SHEET_TEMPLATES,
@@ -180,20 +196,41 @@ class SheetsClient:
         return sorted(companies)
 
     def get_companies_with_keywords(self) -> list[dict[str, Any]]:
-        """Return company list with detection keywords from profile sheet."""
+        """Return company list with detection keywords and display name from profile sheet."""
         self._ensure_cache()
-        # Build keyword map from profiles
+        # Build keyword + display_name maps from profiles
         keyword_map: dict[str, list[str]] = {}
+        display_name_map: dict[str, str] = {}
         for row in self._cache.get(SHEET_PROFILES, []):
             c = row.get("company", "").strip()
+            if not c:
+                continue
             kw = row.get("detection_keywords", "").strip()
-            if c and kw:
+            if kw:
                 keyword_map[c] = [k.strip() for k in kw.split(",") if k.strip()]
+            dn = row.get("display_name", "").strip()
+            if dn:
+                display_name_map[c] = dn
 
         return [
-            {"id": c, "detection_keywords": keyword_map.get(c, [])}
+            {
+                "id": c,
+                "detection_keywords": keyword_map.get(c, []),
+                # Fall back to ID so the UI never shows an empty string
+                "display_name": display_name_map.get(c, c),
+            }
             for c in self.get_company_list()
         ]
+
+    def get_company_display_name(self, company_id: str) -> str:
+        """Return the operator-facing display name for a company, or the ID if missing."""
+        self._ensure_cache()
+        for row in self._cache.get(SHEET_PROFILES, []):
+            if row.get("company", "").strip() == company_id:
+                dn = row.get("display_name", "").strip()
+                if dn:
+                    return dn
+        return company_id
 
     def get_company_config(self, company_id: str) -> dict[str, Any]:
         """Get all config for a company."""
@@ -209,6 +246,7 @@ class SheetsClient:
             "job_categories": self._get_job_categories(templates),
             "employment_types": self._get_employment_types(templates),
             "job_category_keywords": self._get_job_category_keywords(company_id),
+            "company_display_name": self.get_company_display_name(company_id),
             "examples": [],  # examples are managed via /save-example skill
         }
 

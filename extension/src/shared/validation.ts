@@ -62,8 +62,12 @@ const rules: ValidationRule[] = [
       const quals = profile.qualifications;
       const matched = exclusions.filter((q) => quals.includes(q));
       if (matched.length > 0) {
-        const displayName = config.categoryConfig?.[jobCategory]?.display_name || jobCategory;
-        return `${matched.join('・')}は${displayName}求人の対象外です`;
+        const displayName = config.categoryConfig?.[jobCategory]?.display_name;
+        if (!displayName) {
+          // Surface missing display_name so we know which category needs registering
+          console.warn(`[validation] missing display_name for job_category="${jobCategory}"; falling back to ID`);
+        }
+        return `${matched.join('・')}は${displayName || jobCategory}求人の対象外です`;
       }
       return null;
     },

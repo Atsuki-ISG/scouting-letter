@@ -148,6 +148,37 @@ class TestGenerateSingle:
         assert result.personalized_text == ""
         assert result.full_scout_text == ""
 
+    @pytest.mark.asyncio
+    async def test_missing_template_uses_japanese_label(self, ark_config):
+        """When the matching template is missing, the operator-facing
+        filter_reason must use the Japanese category label, not the English ID."""
+        # Use a config where the only template is for お気に入り (which a non-favorite
+        # profile won't trigger), so paths fall through to [テンプレート未設定].
+        cfg = dict(ark_config)
+        cfg["templates"] = {
+            "nurse:お気に入り_お気に入り": {
+                "type": "お気に入り_お気に入り",
+                "job_category": "nurse",
+                "body": "dummy {personalized_text}",
+            }
+        }
+        profile = CandidateProfile(
+            member_id="003",
+            qualifications="看護師",
+            age="30歳",
+            employment_status="就業中",
+        )
+        request = GenerateRequest(
+            company_id="ark-visiting-nurse",
+            profile=profile,
+            options=GenerateOptions(force_seishain=True),
+        )
+        result = await generate_single(request, _mock_data_client(cfg))
+        assert result.filter_reason is not None
+        assert "[テンプレート未設定]" in result.filter_reason
+        assert "看護師" in result.filter_reason
+        assert "nurse" not in result.filter_reason
+
 
 class TestGenerateBatch:
     @pytest.mark.asyncio

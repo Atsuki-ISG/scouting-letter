@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 
+from db.sheets_client import label_for_category
 from models.profile import CandidateProfile
 
 
@@ -246,7 +247,7 @@ async def filter_candidate(
         if not _has_qualifying_qualification(profile.qualifications or "", job_category):
             quals = profile.qualifications or "(資格なし)"
             warnings.append(
-                f"[資格不一致] {job_category}に必要な資格がありません (候補者の資格: {quals})"
+                f"[資格不一致] {label_for_category(job_category)}に必要な資格がありません (候補者の資格: {quals})"
             )
 
     # --- Soft check 2: 非臨床経験のみ (nurse のみ対象) ---

@@ -36,6 +36,7 @@ export interface CompanyConfig {
   job_offers: Array<{ id: string; name: string; label: string; job_category: string; employment_type: string }>;
   job_categories?: Array<{ id: string; display_name: string }>;
   employment_types?: Array<{ id: string; display_name: string }>;
+  company_display_name?: string;
   validation_config: {
     age_range?: { min: number; max: number };
     qualification_rules?: Record<string, unknown>;
@@ -126,7 +127,7 @@ export const apiClient = {
     return data.map(c => c.id);
   },
 
-  async getCompaniesWithKeywords(): Promise<Array<{ id: string; detection_keywords: string[] }>> {
+  async getCompaniesWithKeywords(): Promise<Array<{ id: string; detection_keywords: string[]; display_name?: string }>> {
     const endpoint = await this.getEndpoint();
     const headers = await this.getHeaders();
     const res = await fetchWithTimeout(`${endpoint}/api/v1/companies`, {
@@ -141,7 +142,7 @@ export const apiClient = {
     // 後方互換: 旧形式(string[])も新形式(object[])も対応
     const companies = data.companies || [];
     if (companies.length > 0 && typeof companies[0] === 'string') {
-      return companies.map((id: string) => ({ id, detection_keywords: [] }));
+      return companies.map((id: string) => ({ id, detection_keywords: [], display_name: id }));
     }
     return companies;
   },

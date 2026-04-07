@@ -40,6 +40,9 @@ class TestFilterCandidate:
         )
         assert block is None
         assert any("[資格不一致]" in w for w in warns)
+        # Operator-facing warning must use Japanese label
+        assert any("看護師に必要な資格がありません" in w for w in warns)
+        assert not any("nurseに必要" in w for w in warns)
 
     async def test_already_scouted_max_count_reached(self, ark_validation_config):
         profile = CandidateProfile(

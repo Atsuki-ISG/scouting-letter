@@ -418,7 +418,7 @@ export class CandidateList {
               template_type: candidate.template_type,
               personalized_text: candidate.personalized_text,
               full_scout_text: candidate.full_scout_text,
-              jobOfferName: `${jobCategory}/${employmentType}`,
+              jobOfferName: `${validationConfig?.categoryConfig?.[jobCategory]?.display_name || jobCategory}/${employmentType}`,
               validationWarnings: validationWarnings.length > 0 ? validationWarnings : undefined,
               profileSummary,
             }, { isContinuousSend: this.continuousSendActive });

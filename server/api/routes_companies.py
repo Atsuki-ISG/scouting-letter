@@ -41,7 +41,7 @@ async def reload_config(
     # or reorders existing ones.
     try:
         sheets_writer.ensure_sheet_exists(
-            "プロフィール", ["company", "content", "detection_keywords"]
+            "プロフィール", ["company", "content", "detection_keywords", "display_name"]
         )
     except Exception as e:
         logger.warning(f"Profile header ensure failed: {e}")

@@ -25,6 +25,7 @@ from pipeline.ai_generator import generate_personalized_text, GenerationResult
 from pipeline.prompt_validator import validate_prompt_content, validate_output_text
 from pipeline.text_builder import build_full_scout_text
 from config import get_model_pricing, GEMINI_MODEL
+from db.sheets_client import label_for_category
 
 logger = logging.getLogger(__name__)
 
@@ -366,7 +367,7 @@ async def _process_candidate(
             generation_path="filtered_out",
             personalized_text="",
             full_scout_text="",
-            filter_reason=f"[職種判定不能] {fr.human_message if fr else resolution.debug}",
+            filter_reason=f"[職種判定不能] {fr.human_message if fr else '職種判定に失敗しました'}",
             validation_warnings=(
                 [
                     f"missing_fields: {','.join(fr.missing_fields)}",
@@ -443,7 +444,7 @@ async def _process_candidate(
             full_scout_text="",
             job_category=job_category,
             filter_reason=(
-                f"[テンプレート未設定] {job_category}/{template_type}用のテンプレートが登録されていません"
+                f"[テンプレート未設定] {label_for_category(job_category)}/{template_type}用のテンプレートが登録されていません"
             ),
             validation_warnings=soft_warnings,
         ), _empty_usage

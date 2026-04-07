@@ -2295,6 +2295,22 @@ let analysisTemplates = [];
 let analysisOriginalBody = '';
 let analysisCurrentRowIndex = null;
 
+// ===== Job category labels (mirror server/db/sheets_client.py) =====
+const JOB_CATEGORY_LABELS = {
+  nurse: '看護師',
+  rehab_pt: '理学療法士',
+  rehab_st: '言語聴覚士',
+  rehab_ot: '作業療法士',
+  medical_office: '医療事務',
+  dietitian: '管理栄養士',
+  counselor: '相談支援専門員',
+  sales: '入居相談員',
+};
+function labelForCategory(id) {
+  if (!id) return id;
+  return JOB_CATEGORY_LABELS[id] || id;
+}
+
 const FLOW_STEPS = [
   { id: 'profile',   num: '1', title: 'プロフィール受信',  color: '#64748b', editable: false },
   { id: 'job_cat',   num: '2', title: '職種カテゴリ判定',  color: '#8b5cf6', editable: false },
@@ -4031,8 +4047,9 @@ async function loadCompanies() {
     for (const c of data.companies) {
       const opt = document.createElement('option');
       const id = typeof c === 'string' ? c : c.id;
+      const display = (typeof c === 'object' && c.display_name) ? c.display_name : id;
       opt.value = id;
-      opt.textContent = id;
+      opt.textContent = display === id ? id : `${display} (${id})`;
       select.appendChild(opt);
     }
   } catch {
@@ -4748,7 +4765,7 @@ async function loadAnalysisView() {
     analysisTemplates = rows.filter(r => r.company === company);
     const sel = document.getElementById('analysisTemplateSelect');
     sel.innerHTML = analysisTemplates.map((t, i) =>
-      `<option value="${i}">${t.job_category ? t.job_category + ' / ' : ''}${t.type}</option>`
+      `<option value="${i}">${t.job_category ? labelForCategory(t.job_category) + ' / ' : ''}${t.type}</option>`
     ).join('');
     if (analysisTemplates.length > 0) {
       loadTemplateIntoEditor(0);
@@ -5362,7 +5379,7 @@ function showExpandSection(sourceTemplate) {
   }
 
   targetsEl.innerHTML = others.map((t, i) => {
-    const label = t.job_category ? `${t.job_category}:${t.type}` : t.type;
+    const label = t.job_category ? `${labelForCategory(t.job_category)}:${t.type}` : t.type;
     return `<label style="display:block;padding:2px 0;cursor:pointer;">
       <input type="checkbox" class="expand-target-cb" data-idx="${i}"
              data-jc="${t.job_category || ''}" data-type="${t.type}" data-row="${t._row_index}"

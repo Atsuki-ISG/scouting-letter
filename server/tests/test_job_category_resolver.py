@@ -326,7 +326,20 @@ class TestFailureMessages:
         f = _failure(ambiguous=["nurse", "rehab_pt"], stage="keyword")
         msg = _build_failure_message(f)
         assert "複数" in msg
-        assert "nurse" in msg and "rehab_pt" in msg
+        # Operator-facing message must use Japanese labels, not English IDs
+        assert "看護師" in msg and "理学療法士" in msg
+        assert "nurse" not in msg and "rehab_pt" not in msg
+
+    def test_case4_ambiguous_uses_japanese_company_categories(self):
+        f = _failure(
+            ambiguous=["nurse", "rehab_pt"],
+            company_categories=["nurse", "rehab_pt", "rehab_ot"],
+            stage="keyword",
+        )
+        msg = _build_failure_message(f)
+        assert "看護師" in msg and "理学療法士" in msg and "作業療法士" in msg
+        for raw in ("nurse", "rehab_pt", "rehab_ot"):
+            assert raw not in msg, f"raw ID '{raw}' leaked into operator message: {msg}"
 
     def test_case5_ambiguous_keyword(self):
         f = _failure(ambiguous=["nurse", "rehab_pt"], stage="keyword")
@@ -375,6 +388,28 @@ class TestFailureMessages:
         f = _failure(stage="explicit", company_categories=["nurse"])
         msg = _build_failure_message(f)
         assert "明示指定" in msg
+        assert "看護師" in msg
+        assert "nurse" not in msg
+
+    def test_case6_qualification_outside_uses_japanese(self):
+        f = _failure(
+            missing=["desired_job", "experience_type", "work_history_summary", "self_pr"],
+            searched_text="[qualification] 管理栄養士",
+            company_categories=["nurse", "rehab_pt"],
+        )
+        msg = _build_failure_message(f)
+        assert "看護師" in msg and "理学療法士" in msg
+        assert "nurse" not in msg and "rehab_pt" not in msg
+
+    def test_case2_searched_text_uses_japanese_company_cats(self):
+        f = _failure(
+            missing=["qualifications"],
+            searched_text="[experience] 何かの経験",
+            company_categories=["nurse", "rehab_pt"],
+        )
+        msg = _build_failure_message(f)
+        assert "看護師" in msg and "理学療法士" in msg
+        assert "nurse" not in msg and "rehab_pt" not in msg
 
     def test_no_unclassified_fallback(self):
         """Sanity: none of the above cases should fall through to [未分類]."""

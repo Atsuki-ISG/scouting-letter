@@ -7,21 +7,37 @@ import { storage } from './storage';
 import { FALLBACK_COMPANY_JOB_OFFERS, FALLBACK_VALIDATION_CONFIG, STORAGE_KEYS, COMPANY_FACILITY_KEYWORDS, JobOffer } from './constants';
 import { CompanyValidationConfig } from './types';
 
+export interface CompanyListEntry {
+  id: string;
+  display_name: string;
+}
+
 export const configProvider = {
   /**
-   * 会社一覧を取得する。
-   * API → キャッシュ → フォールバックの順。
+   * 会社一覧をIDで取得する（後方互換）。
    */
   async getCompanyList(): Promise<string[]> {
+    const entries = await this.getCompanyListWithDisplayNames();
+    return entries.map(e => e.id);
+  },
+
+  /**
+   * 会社一覧を表示名つきで取得する。
+   * API → キャッシュ → フォールバックの順。
+   */
+  async getCompanyListWithDisplayNames(): Promise<CompanyListEntry[]> {
     // 1. APIから取得を試みる
     try {
       const companiesWithKw = await apiClient.getCompaniesWithKeywords();
-      const companies = companiesWithKw.map(c => c.id);
-      // キャッシュに保存
+      const entries: CompanyListEntry[] = companiesWithKw.map(c => ({
+        id: c.id,
+        display_name: c.display_name || c.id,
+      }));
+      // キャッシュに保存（IDのみキャッシュ — display_nameは毎回API再取得）
       const cache = await storage.getConfigCache();
       await storage.setConfigCache({
         timestamp: Date.now(),
-        companies,
+        companies: entries.map(e => e.id),
         configs: cache?.configs || {},
       });
       // 検出キーワードをstorageに保存（Content Scriptが使用）
@@ -32,20 +48,22 @@ export const configProvider = {
         }
       }
       await chrome.storage.local.set({ [STORAGE_KEYS.DETECTION_KEYWORDS]: kwMap });
-      return companies;
+      return entries;
     } catch {
       // API失敗
     }
 
-    // 2. キャッシュから取得
+    // 2. キャッシュから取得（display_nameは消えているのでIDで代用）
     const cache = await storage.getConfigCache();
     if (cache && cache.companies.length > 0) {
-      // キャッシュ破損対策: オブジェクトが混入していても文字列に変換
-      return cache.companies.map(c => typeof c === 'string' ? c : (c as any).id ?? String(c));
+      return cache.companies.map(c => {
+        const id = typeof c === 'string' ? c : (c as any).id ?? String(c);
+        return { id, display_name: id };
+      });
     }
 
     // 3. フォールバック
-    return Object.keys(FALLBACK_COMPANY_JOB_OFFERS);
+    return Object.keys(FALLBACK_COMPANY_JOB_OFFERS).map(id => ({ id, display_name: id }));
   },
 
   /**

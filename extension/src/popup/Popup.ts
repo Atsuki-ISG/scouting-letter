@@ -10,11 +10,11 @@ async function init(): Promise<void> {
   const statusEl = document.getElementById('status') as HTMLElement;
 
   // APIから会社リストを取得（フォールバック付き）
-  const companies = await configProvider.getCompanyList();
+  const companies = await configProvider.getCompanyListWithDisplayNames();
   for (const company of companies) {
     const option = document.createElement('option');
-    option.value = company;
-    option.textContent = company;
+    option.value = company.id;
+    option.textContent = company.display_name;
     companySelect.appendChild(option);
   }
 

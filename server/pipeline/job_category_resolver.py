@@ -25,6 +25,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Iterable
 
+from db.sheets_client import label_for_categories, label_for_category
 from models.profile import CandidateProfile
 
 logger = logging.getLogger(__name__)
@@ -203,7 +204,7 @@ def resolve_job_category_batch(
                 category=dominant,
                 method="batch_dominant",
                 warnings=[
-                    f"[職種推定] バッチ全体の分布からカテゴリ {dominant} に寄せました "
+                    f"[職種推定] バッチ全体の分布からカテゴリ {label_for_category(dominant)} に寄せました "
                     f"({dominant_count}/{len(decided_categories)})"
                 ],
                 debug=f"batch dominant: {dominant} ({dominant_count}/{len(decided_categories)})",
@@ -410,7 +411,7 @@ def _resolve(
                 category=sole,
                 method="company_single",
                 warnings=[
-                    f"[職種推定] 候補が複数該当しましたが会社の募集カテゴリが {sole} のみのため確定しました"
+                    f"[職種推定] 候補が複数該当しましたが会社の募集カテゴリが {label_for_category(sole)} のみのため確定しました"
                 ],
                 debug=f"company_single (over ambiguous {sorted(combined)}): {sole}",
             )
@@ -428,7 +429,7 @@ def _resolve(
             category=sole,
             method="company_single",
             warnings=[
-                f"[職種推定] 会社の募集カテゴリが {sole} のみのため自動確定しました"
+                f"[職種推定] 会社の募集カテゴリが {label_for_category(sole)} のみのため自動確定しました"
             ],
             debug=f"company_single: {sole}",
         )
@@ -455,7 +456,7 @@ def _apply_stage_4_or_fail(
             category=sole,
             method="company_single",
             warnings=[
-                f"[職種推定] 会社の募集カテゴリが {sole} のみのため自動確定しました"
+                f"[職種推定] 会社の募集カテゴリが {label_for_category(sole)} のみのため自動確定しました"
             ],
             debug=f"company_single (post-batch): {sole}",
         )
@@ -536,7 +537,7 @@ def _build_failure_message(failure: ResolutionFailure, post_batch: bool = False)
     if stage == "explicit":
         return (
             f"明示指定されたカテゴリは会社の募集カテゴリ "
-            f"[{', '.join(company_cats)}] に含まれません。指定を見直してください"
+            f"[{', '.join(label_for_categories(company_cats))}] に含まれません。指定を見直してください"
         )
 
     # ---- Case 4 / 5: ambiguous matches across categories ----
@@ -547,9 +548,9 @@ def _build_failure_message(failure: ResolutionFailure, post_batch: bool = False)
             # not actually used; ambiguous lives at "keyword" stage in our flow
             pass
         return (
-            f"候補者から複数の職種カテゴリ [{', '.join(ambiguous)}] が検出されました。"
+            f"候補者から複数の職種カテゴリ [{', '.join(label_for_categories(ambiguous))}] が検出されました。"
             f"拡張の職種指定で明示してください "
-            f"(会社募集: [{', '.join(company_cats)}])"
+            f"(会社募集: [{', '.join(label_for_categories(company_cats))}])"
         )
 
     # ---- Case 1: all relevant fields are empty ----
@@ -578,7 +579,7 @@ def _build_failure_message(failure: ResolutionFailure, post_batch: bool = False)
                 f"候補者の希望職種・経歴・自己PRから職種キーワードを検出できませんでした"
                 f"（参照テキスト: \"{failure.searched_text}\"）。"
                 f"辞書追加で救える可能性があります（管理画面の職種キーワードに登録）。"
-                f"会社の募集カテゴリ: [{', '.join(company_cats)}]"
+                f"会社の募集カテゴリ: [{', '.join(label_for_categories(company_cats))}]"
             )
             if post_batch:
                 base += "。バッチ全体でも分布が割れたため自動推定できませんでした"
@@ -587,7 +588,7 @@ def _build_failure_message(failure: ResolutionFailure, post_batch: bool = False)
         # → Case 6 (qualification outside company categories)
         if "qualifications" not in missing:
             return (
-                f"候補者の資格は会社の募集カテゴリ [{', '.join(company_cats)}] に該当しません。"
+                f"候補者の資格は会社の募集カテゴリ [{', '.join(label_for_categories(company_cats))}] に該当しません。"
                 f"この候補者は対象外の可能性が高いです"
             )
 
@@ -595,7 +596,7 @@ def _build_failure_message(failure: ResolutionFailure, post_batch: bool = False)
     if post_batch and len(company_cats) > 1:
         return (
             f"バッチ全体でも職種分布が割れており、会社募集カテゴリ "
-            f"[{', '.join(company_cats)}] から絞り込めませんでした。"
+            f"[{', '.join(label_for_categories(company_cats))}] から絞り込めませんでした。"
             f"明示指定するかバッチを職種別に分けてください"
         )
 
@@ -603,7 +604,7 @@ def _build_failure_message(failure: ResolutionFailure, post_batch: bool = False)
     if len(company_cats) > 1 and not failure.searched_text:
         return (
             f"候補者から職種を特定できる情報が得られず、会社の募集カテゴリも複数 "
-            f"[{', '.join(company_cats)}] あるため自動判定できません"
+            f"[{', '.join(label_for_categories(company_cats))}] あるため自動判定できません"
         )
 
     # ---- Final fallback: surface as "unclassified" so we notice ----

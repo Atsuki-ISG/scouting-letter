@@ -37,12 +37,12 @@ async function setupCompanySelect(): Promise<void> {
   const select = document.getElementById('company') as HTMLSelectElement;
 
   // APIから会社リストを取得（フォールバック付き）
-  const companies = await configProvider.getCompanyList();
+  const companies = await configProvider.getCompanyListWithDisplayNames();
   for (const company of companies) {
-    if (!select.querySelector(`option[value="${company}"]`)) {
+    if (!select.querySelector(`option[value="${company.id}"]`)) {
       const option = document.createElement('option');
-      option.value = company;
-      option.textContent = company;
+      option.value = company.id;
+      option.textContent = company.display_name;
       select.appendChild(option);
     }
   }
