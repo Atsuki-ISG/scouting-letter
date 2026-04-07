@@ -38,6 +38,15 @@ class GenerateResponse(BaseModel):
     filter_reason: Optional[str] = None
     validation_warnings: List[str] = []
     is_favorite: bool = False
+    # Resolution failure diagnostics — only populated when the job category
+    # resolver failed (generation_path="filtered_out" and the failure
+    # originated in resolver). Used by both the admin UI and the Phase 3
+    # auto-proposal workflow.
+    failure_stage: Optional[str] = None
+    failure_missing_fields: List[str] = []
+    failure_searched_text: Optional[str] = None
+    failure_company_categories: List[str] = []
+    failure_human_message: Optional[str] = None
 
 
 class BatchGenerateResponse(BaseModel):

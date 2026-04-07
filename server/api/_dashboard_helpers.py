@@ -14,7 +14,7 @@ from typing import Any
 from db.sheets_writer import sheets_writer
 from db.sheets_client import sheets_client
 from pipeline.orchestrator import COMPANY_DISPLAY_NAMES, _send_data_sheet_name
-from pipeline.job_category_resolver import resolve_job_category
+from pipeline.job_category_resolver import resolve_qualification_only
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +148,7 @@ def summarize_company_month(
         cat = row_field(row, headers, "職種カテゴリ")
         if not cat:
             qual = row_field(row, headers, "資格")
-            cat = resolve_job_category(qual) or "" if qual else ""
+            cat = resolve_qualification_only(qual) or "" if qual else ""
         display = CATEGORY_DISPLAY.get(cat, cat) or "不明"
         by_category[display] = by_category.get(display, 0) + 1
 
@@ -231,7 +231,7 @@ def detail_company_month(company_id: str, year_month: str) -> dict[str, Any]:
         cat = row_field(row, headers, "職種カテゴリ")
         if not cat:
             qual = row_field(row, headers, "資格")
-            cat = resolve_job_category(qual) or "" if qual else ""
+            cat = resolve_qualification_only(qual) or "" if qual else ""
         ttype = row_field(row, headers, "テンプレート種別")
         tver = row_field(row, headers, "テンプレートVer")
 
@@ -326,7 +326,16 @@ def upsert_targets(year_month: str, targets: list[dict[str, Any]]) -> None:
             continue
         key = (company_id, year_month)
         if key in index:
-            sheets_writer.update_row(TARGETS_SHEET, index[key], [company_id, year_month, str(count)])
+            sheets_writer.update_cells_by_name(
+                TARGETS_SHEET,
+                index[key],
+                {
+                    "company": company_id,
+                    "year_month": year_month,
+                    "target_count": str(count),
+                },
+                actor="upsert_targets",
+            )
         else:
             sheets_writer.append_row(TARGETS_SHEET, [company_id, year_month, str(count)])
 
@@ -413,7 +422,18 @@ def upsert_quota_snapshot(company_id: str, remaining: int) -> dict[str, Any]:
 
     new_row = [company_id, year_month, snapshot_at, str(remaining), quota_hint_value]
     if existing_row_idx is not None:
-        sheets_writer.update_row(QUOTA_SHEET, existing_row_idx, new_row)
+        sheets_writer.update_cells_by_name(
+            QUOTA_SHEET,
+            existing_row_idx,
+            {
+                "company": company_id,
+                "year_month": year_month,
+                "snapshot_at": snapshot_at,
+                "remaining": str(remaining),
+                "quota_hint": quota_hint_value,
+            },
+            actor="upsert_quota_snapshot",
+        )
     else:
         sheets_writer.append_row(QUOTA_SHEET, new_row)
 

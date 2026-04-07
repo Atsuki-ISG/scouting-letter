@@ -119,13 +119,18 @@ class TestGenerateSingle:
 
     @pytest.mark.asyncio
     async def test_filtered_out_path(self, ark_config):
-        """Single generation where candidate is filtered out (already scouted)."""
+        """Single generation where candidate is filtered out (already scouted).
+
+        Uses a relative date string ("1日前") so the test stays valid as the
+        clock advances — a fixed YYYY-MM-DD date silently breaks once it's
+        older than the resend interval.
+        """
         profile = CandidateProfile(
             member_id="002",
             qualifications="看護師",
             age="30歳",
             employment_status="就業中",
-            scout_sent_date="2026-03-01",
+            scout_sent_date="1日前",
         )
         request = GenerateRequest(
             company_id="ark-visiting-nurse",
@@ -139,7 +144,7 @@ class TestGenerateSingle:
         assert result.member_id == "002"
         assert result.generation_path == "filtered_out"
         assert result.filter_reason is not None
-        assert "スカウト送信済み" in result.filter_reason
+        assert "[送信済み]" in result.filter_reason
         assert result.personalized_text == ""
         assert result.full_scout_text == ""
 

@@ -48,6 +48,7 @@ SHEET_JOB_OFFERS = "求人"
 SHEET_VALIDATION = "バリデーション"
 SHEET_PROFILES = "プロフィール"
 SHEET_LOGS = "生成ログ"
+SHEET_JOB_CATEGORY_KEYWORDS = "職種キーワード"
 
 _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "nurse": "看護師",
@@ -66,6 +67,7 @@ ALL_SHEETS = [
     SHEET_JOB_OFFERS,
     SHEET_VALIDATION,
     SHEET_PROFILES,
+    SHEET_JOB_CATEGORY_KEYWORDS,
 ]
 
 
@@ -206,8 +208,45 @@ class SheetsClient:
             "validation_config": self._get_validation_config(company_id),
             "job_categories": self._get_job_categories(templates),
             "employment_types": self._get_employment_types(templates),
+            "job_category_keywords": self._get_job_category_keywords(company_id),
             "examples": [],  # examples are managed via /save-example skill
         }
+
+    def _get_job_category_keywords(self, company_id: str) -> list[dict]:
+        """Return job category keywords (global + company-specific) for the given company.
+
+        Sheet columns: company, job_category, keyword, source_fields, weight, enabled, added_at, added_by, note
+
+        - company="" rows are global (apply to all companies)
+        - company=<id> rows are company-specific overrides (added on top of globals)
+        - enabled="FALSE" rows are skipped
+        """
+        rows = self._cache.get(SHEET_JOB_CATEGORY_KEYWORDS, [])
+        result: list[dict] = []
+        for row in rows:
+            if row.get("enabled", "TRUE").upper() == "FALSE":
+                continue
+            row_company = row.get("company", "").strip()
+            if row_company and row_company != company_id:
+                continue
+            keyword = row.get("keyword", "").strip()
+            job_category = row.get("job_category", "").strip()
+            if not keyword or not job_category:
+                continue
+            source_fields = [
+                f.strip() for f in row.get("source_fields", "").split(",") if f.strip()
+            ]
+            if not source_fields:
+                # default: search both qualification and free text fields
+                source_fields = ["qualification", "desired", "experience", "pr"]
+            result.append({
+                "keyword": keyword,
+                "job_category": job_category,
+                "source_fields": source_fields,
+                "weight": _safe_int(row.get("weight", "1"), 1),
+                "company": row_company,  # "" for global, company id for override
+            })
+        return result
 
     def _get_job_categories(self, templates: dict[str, dict]) -> list[dict[str, str]]:
         """Extract unique job categories from templates with display names."""

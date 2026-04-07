@@ -12,7 +12,11 @@ from models.generation import (
     BatchGenerateRequest,
     BatchGenerateResponse,
 )
-from pipeline.job_category_resolver import resolve_job_category
+from pipeline.job_category_resolver import (
+    JobCategoryResolution,
+    resolve_job_category,
+    resolve_job_category_batch,
+)
 from pipeline.filter import filter_candidate
 from pipeline.template_resolver import resolve_template_type
 from pipeline.pattern_matcher import should_use_pattern, match_pattern
@@ -37,6 +41,10 @@ LOG_HEADERS = [
     "template_type", "generation_path", "pattern_type",
     "status", "detail", "personalized_text_preview",
     "prompt_tokens", "output_tokens", "estimated_cost",
+    # Resolution failure diagnostics (only populated when generation_path=filtered_out
+    # and the failure originated in the job category resolver)
+    "failure_stage", "failure_missing_fields", "failure_searched_text",
+    "failure_company_categories", "failure_human_message",
 ]
 
 SEND_DATA_HEADERS = [
@@ -103,6 +111,11 @@ def _write_generation_logs(
                 usage.get("prompt_tokens", ""),
                 usage.get("output_tokens", ""),
                 f"{usage['estimated_cost']:.6f}" if usage.get("estimated_cost") else "",
+                r.failure_stage or "",
+                ",".join(r.failure_missing_fields) if r.failure_missing_fields else "",
+                r.failure_searched_text or "",
+                ",".join(r.failure_company_categories) if r.failure_company_categories else "",
+                r.failure_human_message or "",
             ])
         sheets_writer.append_rows(LOG_SHEET, rows)
         logger.info(f"Wrote {len(rows)} log entries to '{LOG_SHEET}'")
@@ -237,6 +250,35 @@ def _write_send_data(
         logger.warning(f"Failed to write send data: {e}")
 
 
+def _company_categories_from_config(config: dict) -> list[str]:
+    """Return the list of job categories the company is recruiting for.
+
+    Prefers `config["job_categories"]` (derived from templates with a
+    job_category column). Falls back to deriving from `config["job_offers"]`
+    so old configs without per-template job_category still work.
+    Templates may also have a `job_category` field directly.
+    """
+    cats = [c["id"] for c in config.get("job_categories", []) if c.get("id")]
+    if cats:
+        return cats
+    seen: set[str] = set()
+    derived: list[str] = []
+    for offer in config.get("job_offers", []) or []:
+        jc = (offer.get("job_category") or "").strip()
+        if jc and jc not in seen:
+            seen.add(jc)
+            derived.append(jc)
+    if derived:
+        return derived
+    # Last resort: scan templates for any embedded job_category
+    for tpl in (config.get("templates") or {}).values():
+        jc = (tpl.get("job_category") or "").strip()
+        if jc and jc not in seen:
+            seen.add(jc)
+            derived.append(jc)
+    return derived
+
+
 def _resolve_job_offer_id(
     job_offers,
     job_category: str,
@@ -288,35 +330,61 @@ async def _process_candidate(
     company_id: str,
     options: GenerateOptions,
     config: dict,
+    resolution: JobCategoryResolution | None = None,
 ) -> tuple[GenerateResponse, dict]:
     """Process a single candidate with pre-fetched company config.
 
     Returns (response, token_usage) where token_usage has prompt_tokens, output_tokens, estimated_cost.
+
+    `resolution` is the pre-computed job category resolution. The batch path
+    pre-resolves all candidates so Stage 3.5 (batch dominant) can be applied;
+    the single path leaves it None and we resolve here.
     """
     _empty_usage = {}
 
-    # 1. Resolve job category
-    if options.job_category_filter:
-        # User explicitly selected a category — use it directly
-        job_category = options.job_category_filter
-    else:
-        job_category = resolve_job_category(
-            profile.qualifications or "",
-            profile.desired_job or "",
+    # 1. Resolve job category (multi-stage)
+    if resolution is None:
+        company_categories = _company_categories_from_config(config)
+        keywords = config.get("job_category_keywords", [])
+        resolution = resolve_job_category(
+            profile,
+            company_categories,
+            keywords,
+            explicit=options.job_category_filter,
         )
 
-    if job_category is None:
+    logger.info(
+        f"[{profile.member_id}] job_category: {resolution.method} "
+        f"→ {resolution.category} ({resolution.debug})"
+    )
+
+    if resolution.category is None:
+        fr = resolution.failure
         return GenerateResponse(
             member_id=profile.member_id,
             template_type="",
             generation_path="filtered_out",
             personalized_text="",
             full_scout_text="",
-            filter_reason=(
-                f"[職種判定不能] 資格・希望職種から職種カテゴリを特定できません "
-                f"(資格: {profile.qualifications or '未入力'} / 希望職種: {profile.desired_job or '未入力'})"
+            filter_reason=f"[職種判定不能] {fr.human_message if fr else resolution.debug}",
+            validation_warnings=(
+                [
+                    f"missing_fields: {','.join(fr.missing_fields)}",
+                    f"stage_reached: {fr.stage_reached}",
+                    f"company_categories: {','.join(fr.company_categories)}",
+                ]
+                if fr
+                else []
             ),
+            failure_stage=fr.stage_reached if fr else None,
+            failure_missing_fields=list(fr.missing_fields) if fr else [],
+            failure_searched_text=fr.searched_text if fr else None,
+            failure_company_categories=list(fr.company_categories) if fr else [],
+            failure_human_message=fr.human_message if fr else None,
         ), _empty_usage
+
+    job_category = resolution.category
+    resolution_warnings = list(resolution.warnings)
 
     # 2. Resolve template type
     template_type = resolve_template_type(profile, options, job_category)
@@ -380,23 +448,19 @@ async def _process_candidate(
             validation_warnings=soft_warnings,
         ), _empty_usage
 
-    # 4.5 Resolve job offer (求人未登録ならAI生成前にハードブロック)
+    # 4.5 Resolve job offer (求人未登録は warning に降格、生成は続行)
     job_offer_id = _resolve_job_offer_id(
         config["job_offers"], job_category, template_type
     )
+    job_offer_warnings: list[str] = []
     if not job_offer_id:
-        return GenerateResponse(
-            member_id=profile.member_id,
-            template_type=template_type,
-            generation_path="filtered_out",
-            personalized_text="",
-            full_scout_text="",
-            job_category=job_category,
-            filter_reason=(
-                f"[求人未登録] {job_category}/{template_type}に該当する求人がサーバーに登録されていません"
-            ),
-            validation_warnings=soft_warnings,
-        ), _empty_usage
+        job_offer_warnings.append(
+            f"[求人未登録] {job_category}/{template_type}に該当する求人が未登録です"
+        )
+        logger.warning(
+            f"[{profile.member_id}] job_offer missing: {job_category}/{template_type}"
+        )
+        job_offer_id = ""  # explicit empty so the extension can fall back to manual
 
     template_body = template_data.get("body", "")
 
@@ -504,10 +568,12 @@ async def _process_candidate(
             validation_warnings=soft_warnings,
         ), {}
 
-    # 8. Combine warnings: filter soft + template fallback + 雇用形態ミスマッチ
+    # 8. Combine warnings: resolution推定 + filter soft + template fallback + 求人未登録 + 雇用形態ミスマッチ
     warnings: list[str] = []
+    warnings.extend(resolution_warnings)
     warnings.extend(soft_warnings)
     warnings.extend(template_warnings)
+    warnings.extend(job_offer_warnings)
     # template_warnings に既に雇用形態ミスマッチ警告が入っている場合はスキップ
     has_employment_warning = any("希望雇用形態" in w for w in template_warnings)
     if not has_employment_warning:
@@ -617,13 +683,31 @@ async def generate_batch(
     # Fetch config once for the entire batch
     config = data_client.get_company_config(request.company_id)
 
+    # Pre-resolve job categories for the whole batch so Stage 3.5
+    # (batch dominant) can lift unresolved candidates onto the dominant one.
+    company_categories = _company_categories_from_config(config)
+    keywords = config.get("job_category_keywords", [])
+    resolutions = resolve_job_category_batch(
+        list(request.profiles),
+        company_categories,
+        keywords,
+        explicit=options.job_category_filter,
+    )
+    resolution_by_member = {
+        p.member_id: r for p, r in zip(request.profiles, resolutions)
+    }
+
     all_token_usage: dict[str, dict] = {}
 
     async def process_one(profile):
         async with semaphore:
             try:
                 response, token_usage = await _process_candidate(
-                    profile, request.company_id, options, config,
+                    profile,
+                    request.company_id,
+                    options,
+                    config,
+                    resolution=resolution_by_member.get(profile.member_id),
                 )
                 if token_usage:
                     all_token_usage[profile.member_id] = token_usage

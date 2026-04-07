@@ -18,6 +18,7 @@ SHEET_MAP = {
     "validation": "バリデーション",
     "logs": "生成ログ",
     "profiles": "プロフィール",
+    "job_category_keywords": "職種キーワード",
 }
 
 # Column order for each sheet (must match header row)
@@ -28,8 +29,9 @@ COLUMNS = {
     "prompts": ["company", "section_type", "job_category", "order", "content"],
     "job_offers": ["company", "job_category", "id", "name", "label", "employment_type", "active"],
     "validation": ["company", "age_min", "age_max", "qualification_rules", "category_exclusions", "category_config"],
-    "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview"],
+    "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview", "prompt_tokens", "output_tokens", "estimated_cost", "failure_stage", "failure_missing_fields", "failure_searched_text", "failure_company_categories", "failure_human_message"],
     "profiles": ["company", "content", "detection_keywords"],
+    "job_category_keywords": ["company", "job_category", "keyword", "source_fields", "weight", "enabled", "added_at", "added_by", "note"],
 }
 
 
@@ -151,7 +153,7 @@ async def send_summary(
     """今月の送信数サマリー（職種カテゴリ別）を返す。"""
     from datetime import datetime, timedelta, timezone
     from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
-    from pipeline.job_category_resolver import resolve_job_category
+    from pipeline.job_category_resolver import resolve_qualification_only
 
     JST = timezone(timedelta(hours=9))
     now = datetime.now(JST)
@@ -200,7 +202,7 @@ async def send_summary(
             if cat_idx is not None and cat_idx < len(row):
                 cat = row[cat_idx].strip()
             if not cat and qual_idx is not None and qual_idx < len(row):
-                cat = resolve_job_category(row[qual_idx]) or ""
+                cat = resolve_qualification_only(row[qual_idx]) or ""
 
             display = CATEGORY_DISPLAY.get(cat, cat) or "不明"
             by_category[display] = by_category.get(display, 0) + 1
@@ -951,13 +953,17 @@ async def sync_replies(
             continue
 
         reply = reply_map[member_id]
-        while len(row) < len(headers):
-            row.append("")
-        row[col_reply] = "有"
-        row[col_reply_date] = reply.get("replied_at", "")
-        row[col_reply_cat] = reply.get("category", "")
-
-        sheets_writer.update_row(sheet_name, row_idx, row)
+        # Write only the 3 reply cells by name — never touches other columns
+        sheets_writer.update_cells_by_name(
+            sheet_name,
+            row_idx,
+            {
+                "返信": "有",
+                "返信日": reply.get("replied_at", ""),
+                "返信カテゴリ": reply.get("category", ""),
+            },
+            actor="sync_replies",
+        )
         updated += 1
 
     return {"status": "ok", "updated": updated}
@@ -1505,12 +1511,13 @@ async def batch_update_templates(
         except Exception:
             pass
 
-        # Update row
-        merged = {col: existing.get(col, "") for col in columns}
-        merged["body"] = new_body
-        merged["version"] = new_version
-        values = [merged[col] for col in columns]
-        sheets_writer.update_row("テンプレート", row_index, values)
+        # Update only body + version cells, by name (safe against column reorder)
+        sheets_writer.update_cells_by_name(
+            "テンプレート",
+            row_index,
+            {"body": new_body, "version": new_version},
+            actor="admin_ui:batch_update",
+        )
         updated += 1
 
     sheets_client.reload()
@@ -1721,22 +1728,32 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
 
     columns = COLUMNS.get(sheet_slug, [])
 
-    # Partial update: read existing row and merge with incoming data
+    # Read the actual sheet header so we can compare against the row being
+    # updated and so the version-bump / history logic still has access to
+    # the old values. We use update_cells_by_name to write — that method
+    # internally re-reads the header and aligns by column name, so even if
+    # COLUMNS in code drifts from the sheet, no data is scrambled.
     all_rows = sheets_writer.get_all_rows(sheet_name)
     if row_index < 2 or row_index > len(all_rows):
         raise HTTPException(404, f"Row {row_index} not found")
 
-    header = all_rows[0]
+    header = [h.strip() for h in all_rows[0]]
     existing_row = all_rows[row_index - 1]
-    # Pad existing row to match header length
     existing_row += [""] * (len(header) - len(existing_row))
     existing = {header[i]: existing_row[i] for i in range(len(header))}
 
-    # Merge: only overwrite fields present in incoming data
-    merged = {col: data[col] if col in data else existing.get(col, "") for col in columns}
+    # Build the cells to write: only fields present in `data` AND known
+    # columns. Unknown keys are dropped to avoid creating phantom columns.
+    valid_cols = set(columns) & set(header) if columns else set(header)
+    cells: dict[str, str] = {}
+    for key, value in data.items():
+        if key.startswith("_"):
+            continue  # private metadata like _change_reason
+        if key in valid_cols:
+            cells[key] = "" if value is None else str(value)
 
     # Template versioning: auto-increment version + log history on body change
-    if sheet_slug == "templates" and "body" in data and data["body"] != existing.get("body", ""):
+    if sheet_slug == "templates" and "body" in cells and cells["body"] != existing.get("body", ""):
         from datetime import datetime, timedelta, timezone
         JST = timezone(timedelta(hours=9))
 
@@ -1745,7 +1762,7 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
             new_version = str(int(old_version) + 1)
         except (ValueError, TypeError):
             new_version = "2"
-        merged["version"] = new_version
+        cells["version"] = new_version
 
         # Log old version to history sheet
         try:
@@ -1768,11 +1785,19 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
             import logging
             logging.getLogger(__name__).warning(f"Failed to log template history: {e}")
 
-    values = [merged[col] for col in columns]
+    if not cells:
+        return {"status": "no-op", "merged_fields": [], "version": existing.get("version", "")}
 
-    sheets_writer.update_row(sheet_name, row_index, values)
+    result = sheets_writer.update_cells_by_name(
+        sheet_name, row_index, cells, actor="admin_ui",
+    )
     sheets_client.reload()
-    return {"status": "updated", "merged_fields": list(data.keys()), "version": merged.get("version", "")}
+    return {
+        "status": "updated",
+        "merged_fields": result["updated"],
+        "skipped_fields": result["skipped"],
+        "version": cells.get("version", existing.get("version", "")),
+    }
 
 
 @router.delete("/{sheet_slug}/{row_index}")
@@ -1781,7 +1806,7 @@ async def delete_row(sheet_slug: str, row_index: int, operator=Depends(verify_ap
     if not sheet_name:
         raise HTTPException(404, f"Unknown sheet: {sheet_slug}")
 
-    sheets_writer.delete_row(sheet_name, row_index)
+    sheets_writer.delete_row(sheet_name, row_index, actor="admin_ui")
     sheets_client.reload()
     return {"status": "deleted"}
 
@@ -1800,6 +1825,23 @@ async def get_costs_monthly(operator=Depends(verify_api_key)):
     """Get current month's cost summary."""
     from monitoring.cost_tracker import cost_tracker
     return cost_tracker.get_monthly_summary()
+
+
+@router.post("/cron/prune-audit-log")
+async def cron_prune_audit_log(
+    days: int = 90,
+    operator=Depends(verify_api_key),
+):
+    """Cloud Scheduler が定期的に叩くエンドポイント。
+    操作履歴シートから `days` 日より古い行を削除する。
+
+    Default retention: 90 days. Pass `?days=30` etc. to override.
+    Set `days=0` to wipe everything older than today (use with care).
+    """
+    if days < 0:
+        raise HTTPException(400, "days must be >= 0")
+    result = sheets_writer.prune_audit_log(retention_days=days)
+    return {"status": "ok", **result}
 
 
 @router.post("/cron/daily-report")
