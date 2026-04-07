@@ -160,6 +160,21 @@ export const apiClient = {
     return res.json();
   },
 
+  async postScoutQuotaSnapshot(companyId: string, remaining: number): Promise<void> {
+    const endpoint = await this.getEndpoint();
+    if (!endpoint) return;
+    const headers = await this.getHeaders();
+    try {
+      await fetchWithTimeout(`${endpoint}/api/v1/admin/scout_quota_snapshot`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ company_id: companyId, remaining }),
+      }, HEALTH_TIMEOUT_MS);
+    } catch (err) {
+      console.warn('[scout-quota] failed to post snapshot', err);
+    }
+  },
+
   async syncReplies(company: string, replies: Array<{ member_id: string; replied_at: string; category: string }>): Promise<{ status: string; updated: number }> {
     const endpoint = await this.getEndpoint();
     const headers = await this.getHeaders();

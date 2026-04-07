@@ -297,4 +297,12 @@ export async function start(): Promise<void> {
   skipResolver = null;
   console.log('[Scout Assistant] Continuous send ended');
   safeSendMessage({ type: 'CONTINUOUS_SEND_COMPLETE' });
+
+  // 送信完了後に残数をスナップショット（手動送信込みの真の値が取れる）
+  try {
+    const { refreshScoutQuota } = await import('./scout-quota-scraper');
+    setTimeout(() => refreshScoutQuota(), 2000);
+  } catch (err) {
+    console.warn('[scout-quota] refresh after continuous send failed', err);
+  }
 }

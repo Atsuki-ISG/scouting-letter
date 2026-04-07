@@ -9,6 +9,8 @@ import * as continuousSender from './continuous-sender';
 import { extractJobOffers } from './job-offer-extractor';
 import { extractFacilityList, extractFacilityInfo, abortFacilityExtraction } from './facility-scraper';
 import { detectCompanyFromPage } from './company-detector';
+import { initScoutQuotaScraper } from './scout-quota-scraper';
+import { setupSingleSendTracker } from './single-send-tracker';
 
 /** メッセージリスナー */
 chrome.runtime.onMessage.addListener(
@@ -143,6 +145,8 @@ chrome.runtime.onMessage.addListener(
 
 // 初期化
 setupOverlayObserver();
+setupSingleSendTracker();
+initScoutQuotaScraper();
 
 // ページ読み込み後に会社を自動検出
 setTimeout(async () => {
