@@ -241,7 +241,20 @@ export type Message =
   | { type: 'STOP_CONTINUOUS_SEND' }
   | { type: 'GET_NEXT_CANDIDATE' }
   | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string } | null }
-  | { type: 'CANDIDATE_SENT'; memberId: string }
+  | {
+      type: 'CANDIDATE_SENT';
+      memberId: string;
+      // Phase C: 手動送信(JOBMEDLEY UI 直接操作)を Sheets に記録するための補助情報。
+      // continuous-sender からは送られない。single-send-tracker のみ付与。
+      manualSendProfile?: {
+        member_id: string;
+        age: string;
+        qualifications: string;
+        area: string;
+        desired_employment_type: string;
+      } | null;
+      sentAt?: string;
+    }
   | { type: 'SKIP_CURRENT_CANDIDATE' }
   | { type: 'DEBUG_LOG'; entry: DebugLogEntry }
   | { type: 'DRY_RUN_COMPLETE'; memberId: string }

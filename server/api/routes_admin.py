@@ -388,6 +388,91 @@ async def list_send_data(
     return {"headers": list(EXPECTED_HEADERS), "items": items}
 
 
+@router.post("/record_manual_send")
+async def record_manual_send(
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    """Record a scout that was sent manually in JOBMEDLEY (without going through
+    the orchestrator generate API).
+
+    Called by the Chrome extension's single-send-tracker when it detects a
+    manual send completion AND the candidate is not already in the side panel's
+    local list (i.e. wasn't generated via tool).
+
+    Idempotency: same (company_id, member_id, YYYY-MM-DD) is treated as duplicate.
+    """
+    from pipeline.orchestrator import (
+        _send_data_sheet_name,
+        COMPANY_DISPLAY_NAMES,
+        SEND_DATA_HEADERS,
+    )
+    from api._dashboard_helpers import EXPECTED_HEADERS
+
+    company_id = (data.get("company_id") or "").strip()
+    member_id = (data.get("member_id") or "").strip()
+    sent_at = (data.get("sent_at") or "").strip()
+    if not member_id:
+        raise HTTPException(400, "member_id is required")
+    if company_id not in COMPANY_DISPLAY_NAMES:
+        raise HTTPException(404, f"Unknown company: {company_id}")
+
+    sheet_name = _send_data_sheet_name(company_id)
+    sheets_writer.ensure_sheet_exists(sheet_name, SEND_DATA_HEADERS)
+
+    # Dedup: skip if same member_id was already recorded as a manual send today
+    sent_day = sent_at[:10] if sent_at else ""
+    try:
+        existing_rows = sheets_writer.get_all_rows(sheet_name)
+    except Exception:
+        existing_rows = []
+    if existing_rows and len(existing_rows) >= 2:
+        member_idx = SEND_DATA_HEADERS.index("会員番号")
+        date_idx = SEND_DATA_HEADERS.index("日時")
+        path_idx = SEND_DATA_HEADERS.index("生成パス")
+        for row in existing_rows[1:]:
+            if (
+                len(row) > member_idx
+                and row[member_idx].strip() == member_id
+                and len(row) > date_idx
+                and row[date_idx].strip()[:10] == sent_day
+                and len(row) > path_idx
+                and row[path_idx].strip() == "manual"
+            ):
+                return {
+                    "status": "ok",
+                    "recorded": False,
+                    "reason": "duplicate",
+                    "company_id": company_id,
+                    "member_id": member_id,
+                }
+
+    # Build a row in canonical positional order. Most fields are empty for
+    # manual sends — we only know what JOBMEDLEY's overlay exposed.
+    row_values = [""] * len(EXPECTED_HEADERS)
+    row_values[EXPECTED_HEADERS.index("日時")] = sent_at
+    row_values[EXPECTED_HEADERS.index("会員番号")] = member_id
+    row_values[EXPECTED_HEADERS.index("生成パス")] = "manual"
+    row_values[EXPECTED_HEADERS.index("テンプレート種別")] = "(手動)"
+    # Optional profile snapshot fields
+    if data.get("qualifications"):
+        row_values[EXPECTED_HEADERS.index("資格")] = str(data["qualifications"])
+    if data.get("age"):
+        row_values[EXPECTED_HEADERS.index("年齢層")] = str(data["age"])
+    if data.get("desired_employment_type"):
+        row_values[EXPECTED_HEADERS.index("希望雇用形態")] = str(data["desired_employment_type"])
+    if data.get("area"):
+        row_values[EXPECTED_HEADERS.index("地域")] = str(data["area"])
+
+    sheets_writer.append_row(sheet_name, row_values)
+    return {
+        "status": "ok",
+        "recorded": True,
+        "company_id": company_id,
+        "member_id": member_id,
+    }
+
+
 @router.delete("/send_data/{company_id}/{row_index}")
 async def delete_send_data_row(
     company_id: str,

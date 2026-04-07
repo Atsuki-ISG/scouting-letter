@@ -14,9 +14,31 @@ import { safeSendMessage } from './helpers';
 import { getOverlayMemberId } from './scraper';
 import { isActive as isContinuousActive } from './continuous-sender';
 import { refreshScoutQuota } from './scout-quota-scraper';
+import { FIELD_LABELS, getValueByLabel } from './selectors';
 
 let currentMemberId: string | null = null;
 let sentFlagForCurrent = false;
+
+/** 手動送信記録用の軽量プロフィールスナップショット。
+ *
+ * extractProfile はタブ切替・複数の await を伴うためここでは使わない。
+ * overlay 上で見えている値を同期で読み取り、サーバへ最小情報を送る。
+ */
+function captureLightProfile(overlay: Element): {
+  member_id: string;
+  age: string;
+  qualifications: string;
+  area: string;
+  desired_employment_type: string;
+} {
+  return {
+    member_id: getValueByLabel(overlay, FIELD_LABELS.memberId),
+    age: getValueByLabel(overlay, FIELD_LABELS.age),
+    qualifications: getValueByLabel(overlay, FIELD_LABELS.qualifications),
+    area: getValueByLabel(overlay, FIELD_LABELS.area),
+    desired_employment_type: getValueByLabel(overlay, FIELD_LABELS.desiredEmploymentType),
+  };
+}
 
 /** overlay が表示されているか */
 function isOverlayOpen(): boolean {
@@ -36,6 +58,11 @@ function hasPostSendModal(): boolean {
   return false;
 }
 
+// overlay が見えている間の最後のプロフィールスナップショット。
+// overlay が閉じる瞬間にはDOMから値が消えているため、送信完了モーダルを
+// 見たタイミングで保持しておく。
+let lastProfileSnapshot: ReturnType<typeof captureLightProfile> | null = null;
+
 export function setupSingleSendTracker(): void {
   const observer = new MutationObserver(() => {
     // overlay の状態を追跡
@@ -47,10 +74,19 @@ export function setupSingleSendTracker(): void {
       if (memberId !== currentMemberId) {
         currentMemberId = memberId;
         sentFlagForCurrent = false;
+        lastProfileSnapshot = null;
       }
-      // 送信完了モーダルを見たらフラグを立てる
+      // 送信完了モーダルを見たらフラグを立てる + プロフィール捕捉
       if (!sentFlagForCurrent && hasPostSendModal()) {
         sentFlagForCurrent = true;
+        const overlay = document.querySelector('.c-side-cover');
+        if (overlay) {
+          try {
+            lastProfileSnapshot = captureLightProfile(overlay);
+          } catch (err) {
+            console.warn('[single-send] failed to capture profile snapshot', err);
+          }
+        }
       }
     } else {
       // overlay が閉じた
@@ -59,13 +95,20 @@ export function setupSingleSendTracker(): void {
         if (!isContinuousActive()) {
           const memberId = currentMemberId;
           console.log(`[single-send] detected manual send complete: ${memberId}`);
-          safeSendMessage({ type: 'CANDIDATE_SENT', memberId });
+          safeSendMessage({
+            type: 'CANDIDATE_SENT',
+            memberId,
+            // Phase C: 手動送信を sheets に記録するための補助情報
+            manualSendProfile: lastProfileSnapshot,
+            sentAt: new Date().toISOString(),
+          });
           // 残数も更新
           setTimeout(() => refreshScoutQuota(), 1500);
         }
       }
       currentMemberId = null;
       sentFlagForCurrent = false;
+      lastProfileSnapshot = null;
     }
   });
 

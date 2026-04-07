@@ -70,6 +70,12 @@ export class CandidateList {
         if (c && c.status !== 'skipped') {
           this.updateStatus(msg.memberId, 'sent');
         }
+        // Phase C: ローカルリストに居ない = 拡張を経由していない
+        // 「JOBMEDLEY上で直接送信した」候補なので、サーバの送信履歴シートに
+        // 手動送信として記録する。
+        if (!c && msg.manualSendProfile && msg.manualSendProfile.member_id) {
+          this.recordManualSend(msg.manualSendProfile, msg.sentAt || new Date().toISOString());
+        }
       } else if (msg.type === 'CONTINUOUS_SEND_COMPLETE') {
         // 連続送信ループが終了した → UIをリセット（Content Script側は既に停止済み）
         this.stopContinuousSend(false);
@@ -503,6 +509,29 @@ export class CandidateList {
       this.candidates[index].personalized_text = trimmed;
       await storage.setCandidates(this.candidates);
       this.render();
+    }
+  }
+
+  /** Phase C: JOBMEDLEY上で直接手動送信したものをサーバの送信履歴シートに記録。
+   * 失敗しても黙って無視する（運用ノイズを減らす）。
+   */
+  private async recordManualSend(
+    profile: { member_id: string; age: string; qualifications: string; area: string; desired_employment_type: string },
+    sentAt: string,
+  ): Promise<void> {
+    try {
+      const company = await storage.getCompany();
+      const result = await apiClient.recordManualSend(company, {
+        member_id: profile.member_id,
+        sent_at: sentAt,
+        qualifications: profile.qualifications || undefined,
+        age: profile.age || undefined,
+        area: profile.area || undefined,
+        desired_employment_type: profile.desired_employment_type || undefined,
+      });
+      console.log('[manual-send] recorded', result);
+    } catch (err) {
+      console.warn('[manual-send] record failed', err);
     }
   }
 

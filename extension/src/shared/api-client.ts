@@ -176,6 +176,31 @@ export const apiClient = {
     }
   },
 
+  async recordManualSend(
+    company: string,
+    payload: {
+      member_id: string;
+      sent_at: string;
+      qualifications?: string;
+      age?: string;
+      area?: string;
+      desired_employment_type?: string;
+    },
+  ): Promise<{ status: string; recorded: boolean; reason?: string }> {
+    const endpoint = await this.getEndpoint();
+    const headers = await this.getHeaders();
+    const res = await fetchWithTimeout(`${endpoint}/api/v1/admin/record_manual_send`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company_id: company, ...payload }),
+    }, HEALTH_TIMEOUT_MS);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(formatApiError(res.status, text));
+    }
+    return res.json();
+  },
+
   async syncFixes(
     company: string,
     fixes: FixRecord[],
