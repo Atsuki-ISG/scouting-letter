@@ -49,6 +49,7 @@ SHEET_VALIDATION = "バリデーション"
 SHEET_PROFILES = "プロフィール"
 SHEET_LOGS = "生成ログ"
 SHEET_JOB_CATEGORY_KEYWORDS = "職種キーワード"
+SHEET_FIX_FEEDBACK = "修正フィードバック"
 
 _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "nurse": "看護師",
@@ -84,6 +85,7 @@ ALL_SHEETS = [
     SHEET_VALIDATION,
     SHEET_PROFILES,
     SHEET_JOB_CATEGORY_KEYWORDS,
+    SHEET_FIX_FEEDBACK,
 ]
 
 

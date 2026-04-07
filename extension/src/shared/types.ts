@@ -165,12 +165,16 @@ export interface CandidateItem {
 
 /** スカウト文の修正記録 */
 export interface FixRecord {
+  /** クライアント側で採番する一意ID（重複送信防止）。Phase Aから追加 */
+  id?: string;
   member_id: string;
   template_type: string;
   timestamp: string;
   before: string;
   after: string;
   reason: string;
+  /** trueの間はサーバ未送信。リトライボタンで送り直す対象 */
+  _unsynced?: boolean;
 }
 
 /** メッセージ1通 */

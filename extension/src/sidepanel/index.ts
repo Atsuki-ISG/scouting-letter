@@ -106,17 +106,25 @@ function setupJobOfferSelect(candidateList?: CandidateList): void {
   });
 }
 
-/** 修正履歴エクスポート */
+/** 修正履歴エクスポート + 未送信リトライ */
 function setupFixExport(): void {
   const exportBtn = document.getElementById('btn-export-fixes');
+  const retryBtn = document.getElementById('btn-retry-unsynced');
+  const unsyncedCountEl = document.getElementById('unsynced-count');
   const exportSection = document.getElementById('fix-export');
 
-  // 修正記録があればボタンを表示
-  storage.getFixRecords().then((records) => {
+  const refreshUnsyncedBadge = async () => {
+    const records = await storage.getFixRecords();
+    const unsynced = records.filter((r) => r._unsynced);
+    if (unsyncedCountEl) unsyncedCountEl.textContent = String(unsynced.length);
+    if (retryBtn) retryBtn.classList.toggle('hidden', unsynced.length === 0);
     if (records.length > 0 && exportSection) {
       exportSection.classList.remove('hidden');
     }
-  });
+  };
+
+  // 修正記録があればボタンを表示
+  refreshUnsyncedBadge();
 
   exportBtn?.addEventListener('click', async () => {
     const records = await storage.getFixRecords();
@@ -128,6 +136,33 @@ function setupFixExport(): void {
     const company = await storage.getCompany();
     const markdown = formatFixRecordsAsMarkdown(records, company);
     downloadText(markdown, `fixes-${getYearMonth()}.md`);
+  });
+
+  retryBtn?.addEventListener('click', async () => {
+    const records = await storage.getFixRecords();
+    const unsynced = records.filter((r) => r._unsynced);
+    if (unsynced.length === 0) {
+      alert('未送信の修正はありません');
+      return;
+    }
+    const company = await storage.getCompany();
+    try {
+      await apiClient.syncFixes(company, unsynced);
+      // 成功: 全レコードから _unsynced を外して保存し直す
+      const updated = records.map((r) => (r._unsynced ? { ...r, _unsynced: false } : r));
+      await chrome.storage.local.set({ scout_fix_records: updated });
+      await refreshUnsyncedBadge();
+      alert(`${unsynced.length} 件の修正をサーバへ送信しました`);
+    } catch (err) {
+      alert(`送信失敗: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+
+  // 修正が追加されたタイミングでバッジを更新するため、storageの変更を監視
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.scout_fix_records) {
+      refreshUnsyncedBadge();
+    }
   });
 }
 

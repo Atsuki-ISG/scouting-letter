@@ -4,6 +4,7 @@ import { localTimestamp } from '../../shared/constants';
 import { configProvider } from '../../shared/config-provider';
 import { validateCandidate } from '../../shared/validation';
 import { gasClient } from '../../shared/gas-client';
+import { apiClient } from '../../shared/api-client';
 import { escapeHtml } from '../../shared/utils';
 
 /** フォールバック用: サーバー設定がない場合のデフォルト */
@@ -469,6 +470,7 @@ export class CandidateList {
 
     // 修正記録を保存
     const record: FixRecord = {
+      id: `fix_${Date.now()}_${candidate.member_id}`,
       member_id: candidate.member_id,
       template_type: candidate.template_type,
       timestamp: localTimestamp(),
@@ -476,6 +478,15 @@ export class CandidateList {
       after: trimmed,
       reason: reason.trim(),
     };
+
+    // サーバへ即送信を試みる。失敗時は _unsynced フラグを立てて後でリトライできるようにする
+    const company = await storage.getCompany();
+    try {
+      await apiClient.syncFixes(company, [record]);
+    } catch (err) {
+      console.warn('[fix-feedback] sync failed, marking unsynced', err);
+      record._unsynced = true;
+    }
     await storage.addFixRecord(record);
 
     // エクスポートボタンを表示

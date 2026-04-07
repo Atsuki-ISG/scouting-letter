@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import type { CandidateProfile } from './types';
+import type { CandidateProfile, FixRecord } from './types';
 
 export interface GenerateOptions {
   is_resend?: boolean;
@@ -174,6 +174,24 @@ export const apiClient = {
     } catch (err) {
       console.warn('[scout-quota] failed to post snapshot', err);
     }
+  },
+
+  async syncFixes(
+    company: string,
+    fixes: FixRecord[],
+  ): Promise<{ status: string; appended: number; skipped_duplicate: number }> {
+    const endpoint = await this.getEndpoint();
+    const headers = await this.getHeaders();
+    const res = await fetchWithTimeout(`${endpoint}/api/v1/admin/sync_fixes`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company, fixes }),
+    }, HEALTH_TIMEOUT_MS);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(formatApiError(res.status, text));
+    }
+    return res.json();
   },
 
   async syncReplies(company: string, replies: Array<{ member_id: string; replied_at: string; category: string }>): Promise<{ status: string; updated: number }> {

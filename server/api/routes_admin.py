@@ -1,9 +1,12 @@
 """Admin CRUD routes for Google Sheets data management."""
+import uuid
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 
 from db.sheets_writer import sheets_writer
-from db.sheets_client import sheets_client
+from db.sheets_client import sheets_client, SHEET_FIX_FEEDBACK
 from auth.api_key import verify_api_key
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -323,6 +326,36 @@ async def post_send_targets(
         raise HTTPException(400, "targets must be a list")
     dh.upsert_targets(ym, targets)
     return {"year_month": ym, "targets": dh.load_targets(ym)}
+
+
+# 修正フィードバック GET routes — must be defined BEFORE the /{sheet_slug}
+# catch-all below or they will be shadowed.
+@router.get("/fix_feedback")
+async def list_fix_feedback(
+    company: Optional[str] = None,
+    status: Optional[str] = None,
+    operator: dict = Depends(verify_api_key),
+):
+    """修正フィードバック一覧。company / status でフィルタ可能。timestamp降順。"""
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+    except Exception:
+        return {"items": []}
+    if not all_rows or len(all_rows) < 2:
+        return {"items": []}
+
+    headers = all_rows[0]
+    items: list[dict] = []
+    for row in all_rows[1:]:
+        item = {col: (row[i] if i < len(row) else "") for i, col in enumerate(headers)}
+        if company and item.get("company", "") != company:
+            continue
+        if status and item.get("status", "") != status:
+            continue
+        items.append(item)
+
+    items.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    return {"items": items}
 
 
 @router.get("/{sheet_slug}")
@@ -967,6 +1000,143 @@ async def sync_replies(
         updated += 1
 
     return {"status": "ok", "updated": updated}
+
+
+# ---------------------------------------------------------------------------
+# 修正フィードバック (Phase A: 蓄積 + 一覧 + status更新)
+# ---------------------------------------------------------------------------
+
+FIX_FEEDBACK_COLUMNS = [
+    "id",
+    "timestamp",
+    "company",
+    "member_id",
+    "template_type",
+    "before",
+    "after",
+    "reason",
+    "status",
+    "actor",
+    "note",
+]
+
+
+def _gen_fix_id() -> str:
+    return f"fb_{uuid.uuid4().hex[:8]}"
+
+
+@router.post("/sync_fixes")
+async def sync_fixes(
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    """Chrome拡張から修正diff(FixRecord[])を受け取り、修正フィードバックシートに追記する。
+
+    冪等性: クライアントが id を送ってきた場合、既存行と重複していたらスキップ。
+    """
+    company = (data.get("company") or "").strip()
+    fixes = data.get("fixes") or []
+    if not fixes:
+        return {"status": "ok", "appended": 0, "skipped_duplicate": 0}
+
+    # 1. シートが無ければ作成
+    sheets_writer.ensure_sheet_exists(SHEET_FIX_FEEDBACK, FIX_FEEDBACK_COLUMNS)
+
+    # 2. 既存IDセットを取得（重複防止）
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+    except Exception:
+        all_rows = [FIX_FEEDBACK_COLUMNS]
+    headers = all_rows[0] if all_rows else FIX_FEEDBACK_COLUMNS
+    try:
+        id_idx = headers.index("id")
+    except ValueError:
+        id_idx = 0
+    existing_ids = {
+        row[id_idx].strip()
+        for row in all_rows[1:]
+        if len(row) > id_idx and row[id_idx].strip()
+    }
+
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    appended = 0
+    skipped_duplicate = 0
+
+    for fix in fixes:
+        fix_id = (fix.get("id") or "").strip() or _gen_fix_id()
+        if fix_id in existing_ids:
+            skipped_duplicate += 1
+            continue
+        row = {
+            "id": fix_id,
+            "timestamp": fix.get("timestamp") or datetime.utcnow().isoformat(timespec="seconds"),
+            "company": company,
+            "member_id": fix.get("member_id", ""),
+            "template_type": fix.get("template_type", ""),
+            "before": fix.get("before", ""),
+            "after": fix.get("after", ""),
+            "reason": fix.get("reason", ""),
+            "status": "pending",
+            "actor": actor_name,
+            "note": "",
+        }
+        sheets_writer.append_row(
+            SHEET_FIX_FEEDBACK,
+            [row[col] for col in FIX_FEEDBACK_COLUMNS],
+        )
+        existing_ids.add(fix_id)
+        appended += 1
+
+    return {"status": "ok", "appended": appended, "skipped_duplicate": skipped_duplicate}
+
+
+@router.post("/fix_feedback/{fix_id}/status")
+async def update_fix_status(
+    fix_id: str,
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    """個別の修正フィードバックの status / note を更新する。"""
+    new_status = (data.get("status") or "").strip()
+    if new_status not in ("pending", "adopted", "skipped"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"status must be one of pending/adopted/skipped (got: {new_status!r})",
+        )
+
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+    except Exception:
+        raise HTTPException(status_code=404, detail="修正フィードバックシートが存在しません")
+    if not all_rows or len(all_rows) < 2:
+        raise HTTPException(status_code=404, detail=f"id '{fix_id}' が見つかりません")
+
+    headers = all_rows[0]
+    try:
+        id_idx = headers.index("id")
+    except ValueError:
+        raise HTTPException(status_code=500, detail="シートヘッダー不正: id 列なし")
+
+    target_row: int | None = None
+    for i, row in enumerate(all_rows[1:], start=2):
+        if len(row) > id_idx and row[id_idx].strip() == fix_id:
+            target_row = i
+            break
+    if target_row is None:
+        raise HTTPException(status_code=404, detail=f"id '{fix_id}' が見つかりません")
+
+    cells: dict[str, str] = {"status": new_status}
+    if "note" in data:
+        cells["note"] = data.get("note") or ""
+
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    sheets_writer.update_cells_by_name(
+        SHEET_FIX_FEEDBACK,
+        target_row,
+        cells,
+        actor=f"update_fix_status:{actor_name}",
+    )
+    return {"status": "ok", "id": fix_id, "new_status": new_status}
 
 
 @router.post("/improve_template")

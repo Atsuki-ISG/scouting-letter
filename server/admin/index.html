@@ -2284,6 +2284,7 @@ const TABS = [
   { slug: 'job_category_keywords', name: '職種キーワード' },
   { slug: 'logs', name: '生成ログ', readOnly: true },
   { slug: 'profiles', name: 'プロフィール' },
+  { slug: 'fix_feedback', name: '修正フィードバック', custom: true },
 ];
 
 // ===== Flow View =====
@@ -3149,6 +3150,15 @@ async function loadData() {
 
   // Resolve actual sheet slug (ai_prompts → prompts)
   const tabDef = TABS.find(t => t.slug === currentTab);
+
+  // Custom tabs use their own renderer instead of the generic /admin/{slug} loader
+  if (tabDef && tabDef.custom) {
+    if (currentTab === 'fix_feedback') {
+      await renderFixFeedbackTab(company);
+      return;
+    }
+  }
+
   const sheetSlug = currentTab === 'ai_prompts' ? 'prompts' : currentTab;
 
   try {
@@ -4423,6 +4433,155 @@ async function toggleDashRow(companyId) {
     _dashExpanded.add(companyId);
   }
   renderDashboardTable();
+}
+
+// ===== 修正フィードバック (Phase A) =====
+let _fixFeedbackData = [];
+let _fixFeedbackPendingOnly = true;
+const _fixFeedbackExpanded = new Set();
+
+async function renderFixFeedbackTab(company) {
+  const content = document.getElementById('content');
+  const statusFilter = _fixFeedbackPendingOnly ? '&status=pending' : '';
+  const companyParam = company ? `?company=${encodeURIComponent(company)}${statusFilter}` : (statusFilter ? `?${statusFilter.slice(1)}` : '');
+  try {
+    const data = await api('GET', `/api/v1/admin/fix_feedback${companyParam}`);
+    _fixFeedbackData = data.items || [];
+  } catch (e) {
+    content.innerHTML = `<div class="empty-msg">読み込みに失敗しました: ${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  drawFixFeedbackTable();
+}
+
+function drawFixFeedbackTable() {
+  const content = document.getElementById('content');
+  const items = _fixFeedbackData;
+  const pendingCount = items.filter(i => i.status === 'pending').length;
+  const adoptedCount = items.filter(i => i.status === 'adopted').length;
+  const skippedCount = items.filter(i => i.status === 'skipped').length;
+
+  const rowsHtml = items.length === 0
+    ? `<tr><td colspan="8" style="text-align:center;color:var(--c-text-muted);padding:24px">該当する修正フィードバックがありません</td></tr>`
+    : items.map(it => {
+        const expanded = _fixFeedbackExpanded.has(it.id);
+        const shortBefore = (it.before || '').slice(0, 40) + ((it.before || '').length > 40 ? '…' : '');
+        const shortAfter = (it.after || '').slice(0, 40) + ((it.after || '').length > 40 ? '…' : '');
+        const statusClass = it.status === 'pending' ? 'fb-pending' : it.status === 'adopted' ? 'fb-adopted' : 'fb-skipped';
+        const ts = (it.timestamp || '').replace('T', ' ').slice(0, 16);
+        return `
+          <tr class="fix-feedback-row" data-id="${escHtml(it.id)}" onclick="toggleFixRow('${escHtml(it.id)}')">
+            <td style="white-space:nowrap;font-size:11px;">${escHtml(ts)}</td>
+            <td>${escHtml(it.company)}</td>
+            <td style="font-family:var(--font-mono);font-size:11px;">${escHtml(it.member_id)}</td>
+            <td style="font-size:11px;">${escHtml(it.template_type)}</td>
+            <td style="font-size:11px;">${escHtml(shortBefore)}</td>
+            <td style="font-size:11px;">${escHtml(shortAfter)}</td>
+            <td style="font-size:11px;max-width:160px;">${escHtml(it.reason || '—')}</td>
+            <td><span class="fb-status ${statusClass}">${escHtml(it.status)}</span></td>
+            <td onclick="event.stopPropagation()">
+              ${it.status === 'pending' ? `
+                <button class="btn btn-sm btn-primary" onclick="adoptFix('${escHtml(it.id)}')">取込</button>
+                <button class="btn btn-sm btn-secondary" onclick="skipFix('${escHtml(it.id)}')">スキップ</button>
+              ` : `<button class="btn btn-sm btn-secondary" onclick="rependFix('${escHtml(it.id)}')">差戻</button>`}
+            </td>
+          </tr>
+          ${expanded ? `
+            <tr class="fix-feedback-detail">
+              <td colspan="9" style="background:#f8f9fb;padding:12px 18px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:12px;">
+                  <div>
+                    <div style="font-weight:600;color:var(--c-text-muted);margin-bottom:4px;">Before</div>
+                    <pre style="white-space:pre-wrap;background:#fff;padding:8px;border:1px solid #e2e8f0;border-radius:4px;margin:0;">${escHtml(it.before || '')}</pre>
+                  </div>
+                  <div>
+                    <div style="font-weight:600;color:var(--c-text-muted);margin-bottom:4px;">After</div>
+                    <pre style="white-space:pre-wrap;background:#fff;padding:8px;border:1px solid #e2e8f0;border-radius:4px;margin:0;">${escHtml(it.after || '')}</pre>
+                  </div>
+                </div>
+                ${it.reason ? `<div style="margin-top:8px;font-size:12px;"><strong>理由:</strong> ${escHtml(it.reason)}</div>` : ''}
+                ${it.note ? `<div style="margin-top:4px;font-size:12px;color:var(--c-text-muted);"><strong>メモ:</strong> ${escHtml(it.note)}</div>` : ''}
+              </td>
+            </tr>
+          ` : ''}
+        `;
+      }).join('');
+
+  content.innerHTML = `
+    <div class="toolbar" style="margin-bottom:12px;">
+      <span class="toolbar-title">修正フィードバック</span>
+      <span style="margin-left:12px;font-size:12px;">
+        <span class="fb-status fb-pending">未対応 ${pendingCount}</span>
+        <span class="fb-status fb-adopted" style="margin-left:6px;">取込済 ${adoptedCount}</span>
+        <span class="fb-status fb-skipped" style="margin-left:6px;">スキップ ${skippedCount}</span>
+      </span>
+      <label style="margin-left:auto;font-size:12px;">
+        <input type="checkbox" ${_fixFeedbackPendingOnly ? 'checked' : ''} onchange="toggleFixPendingFilter(this.checked)">
+        未対応のみ表示
+      </label>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>日時</th>
+          <th>会社</th>
+          <th>会員ID</th>
+          <th>テンプレ</th>
+          <th>Before</th>
+          <th>After</th>
+          <th>理由</th>
+          <th>状態</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <p style="font-size:11px;color:var(--c-text-muted);margin-top:12px;">
+      ・行クリックで Before/After 全文を展開<br>
+      ・<strong>取込</strong>: 改善ナレッジに反映する候補としてマーク（Phase A では status を adopted にするのみ。実際のテンプレ/プロンプト反映は Phase B 実装予定）<br>
+      ・<strong>スキップ</strong>: 個別事例として無視
+    </p>
+    <style>
+      .fb-status { display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600; }
+      .fb-pending { background:#fef3c7;color:#92400e; }
+      .fb-adopted { background:#d1fae5;color:#065f46; }
+      .fb-skipped { background:#e2e8f0;color:#475569; }
+      .fix-feedback-row { cursor:pointer; }
+      .fix-feedback-row:hover { background:#f8f9fb; }
+    </style>
+  `;
+}
+
+function toggleFixRow(id) {
+  if (_fixFeedbackExpanded.has(id)) _fixFeedbackExpanded.delete(id);
+  else _fixFeedbackExpanded.add(id);
+  drawFixFeedbackTable();
+}
+
+function toggleFixPendingFilter(checked) {
+  _fixFeedbackPendingOnly = checked;
+  const company = document.getElementById('companySelect').value;
+  renderFixFeedbackTab(company);
+}
+
+async function adoptFix(id) {
+  await updateFixStatus(id, 'adopted');
+}
+async function skipFix(id) {
+  await updateFixStatus(id, 'skipped');
+}
+async function rependFix(id) {
+  await updateFixStatus(id, 'pending');
+}
+
+async function updateFixStatus(id, status) {
+  try {
+    await api('POST', `/api/v1/admin/fix_feedback/${encodeURIComponent(id)}/status`, { status });
+    const company = document.getElementById('companySelect').value;
+    await renderFixFeedbackTab(company);
+  } catch (e) {
+    alert('更新失敗: ' + (e.message || String(e)));
+  }
 }
 
 async function loadDashCompanyDetail(companyId) {
