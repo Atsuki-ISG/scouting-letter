@@ -150,6 +150,17 @@ export interface ConfirmationData {
 /** 候補者の送信ステータス */
 export type CandidateStatus = 'ready' | 'sent' | 'skipped';
 
+/** パーソナライズ率計測（developer mode の新パーソナライズ生成が返す） */
+export interface PersonalizationStats {
+  level: 'L1' | 'L2' | 'L3' | string;
+  total_chars: number;
+  personalized_chars: number;
+  fixed_chars: number;
+  /** 0..1 */
+  ratio: number;
+  per_block_chars: Record<string, number>;
+}
+
 /** サイドパネルで管理する候補者 */
 export interface CandidateItem {
   member_id: string;
@@ -161,6 +172,9 @@ export interface CandidateItem {
   job_category?: string;
   validationResults?: ValidationResult[];
   is_favorite?: boolean;
+  /** developer-mode の L2/L3 生成時にのみ存在する */
+  block_contents?: Record<string, string>;
+  personalization_stats?: PersonalizationStats;
 }
 
 /** スカウト文の修正記録 */

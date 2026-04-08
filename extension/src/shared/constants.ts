@@ -105,6 +105,7 @@ export const STORAGE_KEYS = {
   CONFIG_CACHE: 'scout_config_cache',
   GENERATE_SETTINGS: 'scout_generate_settings',
   DETECTION_KEYWORDS: 'scout_detection_keywords',
+  DEV_MODE: 'scout_dev_mode',
 } as const;
 
 /** 会社IDから施設名キーワード（求人ドロップダウンのテキストに含まれるべき文字列） */

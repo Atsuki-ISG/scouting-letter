@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -52,3 +52,50 @@ class GenerateResponse(BaseModel):
 class BatchGenerateResponse(BaseModel):
     results: List[GenerateResponse]
     summary: dict
+
+
+# ---------------------------------------------------------------------------
+# Personalized scout (L2/L3) — a parallel generation API used by the
+# extension's developer mode. Kept separate from GenerateOptions/Response
+# so neither pipeline can accidentally break the other.
+# ---------------------------------------------------------------------------
+
+
+class PersonalizedGenerateOptions(BaseModel):
+    level: Literal["L2", "L3"]
+    is_resend: bool = False
+    force_employment: Optional[str] = None
+    job_category_filter: Optional[str] = None
+    # Optional: force a specific template row from the Sheets template
+    # sheet (by _row_index). Useful when the director wants to try a
+    # draft template without making it the default for this slot.
+    template_row_index: Optional[int] = None
+
+
+class PersonalizationStats(BaseModel):
+    level: str
+    total_chars: int
+    personalized_chars: int
+    fixed_chars: int
+    ratio: float  # 0..1
+    per_block_chars: Dict[str, int]
+
+
+class PersonalizedGenerateResponse(BaseModel):
+    member_id: str
+    template_type: str
+    generation_path: Literal["ai_structured", "filtered_out"]
+    personalized_text: str
+    full_scout_text: str
+    block_contents: Dict[str, str]
+    personalization_stats: PersonalizationStats
+    job_category: Optional[str] = None
+    is_favorite: bool = False
+    validation_warnings: List[str] = []
+    filter_reason: Optional[str] = None
+
+
+class PersonalizedGenerateRequest(BaseModel):
+    company_id: str
+    profile: CandidateProfile
+    options: PersonalizedGenerateOptions

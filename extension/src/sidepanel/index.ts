@@ -3,6 +3,7 @@ import { CandidateList } from './components/CandidateList';
 import { ImportPanel } from './components/ImportPanel';
 import { ConversationPanel } from './components/ConversationPanel';
 import { GeneratePanel } from './components/GeneratePanel';
+import { PersonalizedGeneratePanel } from './components/PersonalizedGeneratePanel';
 import { DebugPanel } from './components/DebugPanel';
 import { ConfirmationPopup } from './components/ConfirmationPopup';
 import { storage } from '../shared/storage';
@@ -713,6 +714,37 @@ function generateProfileMd(facility: FacilityInfo): string {
   return lines.join('\n');
 }
 
+/** 開発者モードの初期化 — devMode トグルと dev-only タブの可視化。 */
+async function setupDevMode(): Promise<void> {
+  const toggle = document.getElementById('settings-dev-mode') as HTMLInputElement | null;
+  const devElements = document.querySelectorAll<HTMLElement>('.dev-only');
+
+  const applyVisibility = (enabled: boolean) => {
+    devElements.forEach((el) => {
+      el.classList.toggle('hidden', !enabled);
+    });
+    // If dev mode is turned off while sitting on the personalized tab,
+    // bounce back to extract so the user isn't left on a hidden panel.
+    if (!enabled) {
+      const activePersonalized = document.querySelector('.tab.active[data-tab="personalized"]');
+      if (activePersonalized) {
+        const extractTab = document.querySelector('.tab[data-tab="extract"]') as HTMLButtonElement | null;
+        extractTab?.click();
+      }
+    }
+  };
+
+  const initial = await storage.getDevMode();
+  if (toggle) toggle.checked = initial;
+  applyVisibility(initial);
+
+  toggle?.addEventListener('change', async () => {
+    const enabled = toggle.checked;
+    await storage.setDevMode(enabled);
+    applyVisibility(enabled);
+  });
+}
+
 /** 初期化 */
 async function init(): Promise<void> {
   setupTabs();
@@ -724,9 +756,11 @@ async function init(): Promise<void> {
   const candidateList = new CandidateList();
   new ImportPanel(candidateList);
   new GeneratePanel(candidateList);
+  new PersonalizedGeneratePanel(candidateList);
   setupJobOfferSelect(candidateList);
   setupAutoJobOfferToggle();
   new ConversationPanel();
+  await setupDevMode();
   const debugPanel = new DebugPanel();
   const confirmPopup = new ConfirmationPopup();
 

@@ -1,5 +1,10 @@
 import { storage } from './storage';
-import type { CandidateProfile, FixRecord } from './types';
+import type {
+  CandidateProfile,
+  ConversationThread,
+  FixRecord,
+  PersonalizationStats,
+} from './types';
 
 export interface GenerateOptions {
   is_resend?: boolean;
@@ -29,6 +34,29 @@ export interface BatchGenerateResponse {
     pattern_matched: number;
     filtered_out: number;
   };
+}
+
+/** Developer-mode: L2/L3 structured personalized generation */
+export interface PersonalizedGenerateOptions {
+  level: 'L2' | 'L3';
+  is_resend?: boolean;
+  force_employment?: string;
+  job_category_filter?: string;
+  template_row_index?: number;
+}
+
+export interface PersonalizedGenerateResponse {
+  member_id: string;
+  template_type: string;
+  generation_path: 'ai_structured' | 'filtered_out';
+  personalized_text: string;
+  full_scout_text: string;
+  block_contents: Record<string, string>;
+  personalization_stats: PersonalizationStats;
+  job_category?: string;
+  is_favorite: boolean;
+  validation_warnings: string[];
+  filter_reason?: string;
 }
 
 export interface CompanyConfig {
@@ -227,6 +255,56 @@ export const apiClient = {
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ company, replies }),
     }, API_TIMEOUT_MS);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(formatApiError(res.status, text));
+    }
+    return res.json();
+  },
+
+  async generatePersonalized(
+    companyId: string,
+    profile: CandidateProfile,
+    options: PersonalizedGenerateOptions,
+  ): Promise<PersonalizedGenerateResponse> {
+    const endpoint = await this.getEndpoint();
+    const headers = await this.getHeaders();
+    const res = await fetchWithTimeout(
+      `${endpoint}/api/v1/generate/personalized`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          profile,
+          options,
+        }),
+      },
+      API_TIMEOUT_MS,
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(formatApiError(res.status, text));
+    }
+    return res.json();
+  },
+
+  async postConversationLogs(
+    company: string,
+    threads: ConversationThread[],
+    source: string = 'extension_manual',
+  ): Promise<{ status: string; appended: number; updated: number }> {
+    const endpoint = await this.getEndpoint();
+    const headers = await this.getHeaders();
+    const res = await fetchWithTimeout(
+      `${endpoint}/api/v1/admin/conversation_logs`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company, threads, source }),
+      },
+      HEALTH_TIMEOUT_MS,
+    );
     if (!res.ok) {
       const text = await res.text();
       throw new Error(formatApiError(res.status, text));

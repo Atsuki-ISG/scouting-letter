@@ -410,8 +410,67 @@ export class ConversationPanel {
     return '興味あり'; // デフォルト: 返信があれば興味あり
   }
 
+  /** 会話ログをサーバーに送信（開発者モード専用） */
+  private setupSendConversationLogsButton(): void {
+    const btn = document.getElementById('btn-send-conversation-logs');
+    const statusEl = document.getElementById('send-conversation-logs-status');
+    if (!btn || !statusEl) return;
+
+    btn.addEventListener('click', async () => {
+      btn.setAttribute('disabled', 'true');
+      btn.textContent = '送信中...';
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = '送信中...';
+      statusEl.style.color = '#6b7280';
+
+      try {
+        const conversations = await storage.getConversations();
+        if (conversations.length === 0) {
+          statusEl.textContent = '送信対象のやりとりがありません';
+          statusEl.style.color = '#b45309';
+          return;
+        }
+
+        const company = await storage.getCompany();
+        // Group by company so a single call contains one company's
+        // threads. If the user has mixed companies in storage, we
+        // fall back to the UI-selected company for anything missing.
+        const byCompany: Record<string, typeof conversations> = {};
+        for (const thread of conversations) {
+          const c = thread.company || company;
+          if (!byCompany[c]) byCompany[c] = [];
+          byCompany[c].push(thread);
+        }
+
+        let totalAppended = 0;
+        let totalUpdated = 0;
+        for (const [c, threads] of Object.entries(byCompany)) {
+          const result = await apiClient.postConversationLogs(
+            c,
+            threads,
+            'extension_manual',
+          );
+          totalAppended += result.appended;
+          totalUpdated += result.updated;
+        }
+
+        statusEl.textContent =
+          `送信完了: ${totalAppended}件追加 / ${totalUpdated}件更新`;
+        statusEl.style.color = '#059669';
+      } catch (err) {
+        statusEl.textContent = `送信失敗: ${err instanceof Error ? err.message : String(err)}`;
+        statusEl.style.color = '#dc2626';
+      } finally {
+        btn.removeAttribute('disabled');
+        btn.textContent = '会話ログをサーバーに送信';
+        setTimeout(() => statusEl.classList.add('hidden'), 6000);
+      }
+    });
+  }
+
   /** エクスポートボタン */
   private setupExportButtons(): void {
+    this.setupSendConversationLogsButton();
     // 全件やりとりYAMLエクスポート（1ファイルにまとめる）
     document.getElementById('btn-export-all-conversations')?.addEventListener('click', async () => {
       const conversations = await storage.getConversations();

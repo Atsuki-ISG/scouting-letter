@@ -19,6 +19,7 @@
     <nav class="tabs">
       <button class="tab active" data-tab="extract">📋 抽出</button>
       <button class="tab" data-tab="generate">🤖 API生成</button>
+      <button class="tab dev-only hidden" data-tab="personalized">🧪 新パーソナライズ</button>
       <button class="tab" data-tab="send">📤 送信</button>
       <button class="tab" data-tab="conversation">💬 返信</button>
       <button class="tab" data-tab="settings">⚙ 設定</button>
@@ -113,6 +114,46 @@
         </div>
       </div>
     </div>
+
+    <!-- 🧪 新パーソナライズ生成パネル (developer mode only) -->
+    <section id="panel-personalized" class="panel hidden">
+      <div class="generate-info">
+        <p style="font-size:11px;color:#6b7280;margin-bottom:8px;">
+          L2/L3 構造化生成。テンプレに
+          <code>{opening}</code> <code>{bridge}</code> <code>{facility_intro}</code>
+          <code>{job_framing}</code> <code>{closing_cta}</code>
+          のプレースホルダーが必要です。
+        </p>
+        <p>抽出済み: <strong id="personalized-profile-count">0</strong>件</p>
+      </div>
+
+      <div class="gen-settings-row">
+        <label class="gen-settings-label">レベル</label>
+        <select id="personalized-level" class="gen-settings-select">
+          <option value="L3">L3 — 全文個別化（5ブロック）</option>
+          <option value="L2">L2 — 冒頭+結びのみ</option>
+        </select>
+      </div>
+      <div class="gen-settings-row">
+        <label class="gen-settings-label">送信種別</label>
+        <select id="personalized-send-type" class="gen-settings-select">
+          <option value="initial">初回</option>
+          <option value="resend">再送</option>
+        </select>
+      </div>
+
+      <button id="btn-personalized-generate" class="btn btn-primary btn-block" disabled>一括生成</button>
+
+      <div id="personalized-progress" class="progress-section hidden">
+        <div id="personalized-progress-text" class="progress-text">生成中...</div>
+        <div class="progress-bar">
+          <div id="personalized-progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div id="personalized-result-summary" class="result-summary hidden"></div>
+      <div id="personalized-results" style="margin-top:12px;"></div>
+    </section>
 
     <!-- Phase 3: 送信アシストパネル -->
     <section id="panel-send" class="panel hidden">
@@ -213,12 +254,22 @@
       <div class="export-section">
         <button id="btn-sync-replies" class="btn btn-primary btn-block">サーバーに返信データを同期</button>
         <div id="sync-replies-status" class="hidden" style="font-size:12px;margin:4px 0;"></div>
+        <button id="btn-send-conversation-logs" class="btn btn-primary btn-block dev-only hidden">会話ログをサーバーに送信</button>
+        <div id="send-conversation-logs-status" class="hidden" style="font-size:12px;margin:4px 0;"></div>
         <button id="btn-export-all-conversations" class="btn btn-secondary btn-block">全件YAMLエクスポート</button>
         <button id="btn-export-reply-records" class="btn btn-secondary btn-block">返信スカウト記録エクスポート</button>
       </div>
     </section>
     <!-- 設定パネル -->
     <section id="panel-settings" class="panel hidden">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">開発者モード</h3>
+      <label class="toggle-label" style="margin-bottom:12px;display:flex;align-items:center;gap:6px;">
+        <input type="checkbox" id="settings-dev-mode">
+        <span>開発者モードを有効化（🧪 新パーソナライズタブが表示されます）</span>
+      </label>
+
+      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
+
       <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">API設定</h3>
       <div class="input-group">
         <label for="settings-api-endpoint">APIエンドポイント:</label>

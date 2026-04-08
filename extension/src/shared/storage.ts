@@ -225,6 +225,19 @@ export const storage = {
     await chrome.storage.local.set({ [STORAGE_KEYS.GENERATE_SETTINGS]: settings });
   },
 
+  // --- 開発者モード ---
+  // 有効化すると拡張サイドパネルに「🧪 新パーソナライズ生成」タブが
+  // 出現する。通常のオペレーター向けフローはこれに影響されない。
+
+  async getDevMode(): Promise<boolean> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.DEV_MODE);
+    return Boolean(result[STORAGE_KEYS.DEV_MODE]);
+  },
+
+  async setDevMode(enabled: boolean): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.DEV_MODE]: enabled });
+  },
+
   async clear(): Promise<void> {
     await chrome.storage.local.remove([
       STORAGE_KEYS.CANDIDATES,

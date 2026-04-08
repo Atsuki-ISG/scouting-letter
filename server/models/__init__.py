@@ -5,6 +5,10 @@ from models.generation import (
     BatchGenerateRequest,
     GenerateResponse,
     BatchGenerateResponse,
+    PersonalizedGenerateOptions,
+    PersonalizedGenerateRequest,
+    PersonalizedGenerateResponse,
+    PersonalizationStats,
 )
 
 __all__ = [
@@ -14,4 +18,8 @@ __all__ = [
     "BatchGenerateRequest",
     "GenerateResponse",
     "BatchGenerateResponse",
+    "PersonalizedGenerateOptions",
+    "PersonalizedGenerateRequest",
+    "PersonalizedGenerateResponse",
+    "PersonalizationStats",
 ]
