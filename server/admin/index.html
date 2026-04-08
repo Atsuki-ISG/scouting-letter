@@ -2094,6 +2094,7 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
         <div class="analysis-panel-header">
           <h3>テンプレート編集</h3>
           <span style="font-size:11px;color:var(--c-text-muted);font-weight:500;">テキスト選択 → ツール表示</span>
+          <button class="btn btn-secondary btn-sm" style="margin-left:auto;font-size:11px;" onclick="openExpandFromCurrentTemplate()" title="このテンプレートを他のテンプレートに展開">📤 展開</button>
         </div>
         <div class="ann-toolbar hidden" id="annToolbar">
           <button class="ann-btn" onclick="applyStrikethrough()" title="取り消し線">&#x2715; 削除</button>
@@ -2112,14 +2113,43 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
           <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:12px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
               <strong style="font-size:13px;">📤 他のテンプレートに展開</strong>
-              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('type')">全型</button>
-              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('category')">全職種</button>
-              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('all')">全て</button>
             </div>
-            <div id="expandTargets" style="max-height:150px;overflow-y:auto;margin-bottom:8px;font-size:12px;"></div>
+            <!-- モード切替 -->
+            <div id="expandModeSwitch" style="display:flex;gap:12px;margin-bottom:8px;font-size:12px;">
+              <label style="cursor:pointer;">
+                <input type="radio" name="expandMode" value="template" checked onchange="onExpandModeChange()" style="accent-color:var(--c-primary);">
+                📝 テンプレート展開
+              </label>
+              <label style="cursor:pointer;">
+                <input type="radio" name="expandMode" value="prompt_proposal" onchange="onExpandModeChange()" style="accent-color:var(--c-primary);">
+                🧠 プロンプト反映（提案追加）
+              </label>
+            </div>
+            <div id="expandModeHint" style="font-size:11px;color:#4b5563;margin-bottom:8px;padding:6px 8px;background:#fff;border-radius:4px;"></div>
+
+            <!-- 他会社トグル -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;">
+              <label style="cursor:pointer;">
+                <input type="checkbox" id="expandCrossCompanyToggle" onchange="rebuildExpandTargets()" style="accent-color:var(--c-primary);">
+                他会社にも展開
+              </label>
+              <span style="color:#6b7280;">（OFFなら現在の会社内のみ）</span>
+            </div>
+
+            <!-- プリセット -->
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('type')">同職種の全型</button>
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('category')">同型の全職種</button>
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('same_company')">この会社の全て</button>
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('cross_type')">全社の同型</button>
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('all')">全て</button>
+              <button class="btn btn-sm btn-secondary" onclick="selectExpandPreset('none')">解除</button>
+            </div>
+            <div id="expandTargets" style="max-height:180px;overflow-y:auto;margin-bottom:8px;font-size:12px;"></div>
             <div style="display:flex;gap:8px;align-items:center;">
               <input id="expandDirective" type="text" placeholder="展開時の指示（任意）" style="flex:1;padding:4px 8px;border:1px solid var(--c-border);border-radius:4px;font-size:12px;">
               <button class="btn btn-primary btn-sm" onclick="executeExpand()">展開を実行</button>
+              <button class="btn btn-secondary btn-sm" onclick="closeExpandSection()">閉じる</button>
             </div>
           </div>
           <!-- 展開結果のdiff一覧 -->
@@ -2286,6 +2316,7 @@ const TABS = [
   { slug: 'profiles', name: 'プロフィール' },
   { slug: 'send_data', name: '送信履歴', custom: true },
   { slug: 'fix_feedback', name: '修正フィードバック', custom: true },
+  { slug: 'job_category_failures', name: '職種解決失敗', custom: true },
 ];
 
 // ===== Flow View =====
@@ -3160,6 +3191,10 @@ async function loadData() {
     }
     if (currentTab === 'send_data') {
       await renderSendDataTab(company);
+      return;
+    }
+    if (currentTab === 'job_category_failures') {
+      await renderJobCategoryFailuresTab(company);
       return;
     }
   }
@@ -4545,7 +4580,8 @@ function drawSendDataTable() {
             <td style="font-size:11px;">${escHtml(it['年齢層'] || '')}</td>
             <td style="font-size:11px;">${escHtml(it['希望雇用形態'] || '')}</td>
             <td style="font-size:11px;">${reply ? `<span style="color:#059669;font-weight:600;">${escHtml(reply)}</span>` : '—'}</td>
-            <td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-sm" onclick="openEditSendDataRow(${it._row_index})">編集</button>
               <button class="btn btn-sm btn-secondary" onclick="confirmDeleteSendDataRow(${it._row_index}, '${escHtml(it['会員番号'] || '')}')">削除</button>
             </td>
           </tr>
@@ -4611,18 +4647,272 @@ async function confirmDeleteSendDataRow(rowIndex, memberId) {
   }
 }
 
+// Editable column order in the edit modal. 日時 is intentionally omitted —
+// the timestamp is immutable (must match the server's editable whitelist).
+const SEND_DATA_EDITABLE_FIELDS = [
+  '会員番号', '職種カテゴリ', 'テンプレート種別', 'テンプレートVer',
+  '生成パス', 'パターン', '年齢層', '資格', '経験区分',
+  '希望雇用形態', '就業状況', '地域', '曜日', '時間帯',
+  '返信', '返信日', '返信カテゴリ',
+];
+
+function openEditSendDataRow(rowIndex) {
+  const row = _sendDataItems.find(it => it._row_index === rowIndex);
+  if (!row) {
+    alert('対象行が見つかりません: ' + rowIndex);
+    return;
+  }
+  const original = {};
+  const values = {};
+  for (const f of SEND_DATA_EDITABLE_FIELDS) {
+    original[f] = row[f] ?? '';
+    values[f] = row[f] ?? '';
+  }
+  openModal(
+    `送信履歴の編集 (行 ${rowIndex} / 会員番号 ${row['会員番号'] || '?'})`,
+    SEND_DATA_EDITABLE_FIELDS,
+    values,
+    async (data) => {
+      const changed = {};
+      for (const f of SEND_DATA_EDITABLE_FIELDS) {
+        const next = (data[f] ?? '').toString();
+        if (next !== (original[f] ?? '').toString()) {
+          changed[f] = next;
+        }
+      }
+      if (Object.keys(changed).length === 0) {
+        alert('変更がありません');
+        return;
+      }
+      try {
+        await api(
+          'PATCH',
+          `/api/v1/admin/send_data/${encodeURIComponent(_sendDataCompany)}/${rowIndex}`,
+          { cells: changed }
+        );
+        closeModal();
+        await renderSendDataTab(_sendDataCompany);
+      } catch (e) {
+        alert('編集失敗: ' + (e.message || String(e)));
+      }
+    }
+  );
+}
+
+// ===== 職種解決失敗 (Phase 3 — BACKLOG: 自動提案ワークフロー) =====
+let _jcfGroups = [];
+let _jcfDays = 30;
+let _jcfCompany = '';
+
+async function renderJobCategoryFailuresTab(company) {
+  _jcfCompany = company || '';
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  const params = new URLSearchParams();
+  if (company) params.set('company', company);
+  params.set('days', String(_jcfDays));
+  try {
+    const data = await api('GET', `/api/v1/admin/job_category_failures?${params}`);
+    _jcfGroups = data.groups || [];
+  } catch (e) {
+    content.innerHTML = `<div class="empty-msg">読み込みに失敗しました: ${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  drawJobCategoryFailuresTable();
+}
+
+function drawJobCategoryFailuresTable() {
+  const content = document.getElementById('content');
+  const groups = _jcfGroups;
+  const total = groups.reduce((s, g) => s + (g.count || 0), 0);
+  const stageBadge = (stage) => {
+    const map = {
+      keyword: ['#fef3c7', '#92400e', 'キーワード未マッチ'],
+      explicit: ['#fecaca', '#991b1b', '明示指定が範囲外'],
+      company_categories_empty: ['#e0e7ff', '#3730a3', '会社の募集カテゴリ未登録'],
+    };
+    const [bg, fg, label] = map[stage] || ['#e5e7eb', '#374151', stage];
+    return `<span style="background:${bg};color:${fg};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">${escHtml(label)}</span>`;
+  };
+
+  const groupsHtml = groups.length === 0
+    ? `<div class="empty-msg" style="padding:24px;text-align:center;color:var(--c-text-muted);">対象期間に職種解決失敗はありません</div>`
+    : groups.map((g, gi) => {
+        const cats = (g.company_categories || []).map(labelForCategory).join(' / ') || '—';
+        const missing = Object.entries(g.missing_fields_counter || {})
+          .sort((a, b) => b[1] - a[1])
+          .map(([f, c]) => `${escHtml(f)}×${c}`)
+          .join(', ');
+        const samplesHtml = (g.samples || []).map((s, si) => {
+          const ts = (s.timestamp || '').replace('T', ' ').slice(0, 16);
+          const txt = (s.searched_text || '').slice(0, 240);
+          return `
+            <tr>
+              <td style="font-size:10px;white-space:nowrap;color:var(--c-text-muted);">${escHtml(ts)}</td>
+              <td style="font-family:var(--font-mono);font-size:10px;">${escHtml(s.member_id || '')}</td>
+              <td style="font-size:11px;line-height:1.45;">${escHtml(txt)}${(s.searched_text || '').length > 240 ? '…' : ''}</td>
+              <td style="text-align:right;white-space:nowrap;">
+                <button class="btn btn-sm btn-primary" onclick="proposeKeywordFromSample(${gi}, ${si})">候補抽出</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+        return `
+          <div style="border:1px solid var(--c-border);border-radius:8px;padding:12px 14px;margin-bottom:14px;background:#fff;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+              ${stageBadge(g.failure_stage)}
+              <strong style="font-size:13px;">${escHtml(g.company || '(unknown)')}</strong>
+              <span style="color:var(--c-text-muted);font-size:11px;">候補カテゴリ: ${escHtml(cats)}</span>
+              <span style="margin-left:auto;font-size:12px;color:#dc2626;font-weight:600;">${g.count} 件</span>
+            </div>
+            <div style="font-size:11px;color:var(--c-text-muted);margin-bottom:8px;">
+              missing: ${missing || '—'}
+            </div>
+            <table class="data-table" style="margin-top:4px;">
+              <thead>
+                <tr><th style="width:120px">日時</th><th style="width:90px">会員ID</th><th>検索対象テキスト</th><th style="width:96px">操作</th></tr>
+              </thead>
+              <tbody>${samplesHtml || '<tr><td colspan="4" style="text-align:center;color:var(--c-text-muted);">サンプルなし</td></tr>'}</tbody>
+            </table>
+          </div>
+        `;
+      }).join('');
+
+  content.innerHTML = `
+    <div class="toolbar" style="margin-bottom:12px;">
+      <span class="toolbar-title">職種解決失敗 ${_jcfCompany ? `(${escHtml(_jcfCompany)})` : '(全社)'}</span>
+      <span style="margin-left:12px;font-size:12px;color:var(--c-text-muted);">
+        グループ ${groups.length} / 合計 ${total} 件
+      </span>
+      <select onchange="setJcfDays(this.value)" style="margin-left:auto;font-size:12px;">
+        ${[7, 14, 30, 60, 90].map(d => `<option value="${d}" ${d === _jcfDays ? 'selected' : ''}>過去 ${d} 日</option>`).join('')}
+      </select>
+    </div>
+    ${groupsHtml}
+    <p style="font-size:11px;color:var(--c-text-muted);margin-top:12px;line-height:1.6;">
+      ・<strong>キーワード未マッチ</strong>: 候補者の希望職種・経歴・自己PRから職種を特定できなかった<br>
+      ・<strong>候補抽出</strong>を押すと、検索テキストから単語を選んで「職種キーワード」シートに追加できます<br>
+      ・追加したキーワードは次回の生成から自動的に効きます
+    </p>
+  `;
+}
+
+function setJcfDays(value) {
+  _jcfDays = parseInt(value, 10) || 30;
+  renderJobCategoryFailuresTab(_jcfCompany);
+}
+
+function proposeKeywordFromSample(groupIdx, sampleIdx) {
+  const g = _jcfGroups[groupIdx];
+  if (!g) return;
+  const sample = (g.samples || [])[sampleIdx];
+  if (!sample) return;
+  const cats = g.company_categories || [];
+  if (cats.length === 0) {
+    alert('この会社には募集カテゴリが登録されていません。先にテンプレートを追加してください');
+    return;
+  }
+  // Extract candidate words from the searched text. Strip the section prefixes
+  // ("[desired_job]" / "[experience]" / etc) the resolver added for debugging,
+  // then split on common separators.
+  const cleaned = (sample.searched_text || '')
+    .replace(/\[[^\]]+\]/g, ' ')
+    .replace(/[、,，\.。\/／・|｜()（）「」『』\[\]【】<>＜＞]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const tokens = Array.from(new Set(
+    cleaned.split(' ').filter(t => t && t.length >= 2 && t.length <= 20)
+  )).slice(0, 30);
+
+  const fields = [
+    { name: '_keyword', label: 'キーワード（必須）', value: '' },
+    { name: '_job_category', label: '職種カテゴリ（必須）', value: cats[0], options: cats },
+    { name: '_source_fields', label: '検索フィールド', value: 'desired_job,experience,self_pr' },
+    { name: '_company', label: '対象会社（空=全社共通）', value: g.company || '' },
+    { name: '_note', label: 'メモ', value: `Phase 3 提案 / member=${sample.member_id || ''}` },
+  ];
+
+  // Build a custom modal — openModal can't render the suggestion picker.
+  document.getElementById('modalTitle').textContent = 'キーワード追加（職種解決失敗からの提案）';
+  const body = document.getElementById('modalBody');
+  body.innerHTML = `
+    <div class="field">
+      <label>検索対象テキスト（参考）</label>
+      <pre style="background:#f9fafb;padding:8px;border-radius:6px;font-size:11px;line-height:1.5;white-space:pre-wrap;max-height:120px;overflow:auto;">${escHtml(sample.searched_text || '')}</pre>
+    </div>
+    <div class="field">
+      <label>候補トークン<span class="hint">クリックでキーワード欄に挿入</span></label>
+      <div id="jcfTokens" style="display:flex;flex-wrap:wrap;gap:4px;">
+        ${tokens.map(t => `<button type="button" class="btn btn-sm" data-token="${escHtml(t)}" style="font-size:11px;padding:2px 8px;">${escHtml(t)}</button>`).join('') || '<span style="color:var(--c-text-muted);font-size:11px;">候補なし</span>'}
+      </div>
+    </div>
+    ${fields.map(f => {
+      if (f.options) {
+        return `<div class="field"><label>${escHtml(f.label)}</label>
+          <select name="${escHtml(f.name)}">
+            ${f.options.map(o => `<option value="${escHtml(o)}" ${o === f.value ? 'selected' : ''}>${escHtml(labelForCategory(o))} (${escHtml(o)})</option>`).join('')}
+          </select></div>`;
+      }
+      return `<div class="field"><label>${escHtml(f.label)}</label>
+        <input type="text" name="${escHtml(f.name)}" value="${escHtml(f.value || '')}"></div>`;
+    }).join('')}
+  `;
+  // Token click → set keyword
+  body.querySelectorAll('#jcfTokens [data-token]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = body.querySelector('input[name="_keyword"]');
+      if (input) { input.value = btn.dataset.token; input.focus(); }
+    });
+  });
+
+  const saveBtn = document.getElementById('modalSave');
+  const newSave = saveBtn.cloneNode(true);
+  saveBtn.parentNode.replaceChild(newSave, saveBtn);
+  newSave.id = 'modalSave';
+  newSave.textContent = 'キーワードを追加';
+  newSave.addEventListener('click', async () => {
+    const keyword = body.querySelector('input[name="_keyword"]').value.trim();
+    const jobCategory = body.querySelector('select[name="_job_category"]').value;
+    const sourceFields = body.querySelector('input[name="_source_fields"]').value.trim();
+    const companyVal = body.querySelector('input[name="_company"]').value.trim();
+    const note = body.querySelector('input[name="_note"]').value.trim();
+    if (!keyword) { alert('キーワードを入力してください'); return; }
+    try {
+      await api('POST', '/api/v1/admin/job_category_keywords/append', {
+        company: companyVal,
+        job_category: jobCategory,
+        keyword,
+        source_fields: sourceFields,
+        note,
+      });
+      closeModal();
+      alert(`「${keyword}」を追加しました`);
+    } catch (e) {
+      alert('追加失敗: ' + (e.message || String(e)));
+    }
+  });
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
 // ===== 修正フィードバック (Phase A) =====
 let _fixFeedbackData = [];
 let _fixFeedbackPendingOnly = true;
 const _fixFeedbackExpanded = new Set();
+// Phase B: 改善提案
+let _improvementProposals = [];
+let _improvementGenerating = false;
 
 async function renderFixFeedbackTab(company) {
   const content = document.getElementById('content');
   const statusFilter = _fixFeedbackPendingOnly ? '&status=pending' : '';
   const companyParam = company ? `?company=${encodeURIComponent(company)}${statusFilter}` : (statusFilter ? `?${statusFilter.slice(1)}` : '');
   try {
-    const data = await api('GET', `/api/v1/admin/fix_feedback${companyParam}`);
+    const [data, proposals] = await Promise.all([
+      api('GET', `/api/v1/admin/fix_feedback${companyParam}`),
+      api('GET', '/api/v1/admin/improvement_proposals?status=pending').catch(() => ({ items: [] })),
+    ]);
     _fixFeedbackData = data.items || [];
+    _improvementProposals = proposals.items || [];
   } catch (e) {
     content.innerHTML = `<div class="empty-msg">読み込みに失敗しました: ${escHtml(e.message || String(e))}</div>`;
     return;
@@ -4683,6 +4973,9 @@ function drawFixFeedbackTable() {
         `;
       }).join('');
 
+  // Phase B: 改善提案セクション
+  const proposalsHtml = drawImprovementProposalsSection();
+
   content.innerHTML = `
     <div class="toolbar" style="margin-bottom:12px;">
       <span class="toolbar-title">修正フィードバック</span>
@@ -4691,11 +4984,15 @@ function drawFixFeedbackTable() {
         <span class="fb-status fb-adopted" style="margin-left:6px;">取込済 ${adoptedCount}</span>
         <span class="fb-status fb-skipped" style="margin-left:6px;">スキップ ${skippedCount}</span>
       </span>
-      <label style="margin-left:auto;font-size:12px;">
+      <button class="btn btn-sm btn-primary" style="margin-left:auto;" onclick="generateImprovementProposals()" ${_improvementGenerating ? 'disabled' : ''}>
+        ${_improvementGenerating ? '生成中…' : 'AI改善提案を生成'}
+      </button>
+      <label style="margin-left:8px;font-size:12px;">
         <input type="checkbox" ${_fixFeedbackPendingOnly ? 'checked' : ''} onchange="toggleFixPendingFilter(this.checked)">
         未対応のみ表示
       </label>
     </div>
+    ${proposalsHtml}
     <table class="data-table">
       <thead>
         <tr>
@@ -4757,6 +5054,262 @@ async function updateFixStatus(id, status) {
     await renderFixFeedbackTab(company);
   } catch (e) {
     alert('更新失敗: ' + (e.message || String(e)));
+  }
+}
+
+// ===== Phase B: 改善提案 =====
+const TARGET_LABELS = {
+  job_category_keywords: '職種キーワード',
+  prompts: 'プロンプト追加',
+  patterns: '型はめパターン',
+};
+
+function drawImprovementProposalsSection() {
+  const proposals = _improvementProposals;
+  if (!proposals || proposals.length === 0) {
+    return `
+      <div style="margin-bottom:14px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:var(--c-text-muted);">
+        🤖 AI改善提案はまだありません。「AI改善提案を生成」ボタンから対象シート（職種キーワード/プロンプト/型はめパターン）を選んで生成できます。
+      </div>
+    `;
+  }
+  // Group by target_sheet
+  const grouped = {};
+  for (const p of proposals) {
+    const t = p.target_sheet || 'job_category_keywords';
+    (grouped[t] = grouped[t] || []).push(p);
+  }
+  return Object.entries(grouped).map(([target, items]) => drawProposalGroup(target, items)).join('');
+}
+
+function drawProposalGroup(target, items) {
+  const label = TARGET_LABELS[target] || target;
+  let head = '';
+  let bodyRows = '';
+  if (target === 'job_category_keywords') {
+    head = `<th>キーワード</th><th>職種</th><th>適用範囲</th>`;
+    bodyRows = items.map(p => {
+      const payload = p.payload || {};
+      return rowShell(p, `
+        <td><input type="text" class="prop-keyword" value="${escHtml(payload.keyword || '')}" style="width:140px;font-size:12px;"></td>
+        <td>${jobCategorySelect(payload.job_category, 'prop-jc')}</td>
+        <td>${scopeSelect(p.scope_company, 'prop-scope')}</td>
+      `);
+    }).join('');
+  } else if (target === 'prompts') {
+    head = `<th>section</th><th>職種</th><th>追加内容</th><th>適用範囲</th>`;
+    bodyRows = items.map(p => {
+      const payload = p.payload || {};
+      const sections = ['station_features', 'education', 'ai_guide'];
+      const secOptions = sections.map(s =>
+        `<option value="${s}" ${s === payload.section_type ? 'selected' : ''}>${s}</option>`
+      ).join('');
+      return rowShell(p, `
+        <td><select class="prop-section" style="font-size:11px;">${secOptions}</select></td>
+        <td>${jobCategorySelect(payload.job_category, 'prop-jc')}</td>
+        <td><textarea class="prop-content" rows="3" style="width:280px;font-size:11px;">${escHtml(payload.content || '')}</textarea></td>
+        <td>${scopeSelect(p.scope_company, 'prop-scope')}</td>
+      `);
+    }).join('');
+  } else if (target === 'patterns') {
+    head = `<th>会社</th><th>型</th><th>職種</th><th>追加バリエーション</th>`;
+    bodyRows = items.map(p => {
+      const payload = p.payload || {};
+      const types = ['A', 'B1', 'B2', 'C', 'D', 'E', 'F', 'G'];
+      const typeOptions = types.map(t =>
+        `<option value="${t}" ${t === payload.pattern_type ? 'selected' : ''}>${t}</option>`
+      ).join('');
+      return rowShell(p, `
+        <td>${scopeSelect(p.scope_company, 'prop-scope', /*allowGlobal=*/false)}</td>
+        <td><select class="prop-pattern-type" style="font-size:11px;">${typeOptions}</select></td>
+        <td>${jobCategorySelect(payload.job_category, 'prop-jc')}</td>
+        <td><input type="text" class="prop-new-feature" value="${escHtml(payload.new_feature || '')}" style="width:240px;font-size:12px;"></td>
+      `);
+    }).join('');
+  } else {
+    return '';
+  }
+
+  return `
+    <div style="margin-bottom:14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;">
+      <div style="padding:9px 14px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;border-radius:8px 8px 0 0;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;">
+        🤖 AI改善提案（${escHtml(label)}） <span style="color:#64748b;font-weight:400;font-size:11px;">${items.length} 件 pending</span>
+      </div>
+      <table class="data-table" style="margin:0;">
+        <thead>
+          <tr>
+            <th style="width:120px;">日時</th>
+            ${head}
+            <th>根拠</th>
+            <th>元fix</th>
+            <th style="width:140px;">操作</th>
+          </tr>
+        </thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function rowShell(p, middleCellsHtml) {
+  const created = (p.created_at || '').replace('T', ' ').slice(0, 16);
+  return `
+    <tr data-id="${escHtml(p.id)}" data-target="${escHtml(p.target_sheet)}">
+      <td style="font-size:10px;white-space:nowrap;color:var(--c-text-muted);">${escHtml(created)}</td>
+      ${middleCellsHtml}
+      <td style="font-size:11px;line-height:1.4;max-width:240px;">${escHtml(p.rationale || '')}</td>
+      <td style="font-size:10px;color:var(--c-text-muted);font-family:var(--font-mono);">${escHtml(p.source_fix_ids || '')}</td>
+      <td style="white-space:nowrap;text-align:right;">
+        <button class="btn btn-sm btn-primary" onclick="approveProposal('${escHtml(p.id)}')">承認</button>
+        <button class="btn btn-sm btn-secondary" onclick="rejectProposal('${escHtml(p.id)}')">却下</button>
+      </td>
+    </tr>
+  `;
+}
+
+function jobCategorySelect(current, cls) {
+  return `<select class="${cls}" style="font-size:11px;">
+    ${Object.entries(JOB_CATEGORY_LABELS).map(([k, v]) =>
+      `<option value="${escHtml(k)}" ${k === current ? 'selected' : ''}>${escHtml(v)}</option>`
+    ).join('')}
+  </select>`;
+}
+
+function scopeSelect(current, cls, allowGlobal = true) {
+  // Use the company select's known options as candidates
+  const companySelect = document.getElementById('companySelect');
+  const opts = [];
+  if (allowGlobal) opts.push({ value: '', label: '全社共通' });
+  if (companySelect) {
+    Array.from(companySelect.options).forEach(o => {
+      if (o.value) opts.push({ value: o.value, label: o.value });
+    });
+  } else if (current) {
+    opts.push({ value: current, label: current });
+  }
+  return `<select class="${cls}" style="font-size:11px;">
+    ${opts.map(o =>
+      `<option value="${escHtml(o.value)}" ${o.value === (current || '') ? 'selected' : ''}>${escHtml(o.label)}</option>`
+    ).join('')}
+  </select>`;
+}
+
+async function generateImprovementProposals() {
+  if (_improvementGenerating) return;
+  const target = prompt(
+    '対象シートを入力してください:\n\n  1 = 職種キーワード（推奨）\n  2 = プロンプト追加\n  3 = 型はめパターン\n',
+    '1'
+  );
+  if (!target) return;
+  const targetMap = { '1': 'job_category_keywords', '2': 'prompts', '3': 'patterns' };
+  const targetKey = targetMap[target.trim()];
+  if (!targetKey) { alert('1〜3 を入力してください'); return; }
+  if (!confirm(`未対応の修正フィードバックを Gemini に渡して「${TARGET_LABELS[targetKey]}」の改善提案を生成します。\n\nコストが発生します（1リクエスト数円程度）。続行しますか？`)) {
+    return;
+  }
+  _improvementGenerating = true;
+  drawFixFeedbackTable();
+  try {
+    const company = document.getElementById('companySelect').value;
+    const body = { target: targetKey };
+    if (company) body.company = company;
+    const res = await api('POST', '/api/v1/admin/improvement_proposals/generate', body);
+    if ((res.proposals || []).length === 0) {
+      alert(res.warning || '新規提案はありませんでした');
+    } else {
+      alert(`${res.proposals.length} 件の提案を作成しました`);
+    }
+  } catch (e) {
+    alert('生成失敗: ' + (e.message || String(e)));
+  } finally {
+    _improvementGenerating = false;
+    const company = document.getElementById('companySelect').value;
+    await renderFixFeedbackTab(company);
+  }
+}
+
+function _readProposalEdits(proposalId) {
+  const tr = document.querySelector(`tr[data-id="${proposalId}"]`);
+  if (!tr) return null;
+  const target = tr.dataset.target || 'job_category_keywords';
+  const get = (cls) => {
+    const el = tr.querySelector('.' + cls);
+    return el ? (el.value || '').trim() : '';
+  };
+  if (target === 'job_category_keywords') {
+    return {
+      target,
+      scope_company: get('prop-scope'),
+      payload_overrides: {
+        keyword: get('prop-keyword'),
+        job_category: get('prop-jc'),
+      },
+    };
+  }
+  if (target === 'prompts') {
+    return {
+      target,
+      scope_company: get('prop-scope'),
+      payload_overrides: {
+        section_type: get('prop-section'),
+        job_category: get('prop-jc'),
+        content: get('prop-content'),
+      },
+    };
+  }
+  if (target === 'patterns') {
+    return {
+      target,
+      scope_company: get('prop-scope'),
+      payload_overrides: {
+        pattern_type: get('prop-pattern-type'),
+        job_category: get('prop-jc'),
+        new_feature: get('prop-new-feature'),
+      },
+    };
+  }
+  return null;
+}
+
+async function approveProposal(id) {
+  const edits = _readProposalEdits(id);
+  if (!edits) return;
+  // Per-target validation
+  if (edits.target === 'job_category_keywords' && !edits.payload_overrides.keyword) {
+    alert('キーワードが空です'); return;
+  }
+  if (edits.target === 'prompts' && !edits.payload_overrides.content) {
+    alert('追加内容（content）が空です'); return;
+  }
+  if (edits.target === 'patterns' && !edits.payload_overrides.new_feature) {
+    alert('追加バリエーションが空です'); return;
+  }
+  if (edits.target === 'patterns' && !edits.scope_company) {
+    alert('対象会社を選択してください'); return;
+  }
+  try {
+    await api('POST', `/api/v1/admin/improvement_proposals/${encodeURIComponent(id)}/decide`, {
+      decision: 'approve',
+      scope_company: edits.scope_company,
+      payload_overrides: edits.payload_overrides,
+    });
+    const company = document.getElementById('companySelect').value;
+    await renderFixFeedbackTab(company);
+  } catch (e) {
+    alert('承認失敗: ' + (e.message || String(e)));
+  }
+}
+
+async function rejectProposal(id) {
+  if (!confirm('この提案を却下しますか？')) return;
+  try {
+    await api('POST', `/api/v1/admin/improvement_proposals/${encodeURIComponent(id)}/decide`, {
+      decision: 'reject',
+    });
+    const company = document.getElementById('companySelect').value;
+    await renderFixFeedbackTab(company);
+  } catch (e) {
+    alert('却下失敗: ' + (e.message || String(e)));
   }
 }
 
@@ -5652,51 +6205,61 @@ async function generateImprovement() {
   }
 }
 
+// Merge hunk-level accept/reject decisions into a final body string.
+// Shared by improvement mode and expand-template mode.
+// - original/improved: raw body strings (with either \n or literal \n)
+// - hunks: ordered list of {accepted: bool} matching computeLineDiff output
+// Returns body with real newlines (no \n escaping).
+function mergeAcceptedHunks(original, improved, hunks) {
+  const norm = s => (s || '').replace(/\\n/g, '\n');
+  const entries = computeLineDiff(norm(original), norm(improved));
+
+  if (!hunks || hunks.length === 0) {
+    // No per-hunk control: take the improved body as-is
+    return norm(improved);
+  }
+
+  let hunkIdx = 0;
+  const resultLines = [];
+  let i = 0;
+  while (i < entries.length) {
+    if (entries[i].type === 'equal') {
+      resultLines.push(entries[i].text);
+      i++;
+    } else {
+      const hunkEntries = [];
+      while (i < entries.length && entries[i].type !== 'equal') {
+        hunkEntries.push(entries[i]);
+        i++;
+      }
+      const hunk = hunks[hunkIdx];
+      hunkIdx++;
+
+      if (hunk && hunk.accepted) {
+        for (const e of hunkEntries) {
+          if (e.type === 'insert') resultLines.push(e.text);
+          else if (e.type === 'modify') resultLines.push(e.newText);
+          // delete entries are omitted
+        }
+      } else {
+        for (const e of hunkEntries) {
+          if (e.type === 'delete') resultLines.push(e.text);
+          else if (e.type === 'modify') resultLines.push(e.oldText);
+          // insert entries are omitted
+        }
+      }
+    }
+  }
+  return resultLines.join('\n');
+}
+
 async function applyImprovement() {
   if (!diffOriginalBody || diffRowIndex === null) return;
 
   // If hunk mode, build merged body from accepted/rejected hunks
   let finalBody;
   if (diffHunks.length > 0) {
-    const norm = s => s.replace(/\\n/g, '\n');
-    const entries = computeLineDiff(norm(diffOriginalBody), norm(diffImprovedBody));
-
-    // Walk entries and apply/reject based on hunk decisions
-    let hunkIdx = 0;
-    const resultLines = [];
-    let i = 0;
-    while (i < entries.length) {
-      if (entries[i].type === 'equal') {
-        resultLines.push(entries[i].text);
-        i++;
-      } else {
-        // Collect hunk entries
-        const hunkEntries = [];
-        while (i < entries.length && entries[i].type !== 'equal') {
-          hunkEntries.push(entries[i]);
-          i++;
-        }
-        const hunk = diffHunks[hunkIdx];
-        hunkIdx++;
-
-        if (hunk && hunk.accepted) {
-          // Use new version
-          for (const e of hunkEntries) {
-            if (e.type === 'insert') resultLines.push(e.text);
-            else if (e.type === 'modify') resultLines.push(e.newText);
-            // delete entries are omitted (replaced by insert/modify)
-          }
-        } else {
-          // Keep original version
-          for (const e of hunkEntries) {
-            if (e.type === 'delete') resultLines.push(e.text);
-            else if (e.type === 'modify') resultLines.push(e.oldText);
-            // insert entries are omitted (rejected)
-          }
-        }
-      }
-    }
-    finalBody = resultLines.join('\n');
+    finalBody = mergeAcceptedHunks(diffOriginalBody, diffImprovedBody, diffHunks);
   } else {
     // Before/After mode: all or nothing
     finalBody = diffImprovedBody.replace(/\\n/g, '\n');
@@ -5732,23 +6295,118 @@ async function applyImprovement() {
   }
 }
 
-// ===== 一括テンプレート展開 =====
-let expandSourceTemplate = null; // { company, job_category, type }
-let expandResults = []; // API結果
+function openExpandFromCurrentTemplate() {
+  if (analysisCurrentRowIndex === null) {
+    toast('先にテンプレートを選択してください', true);
+    return;
+  }
+  const t = analysisTemplates.find(x => x._row_index === analysisCurrentRowIndex);
+  if (!t) {
+    toast('テンプレートが見つかりません', true);
+    return;
+  }
+  showExpandSection(t);
+  // Scroll into view so the user sees the panel opened below the editor
+  setTimeout(() => {
+    const el = document.getElementById('expandSection');
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 50);
+}
 
-function showExpandSection(sourceTemplate) {
+// ===== 一括テンプレート展開 =====
+// 状態:
+//  - expandSourceTemplate: { company, job_category, type } 展開元
+//  - expandMode: 'template' | 'prompt_proposal'
+//  - expandAllTemplates: 他会社トグルON時に持つ全社テンプレ一覧
+//  - expandResults: [{ company, job_category, template_type, original, proposed,
+//                      row_index, error?, diffEntries, diffHunks,
+//                      approval: 'pending'|'approved'|'rejected',
+//                      expanded: bool, applied: bool }]
+let expandSourceTemplate = null;
+let expandMode = 'template';
+let expandAllTemplates = null; // cached list from GET /admin/templates (no company filter)
+let expandResults = [];
+
+const EXPAND_MODE_HINTS = {
+  template: '他テンプレをこのテンプレに寄せます。承認するとテンプレートシートが更新されます。',
+  prompt_proposal: '他テンプレとの差分をプロンプト改善の材料にします。承認は提案タブに積まれ、プロンプトシートには直接反映されません。',
+};
+
+function _companyDisplayName(companyId) {
+  const sel = document.getElementById('companySelect');
+  if (!sel) return companyId;
+  for (const opt of sel.options) {
+    if (opt.value === companyId) return opt.textContent || companyId;
+  }
+  return companyId;
+}
+
+function closeExpandSection() {
+  document.getElementById('expandSection').style.display = 'none';
+  expandResults = [];
+  expandSourceTemplate = null;
+  expandAllTemplates = null;
+  document.getElementById('expandResults').innerHTML = '';
+}
+
+function onExpandModeChange() {
+  const radios = document.getElementsByName('expandMode');
+  for (const r of radios) {
+    if (r.checked) {
+      expandMode = r.value;
+      break;
+    }
+  }
+  document.getElementById('expandModeHint').textContent = EXPAND_MODE_HINTS[expandMode] || '';
+  // モード変更時は結果をクリア（ボタン動作が変わるため）
+  expandResults = [];
+  renderExpandResults();
+}
+
+async function showExpandSection(sourceTemplate) {
   expandSourceTemplate = sourceTemplate;
+  expandMode = 'template';
+  expandAllTemplates = null;
   const section = document.getElementById('expandSection');
   section.style.display = 'block';
   document.getElementById('expandResults').innerHTML = '';
+  // Reset mode radios
+  document.querySelectorAll('input[name="expandMode"]').forEach(r => {
+    r.checked = (r.value === 'template');
+  });
+  document.getElementById('expandCrossCompanyToggle').checked = false;
+  document.getElementById('expandModeHint').textContent = EXPAND_MODE_HINTS.template;
+  rebuildExpandTargets();
+}
 
-  // ターゲット一覧を構築（同会社の全テンプレートからソースを除外）
+async function rebuildExpandTargets() {
   const targetsEl = document.getElementById('expandTargets');
-  const company = document.getElementById('companySelect').value;
-  const sourceKey = `${sourceTemplate.job_category || ''}:${sourceTemplate.type}`;
+  const src = expandSourceTemplate;
+  if (!src) return;
+  const crossCompany = document.getElementById('expandCrossCompanyToggle').checked;
+  const currentCompany = document.getElementById('companySelect').value;
 
-  const others = analysisTemplates.filter(t => {
-    const key = `${t.job_category || ''}:${t.type}`;
+  let list;
+  if (crossCompany) {
+    if (!expandAllTemplates) {
+      targetsEl.innerHTML = '<div style="color:#6b7280;">読み込み中…</div>';
+      try {
+        const data = await api('GET', '/api/v1/admin/templates');
+        expandAllTemplates = data.rows || [];
+      } catch (e) {
+        targetsEl.innerHTML = `<div style="color:#dc2626;">テンプレ一覧の取得に失敗: ${e.message}</div>`;
+        return;
+      }
+    }
+    list = expandAllTemplates;
+  } else {
+    list = analysisTemplates;
+  }
+
+  const sourceKey = `${src.company || currentCompany}:${src.job_category || ''}:${src.type}`;
+  const others = list.filter(t => {
+    const companyId = t.company || currentCompany;
+    const key = `${companyId}:${t.job_category || ''}:${t.type}`;
     return key !== sourceKey;
   });
 
@@ -5758,10 +6416,15 @@ function showExpandSection(sourceTemplate) {
   }
 
   targetsEl.innerHTML = others.map((t, i) => {
-    const label = t.job_category ? `${labelForCategory(t.job_category)}:${t.type}` : t.type;
+    const companyId = t.company || currentCompany;
+    const jcLabel = t.job_category ? labelForCategory(t.job_category) : '—';
+    const base = `${jcLabel}:${t.type}`;
+    const label = crossCompany ? `[${escHtml(_companyDisplayName(companyId))}] ${escHtml(base)}` : escHtml(base);
     return `<label style="display:block;padding:2px 0;cursor:pointer;">
       <input type="checkbox" class="expand-target-cb" data-idx="${i}"
-             data-jc="${t.job_category || ''}" data-type="${t.type}" data-row="${t._row_index}"
+             data-company="${escHtml(companyId)}"
+             data-jc="${escHtml(t.job_category || '')}" data-type="${escHtml(t.type)}"
+             data-row="${t._row_index || ''}"
              style="accent-color:var(--c-primary);"> ${label}
     </label>`;
   }).join('');
@@ -5771,25 +6434,41 @@ function selectExpandPreset(mode) {
   const cbs = document.querySelectorAll('.expand-target-cb');
   const src = expandSourceTemplate;
   if (!src) return;
+  const srcCompany = src.company || document.getElementById('companySelect').value;
 
   cbs.forEach(cb => {
+    const company = cb.dataset.company;
     const jc = cb.dataset.jc;
     const type = cb.dataset.type;
-    if (mode === 'type') {
-      // 同じ職種の全型
-      cb.checked = jc === (src.job_category || '');
-    } else if (mode === 'category') {
-      // 同じ型の全職種
-      cb.checked = type === src.type;
-    } else {
-      // 全て
-      cb.checked = true;
+    switch (mode) {
+      case 'type':
+        // 同職種かつ同会社の全型
+        cb.checked = company === srcCompany && jc === (src.job_category || '');
+        break;
+      case 'category':
+        // 同型かつ同会社の全職種
+        cb.checked = company === srcCompany && type === src.type;
+        break;
+      case 'same_company':
+        cb.checked = company === srcCompany;
+        break;
+      case 'cross_type':
+        // 全社の同型
+        cb.checked = type === src.type;
+        break;
+      case 'all':
+        cb.checked = true;
+        break;
+      case 'none':
+      default:
+        cb.checked = false;
+        break;
     }
   });
 }
 
 async function executeExpand() {
-  const company = document.getElementById('companySelect').value;
+  const currentCompany = document.getElementById('companySelect').value;
   const src = expandSourceTemplate;
   if (!src) return;
 
@@ -5800,6 +6479,7 @@ async function executeExpand() {
   }
 
   const targets = Array.from(cbs).map(cb => ({
+    company: cb.dataset.company,
     job_category: cb.dataset.jc,
     template_type: cb.dataset.type,
   }));
@@ -5810,106 +6490,276 @@ async function executeExpand() {
 
   try {
     const resp = await api('POST', '/api/v1/admin/expand_template', {
-      company,
+      company: src.company || currentCompany,
       source_job_category: src.job_category || '',
       source_template_type: src.type,
       targets,
       directive,
     });
 
-    expandResults = resp.results;
+    // Augment results with per-target diff state
+    expandResults = (resp.results || []).map(r => {
+      const hasChange = r.proposed && r.proposed !== (r.original || '');
+      return Object.assign({}, r, {
+        approval: r.error ? 'rejected' : (hasChange ? 'pending' : 'rejected'),
+        expanded: false,
+        applied: false,
+        diffHunks: null, // lazy-built on expand
+      });
+    });
     renderExpandResults();
   } catch (e) {
     resultsEl.innerHTML = `<div style="color:#dc2626;padding:12px;">エラー: ${e.message}</div>`;
   }
 }
 
+function _buildExpandHunks(idx) {
+  const r = expandResults[idx];
+  if (!r || r.diffHunks) return r && r.diffHunks;
+  const norm = s => (s || '').replace(/\\n/g, '\n');
+  const entries = computeLineDiff(norm(r.original), norm(r.proposed));
+  const hunks = [];
+  let hunkId = 0;
+  let i = 0;
+  while (i < entries.length) {
+    if (entries[i].type === 'equal') { i++; continue; }
+    const hunkEntries = [];
+    while (i < entries.length && entries[i].type !== 'equal') {
+      hunkEntries.push(entries[i]);
+      i++;
+    }
+    hunks.push({ id: hunkId++, entries: hunkEntries, accepted: true });
+  }
+  r.diffHunks = hunks;
+  return hunks;
+}
+
 function renderExpandResults() {
   const el = document.getElementById('expandResults');
   if (!expandResults.length) {
-    el.innerHTML = '<div style="color:#6b7280;">結果なし</div>';
+    el.innerHTML = '';
     return;
   }
 
-  let html = `<div style="display:flex;gap:8px;margin-bottom:8px;">
-    <button class="btn btn-primary btn-sm" onclick="applyExpandResults()">✅ 選択を一括適用</button>
-    <button class="btn btn-secondary btn-sm" onclick="toggleAllExpand(true)">全て選択</button>
-    <button class="btn btn-secondary btn-sm" onclick="toggleAllExpand(false)">全て解除</button>
+  const pending = expandResults.filter(r => r.approval === 'pending' && !r.applied).length;
+  const approved = expandResults.filter(r => r.approval === 'approved' && !r.applied).length;
+  const rejected = expandResults.filter(r => r.approval === 'rejected' && !r.applied).length;
+  const applyLabel = expandMode === 'template'
+    ? `✅ 承認した ${approved} 件をテンプレに適用`
+    : `🧠 承認した ${approved} 件からプロンプト提案を生成`;
+
+  let html = `<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap;">
+    <button class="btn btn-primary btn-sm" onclick="applyExpandResults()" ${approved === 0 ? 'disabled' : ''}>${applyLabel}</button>
+    <button class="btn btn-secondary btn-sm" onclick="setAllExpandApproval('approved')">全て承認</button>
+    <button class="btn btn-secondary btn-sm" onclick="setAllExpandApproval('rejected')">全て破棄</button>
+    <button class="btn btn-secondary btn-sm" onclick="setAllExpandApproval('pending')">全て保留</button>
+    <span style="font-size:11px;color:#6b7280;">承認 ${approved} / 保留 ${pending} / 破棄 ${rejected}</span>
   </div>`;
 
   expandResults.forEach((r, i) => {
-    const label = r.job_category ? `${r.job_category}:${r.template_type}` : r.template_type;
+    const jcLabel = r.job_category ? labelForCategory(r.job_category) : '—';
+    const companyLabel = _companyDisplayName(r.company || '');
+    const titleText = `[${companyLabel}] ${jcLabel}:${r.template_type}`;
     const hasError = !!r.error;
-    const hasChange = r.proposed && r.proposed !== r.original;
+    const hasChange = r.proposed && r.proposed !== (r.original || '');
+
+    let approvalBg = '#f8fafc';
+    if (r.applied) approvalBg = '#eef2ff';
+    else if (r.approval === 'approved') approvalBg = '#ecfdf5';
+    else if (r.approval === 'rejected') approvalBg = '#fef2f2';
 
     html += `<div style="border:1px solid var(--c-border);border-radius:6px;margin-bottom:8px;overflow:hidden;">
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${hasError ? '#fef2f2' : '#f8fafc'};border-bottom:1px solid var(--c-border);">
-        ${hasError ? '' : `<input type="checkbox" class="expand-result-cb" data-idx="${i}" ${hasChange ? 'checked' : ''} style="accent-color:var(--c-primary);">`}
-        <strong style="font-size:13px;">${label}</strong>
-        ${hasError ? `<span style="color:#dc2626;font-size:12px;">エラー: ${r.error}</span>` : ''}
-        ${!hasChange && !hasError ? '<span style="color:#6b7280;font-size:11px;">変更なし</span>' : ''}
-        <button class="btn btn-sm btn-secondary" style="margin-left:auto;font-size:11px;" onclick="toggleExpandDiff(${i})">diff</button>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:${approvalBg};border-bottom:1px solid var(--c-border);">
+        <strong style="font-size:13px;">${escHtml(titleText)}</strong>
+        ${r.applied ? '<span style="font-size:11px;color:#4338ca;">✔ 適用済</span>' : ''}
+        ${hasError ? `<span style="color:#dc2626;font-size:12px;">エラー: ${escHtml(r.error)}</span>` : ''}
+        ${!hasChange && !hasError && !r.applied ? '<span style="color:#6b7280;font-size:11px;">変更なし</span>' : ''}
+        <div style="margin-left:auto;display:flex;gap:4px;">
+          ${!r.applied && hasChange ? `
+            <button class="btn btn-sm ${r.approval === 'approved' ? 'btn-primary' : 'btn-secondary'}" onclick="setExpandApproval(${i}, 'approved')">✓承認</button>
+            <button class="btn btn-sm ${r.approval === 'pending' ? 'btn-primary' : 'btn-secondary'}" onclick="setExpandApproval(${i}, 'pending')">⏸保留</button>
+            <button class="btn btn-sm ${r.approval === 'rejected' ? 'btn-primary' : 'btn-secondary'}" onclick="setExpandApproval(${i}, 'rejected')">✗破棄</button>
+          ` : ''}
+          <button class="btn btn-sm btn-secondary" onclick="toggleExpandDiff(${i})">${r.expanded ? '▲' : '▼'} diff</button>
+        </div>
       </div>
-      <div id="expand-diff-${i}" style="display:none;padding:8px 12px;font-size:12px;font-family:var(--font-mono);white-space:pre-wrap;max-height:300px;overflow-y:auto;"></div>
+      <div id="expand-diff-${i}" style="display:${r.expanded ? 'block' : 'none'};padding:8px 12px;font-size:12px;font-family:var(--font-mono);"></div>
     </div>`;
   });
 
   el.innerHTML = html;
+  // re-render diffs for currently expanded targets
+  expandResults.forEach((r, i) => { if (r.expanded) _renderExpandDiffFor(i); });
+}
+
+function setExpandApproval(idx, approval) {
+  if (expandResults[idx] && !expandResults[idx].applied) {
+    expandResults[idx].approval = approval;
+    renderExpandResults();
+  }
+}
+
+function setAllExpandApproval(approval) {
+  expandResults.forEach(r => {
+    if (!r.applied && r.proposed && r.proposed !== (r.original || '') && !r.error) {
+      r.approval = approval;
+    }
+  });
+  renderExpandResults();
 }
 
 function toggleExpandDiff(idx) {
-  const el = document.getElementById(`expand-diff-${idx}`);
-  if (el.style.display === 'none') {
-    const r = expandResults[idx];
-    // Simple side-by-side
-    const escOld = (r.original || '(空)').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'\n');
-    const escNew = (r.proposed || '(空)').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'\n');
-    el.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-      <div><div style="font-weight:bold;margin-bottom:4px;color:#dc2626;">Before</div><div style="background:#fef2f2;padding:8px;border-radius:4px;">${escOld}</div></div>
-      <div><div style="font-weight:bold;margin-bottom:4px;color:#059669;">After</div><div style="background:#f0fdf4;padding:8px;border-radius:4px;">${escNew}</div></div>
-    </div>`;
-    el.style.display = 'block';
-  } else {
-    el.style.display = 'none';
+  const r = expandResults[idx];
+  if (!r) return;
+  r.expanded = !r.expanded;
+  renderExpandResults();
+}
+
+function _renderExpandDiffFor(idx) {
+  const container = document.getElementById(`expand-diff-${idx}`);
+  if (!container) return;
+  const r = expandResults[idx];
+  if (!r || !r.proposed) {
+    container.innerHTML = '<div style="color:#6b7280;">(差分なし)</div>';
+    return;
   }
-}
-
-function toggleAllExpand(checked) {
-  document.querySelectorAll('.expand-result-cb').forEach(cb => cb.checked = checked);
-}
-
-async function applyExpandResults() {
-  const cbs = document.querySelectorAll('.expand-result-cb:checked');
-  if (cbs.length === 0) {
-    toast('適用するテンプレートを選択してください', true);
+  const hunks = _buildExpandHunks(idx);
+  if (!hunks || hunks.length === 0) {
+    container.innerHTML = '<div style="color:#6b7280;">変更なし</div>';
     return;
   }
 
-  const company = document.getElementById('companySelect').value;
-  const updates = [];
-  cbs.forEach(cb => {
-    const r = expandResults[parseInt(cb.dataset.idx)];
-    if (r && r.proposed) {
-      updates.push({
-        row_index: r.row_index || null,
-        company: company,
-        job_category: r.job_category || '',
-        template_type: r.template_type || '',
-        body: r.proposed.replace(/\n/g, '\\n'),
-        reason: `${expandSourceTemplate.type}から展開`,
-      });
+  // Reconstruct hunk-level word/line diff view
+  const norm = s => (s || '').replace(/\\n/g, '\n');
+  const entries = computeLineDiff(norm(r.original), norm(r.proposed));
+  let html = '';
+  let hunkIdx = 0;
+  let i = 0;
+  while (i < entries.length) {
+    if (entries[i].type === 'equal') {
+      html += `<div class="diff-line">${escHtml(entries[i].text)}</div>`;
+      i++;
+    } else {
+      const hunkEntries = [];
+      while (i < entries.length && entries[i].type !== 'equal') {
+        hunkEntries.push(entries[i]);
+        i++;
+      }
+      const hunk = hunks[hunkIdx];
+      let body = '';
+      for (const e of hunkEntries) {
+        if (e.type === 'delete') {
+          body += `<div class="diff-line"><span class="diff-del">${escHtml(e.text)}</span></div>`;
+        } else if (e.type === 'insert') {
+          body += `<div class="diff-line"><span class="diff-add">${escHtml(e.text)}</span></div>`;
+        } else if (e.type === 'modify') {
+          const wordDiff = computeWordDiff(e.oldText, e.newText);
+          let line = '';
+          for (const seg of wordDiff) {
+            if (seg.type === 'equal') line += escHtml(seg.text);
+            else if (seg.type === 'delete') line += `<span class="diff-del">${escHtml(seg.text)}</span>`;
+            else line += `<span class="diff-add">${escHtml(seg.text)}</span>`;
+          }
+          body += `<div class="diff-line">${line}</div>`;
+        }
+      }
+      html += `<div class="diff-hunk ${hunk.accepted ? 'accepted' : 'rejected'}" id="expand-hunk-${idx}-${hunk.id}">
+        <div class="diff-hunk-body">${body}</div>
+        <div class="diff-hunk-bar">
+          <span class="reason"></span>
+          <button class="diff-hunk-btn accept ${hunk.accepted ? 'active' : ''}" onclick="toggleExpandHunk(${idx}, ${hunk.id}, true)">✓ 採用</button>
+          <button class="diff-hunk-btn reject ${!hunk.accepted ? 'active' : ''}" onclick="toggleExpandHunk(${idx}, ${hunk.id}, false)">✗ 却下</button>
+        </div>
+      </div>`;
+      hunkIdx++;
+    }
+  }
+  container.innerHTML = html;
+}
+
+function toggleExpandHunk(idx, hunkId, accept) {
+  const r = expandResults[idx];
+  if (!r || !r.diffHunks) return;
+  const h = r.diffHunks.find(x => x.id === hunkId);
+  if (!h) return;
+  h.accepted = accept;
+  _renderExpandDiffFor(idx);
+}
+
+async function applyExpandResults() {
+  const approvedIdxs = [];
+  expandResults.forEach((r, i) => {
+    if (r.approval === 'approved' && !r.applied && r.proposed && !r.error) {
+      approvedIdxs.push(i);
     }
   });
 
-  if (updates.length === 0) return;
-  if (!confirm(`${updates.length}件のテンプレートを更新しますか？`)) return;
+  if (approvedIdxs.length === 0) {
+    toast('承認されたターゲットがありません', true);
+    return;
+  }
 
-  try {
-    const resp = await api('POST', '/api/v1/admin/batch_update_templates', { updates });
-    toast(`${resp.updated}件のテンプレートを更新しました`);
-    document.getElementById('expandSection').style.display = 'none';
-  } catch (e) {
-    toast('一括更新エラー: ' + e.message, true);
+  const currentCompany = document.getElementById('companySelect').value;
+  const src = expandSourceTemplate;
+
+  if (expandMode === 'template') {
+    const updates = approvedIdxs.map(i => {
+      const r = expandResults[i];
+      _buildExpandHunks(i);
+      const merged = mergeAcceptedHunks(r.original, r.proposed, r.diffHunks);
+      return {
+        row_index: r.row_index || null,
+        company: r.company || currentCompany,
+        job_category: r.job_category || '',
+        template_type: r.template_type || '',
+        body: merged.replace(/\n/g, '\\n'),
+        reason: `${src.type}から展開`,
+      };
+    });
+
+    if (!confirm(`${updates.length} 件のテンプレートを更新します。よろしいですか？`)) return;
+
+    try {
+      const resp = await api('POST', '/api/v1/admin/batch_update_templates', { updates });
+      const msg = `${resp.updated} 件更新 / ${resp.noop || 0} 件 no-op`;
+      toast(msg);
+      approvedIdxs.forEach(i => { expandResults[i].applied = true; });
+      renderExpandResults();
+    } catch (e) {
+      toast('一括更新エラー: ' + e.message, true);
+    }
+  } else if (expandMode === 'prompt_proposal') {
+    const approvedDiffs = approvedIdxs.map(i => {
+      const r = expandResults[i];
+      _buildExpandHunks(i);
+      const merged = mergeAcceptedHunks(r.original, r.proposed, r.diffHunks);
+      return {
+        company: r.company || currentCompany,
+        job_category: r.job_category || '',
+        template_type: r.template_type || '',
+        original: (r.original || '').replace(/\\n/g, '\n'),
+        merged,
+      };
+    });
+
+    if (!confirm(`承認した ${approvedDiffs.length} 件の差分をもとにプロンプト提案を生成します。よろしいですか？\n（生成された提案は「修正フィードバック」タブで個別承認してください）`)) return;
+
+    try {
+      const resp = await api('POST', '/api/v1/admin/expand_template/to_prompt_proposals', {
+        company: src.company || currentCompany,
+        source: { job_category: src.job_category || '', template_type: src.type },
+        approved_diffs: approvedDiffs,
+      });
+      if (resp.appended > 0) {
+        toast(`${resp.appended} 件のプロンプト提案を追加しました（修正フィードバックタブで承認してください）`);
+      } else {
+        toast(resp.warning || '新規提案はありませんでした');
+      }
+      approvedIdxs.forEach(i => { expandResults[i].applied = true; });
+      renderExpandResults();
+    } catch (e) {
+      toast('プロンプト提案生成エラー: ' + e.message, true);
+    }
   }
 }
 

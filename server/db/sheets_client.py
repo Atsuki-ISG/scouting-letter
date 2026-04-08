@@ -50,6 +50,8 @@ SHEET_PROFILES = "プロフィール"
 SHEET_LOGS = "生成ログ"
 SHEET_JOB_CATEGORY_KEYWORDS = "職種キーワード"
 SHEET_FIX_FEEDBACK = "修正フィードバック"
+SHEET_IMPROVEMENT_PROPOSALS = "改善提案"
+SHEET_CONVERSATION_LOGS = "会話ログ"
 
 _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "nurse": "看護師",

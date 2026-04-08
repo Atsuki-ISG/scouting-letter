@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 
 from db.sheets_writer import sheets_writer
-from db.sheets_client import sheets_client, SHEET_FIX_FEEDBACK
+from db.sheets_client import sheets_client, SHEET_FIX_FEEDBACK, SHEET_CONVERSATION_LOGS
 from auth.api_key import verify_api_key
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -39,6 +39,146 @@ COLUMNS = {
 
 
 DASHBOARD_SPREADSHEET_ID = "1a3XE212nZgsQP-93phk22VlSSZ5aD1ig72M4A6p2awE"
+
+
+# ---------------------------------------------------------------------------
+# Template body version-bump helper.
+#
+# Used by both the single-row PUT endpoint and batch_update_templates so
+# the version increment / history logging / no-op detection are defined
+# in exactly one place.
+# ---------------------------------------------------------------------------
+
+def _normalize_body(value: str) -> str:
+    """Canonicalize template body for equality comparison.
+
+    The sheet stores bodies with literal backslash-n sequences; the admin
+    UI and AI generator sometimes round-trip through real newlines. Treat
+    both forms as the same content when deciding if a change happened.
+    """
+    return (value or "").replace("\r\n", "\n").replace("\\n", "\n")
+
+
+def _bump_template_body(
+    row_index: int,
+    new_body: str,
+    *,
+    reason: str,
+    actor: str,
+    expected_company: Optional[str] = None,
+) -> dict:
+    """Apply a template body update with version increment + change history.
+
+    Returns a dict describing what happened:
+        {
+          "status": "updated" | "no-op" | "skipped",
+          "row_index": int,
+          "old_version": str,
+          "new_version": str,
+          "reason": <reason if skipped>,
+        }
+
+    Guarantees:
+    - Header cells are always stripped before lookup, so whitespace in the
+      sheet header never desyncs version tracking.
+    - Body equality is checked on normalized (real-newline) form.
+    - When `expected_company` is given, the row must match that company
+      or the update is skipped (returns status="skipped").
+    - `update_cells_by_name` is called with `strict_columns=["body", "version"]`
+      so a missing version column surfaces as a loud error rather than a
+      silent skip.
+
+    Raises ValueError for bad row_index, missing required columns, etc.
+    Callers should translate to HTTP responses as appropriate.
+    """
+    from datetime import timedelta, timezone
+    JST = timezone(timedelta(hours=9))
+
+    all_rows = sheets_writer.get_all_rows("テンプレート")
+    if not all_rows:
+        raise ValueError("テンプレートシートが空です")
+    if row_index < 2 or row_index > len(all_rows):
+        raise ValueError(
+            f"row_index {row_index} out of range (valid: 2..{len(all_rows)})"
+        )
+
+    headers = [h.strip() for h in all_rows[0]]
+    required = {"company", "body", "version"}
+    missing = [c for c in required if c not in headers]
+    if missing:
+        raise ValueError(
+            f"テンプレートシートに必須列がありません: {missing} (headers={headers})"
+        )
+
+    existing_row = list(all_rows[row_index - 1])
+    existing_row += [""] * (len(headers) - len(existing_row))
+    existing = {headers[i]: existing_row[i] for i in range(len(headers))}
+
+    row_company = (existing.get("company", "") or "").strip()
+    if expected_company is not None and row_company != expected_company:
+        return {
+            "status": "skipped",
+            "row_index": row_index,
+            "reason": f"company mismatch: row={row_company} expected={expected_company}",
+            "old_version": existing.get("version", ""),
+            "new_version": existing.get("version", ""),
+        }
+
+    old_body_norm = _normalize_body(existing.get("body", ""))
+    new_body_norm = _normalize_body(new_body)
+    if old_body_norm == new_body_norm:
+        return {
+            "status": "no-op",
+            "row_index": row_index,
+            "old_version": existing.get("version", ""),
+            "new_version": existing.get("version", ""),
+        }
+
+    old_version_raw = (existing.get("version", "") or "").strip()
+    try:
+        new_version = str(int(old_version_raw or "1") + 1)
+    except (ValueError, TypeError):
+        new_version = "2"
+    # If the existing cell was blank, treat the bump as going from
+    # an implicit "1" so the new value is "2".
+    old_version_display = old_version_raw or "1"
+
+    # Log history FIRST (so we always have the pre-change snapshot even
+    # if the cell update fails part-way).
+    try:
+        sheets_writer.ensure_sheet_exists("テンプレート変更履歴", [
+            "timestamp", "company", "job_category", "type",
+            "old_version", "new_version", "reason", "old_body",
+        ])
+        sheets_writer.append_row("テンプレート変更履歴", [
+            datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
+            existing.get("company", ""),
+            existing.get("job_category", ""),
+            existing.get("type", ""),
+            old_version_display,
+            new_version,
+            reason,
+            existing.get("body", ""),
+        ])
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to log template history: {e}")
+
+    # Strict column mode: body and version MUST be present. Missing
+    # columns raise so we never bump silently without a version record.
+    sheets_writer.update_cells_by_name(
+        "テンプレート",
+        row_index,
+        {"body": new_body, "version": new_version},
+        actor=actor,
+        strict_columns=["body", "version"],
+    )
+    return {
+        "status": "updated",
+        "row_index": row_index,
+        "old_version": old_version_display,
+        "new_version": new_version,
+    }
 
 
 @router.get("/server_info")
@@ -495,6 +635,274 @@ async def delete_send_data_row(
     return {"status": "deleted", "company_id": company_id, "row_index": row_index}
 
 
+# Fields the operator may edit on a 送信_<会社名> row. 日時 is intentionally
+# excluded so the audit timeline stays trustworthy.
+SEND_DATA_EDITABLE_FIELDS = {
+    "会員番号", "職種カテゴリ", "テンプレート種別", "テンプレートVer",
+    "生成パス", "パターン", "年齢層", "資格", "経験区分",
+    "希望雇用形態", "就業状況", "地域", "曜日", "時間帯",
+    "返信", "返信日", "返信カテゴリ",
+}
+
+
+@router.patch("/send_data/{company_id}/{row_index}")
+async def patch_send_data_row(
+    company_id: str,
+    row_index: int,
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    """Edit individual cells of a row in 送信_<会社名>.
+
+    Body: ``{"cells": {"会員番号": "123", "テンプレート種別": "_初回", ...}}``
+
+    Only fields in ``SEND_DATA_EDITABLE_FIELDS`` are accepted; the timestamp
+    column 日時 is immutable to keep the audit trail trustworthy. The previous
+    row contents are snapshotted to the audit log via
+    ``sheets_writer.update_cells_by_name`` before the write happens, so the
+    edit is recoverable.
+
+    Refuses if the sheet header has drifted from the canonical schema, since
+    update_cells_by_name maps by header NAME and a drifted header would cause
+    silent miswrites.
+    """
+    from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
+    from api._dashboard_helpers import EXPECTED_HEADERS
+
+    if company_id not in COMPANY_DISPLAY_NAMES:
+        raise HTTPException(404, f"Unknown company: {company_id}")
+    if row_index < 2:
+        raise HTTPException(400, "row_index must be >= 2 (header is row 1)")
+
+    cells_in = data.get("cells") or {}
+    if not isinstance(cells_in, dict) or not cells_in:
+        raise HTTPException(400, "cells must be a non-empty object")
+
+    unknown = [k for k in cells_in.keys() if k not in SEND_DATA_EDITABLE_FIELDS]
+    if unknown:
+        raise HTTPException(400, f"Non-editable fields rejected: {unknown}")
+
+    sheet_name = _send_data_sheet_name(company_id)
+
+    # Drift guard: refuse if the sheet header isn't the canonical schema in
+    # canonical order. update_cells_by_name resolves columns by header name,
+    # so a drifted header (e.g. legacy 15-col) would write to the wrong column.
+    try:
+        rows = sheets_writer.get_all_rows(sheet_name)
+    except Exception as e:
+        raise HTTPException(500, f"Failed to read sheet: {e}")
+    if not rows:
+        raise HTTPException(404, f"Sheet '{sheet_name}' is empty")
+    raw_headers = [h.strip() for h in rows[0]]
+    if raw_headers != list(EXPECTED_HEADERS):
+        raise HTTPException(
+            409,
+            "Sheet header has drifted from the canonical schema; "
+            "row edit is disabled to prevent miswrites. "
+            "Header must match EXPECTED_HEADERS exactly.",
+        )
+
+    # Coerce all values to strings (Sheets RAW write expects str)
+    cells = {k: ("" if v is None else str(v)) for k, v in cells_in.items()}
+
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    result = sheets_writer.update_cells_by_name(
+        sheet_name,
+        row_index,
+        cells,
+        actor=f"edit_send_data:{actor_name}",
+    )
+    return {
+        "status": "ok",
+        "company_id": company_id,
+        "row_index": row_index,
+        "updated": result.get("updated", []),
+        "skipped": result.get("skipped", []),
+    }
+
+
+@router.get("/job_category_failures")
+async def list_job_category_failures(
+    company: Optional[str] = None,
+    days: int = 30,
+    operator: dict = Depends(verify_api_key),
+):
+    """Aggregate `failure_*` rows from the 生成ログ sheet for the keyword
+    proposal workflow (BACKLOG: Phase 3 — 職種解決ワークフロー).
+
+    Reads recent rows from 生成ログ where `generation_path == "filtered_out"`
+    and `failure_stage` is populated, groups them by (company, failure_stage,
+    company_categories) and exposes the searched_text snippets so a director
+    can decide which keywords are worth promoting to the 職種キーワード sheet.
+
+    Params:
+      - company: optional company filter
+      - days: lookback window (default 30; the resolver writes ISO timestamps)
+    """
+    from datetime import datetime, timedelta, timezone
+
+    sheet_name = SHEET_MAP.get("logs")  # "生成ログ"
+    try:
+        rows = sheets_writer.get_all_rows(sheet_name)
+    except Exception:
+        return {"groups": [], "total": 0}
+    if not rows or len(rows) < 2:
+        return {"groups": [], "total": 0}
+
+    headers = [h.strip() for h in rows[0]]
+
+    def col(name: str) -> int:
+        try:
+            return headers.index(name)
+        except ValueError:
+            return -1
+
+    idx_ts = col("timestamp")
+    idx_company = col("company")
+    idx_member = col("member_id")
+    idx_path = col("generation_path")
+    idx_stage = col("failure_stage")
+    idx_missing = col("failure_missing_fields")
+    idx_searched = col("failure_searched_text")
+    idx_company_cats = col("failure_company_categories")
+    idx_human = col("failure_human_message")
+
+    if idx_stage < 0 or idx_path < 0:
+        return {"groups": [], "total": 0, "warning": "logs sheet missing failure_* columns"}
+
+    # Time cutoff (best effort — accept rows whose timestamp is unparseable)
+    cutoff: Optional[datetime] = None
+    if days and days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    def cell(row: list, idx: int) -> str:
+        if idx < 0 or idx >= len(row):
+            return ""
+        return (row[idx] or "").strip()
+
+    def parse_ts(s: str) -> Optional[datetime]:
+        if not s:
+            return None
+        try:
+            # ISO 8601, may or may not have a tz suffix
+            ts = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts
+        except Exception:
+            return None
+
+    # group key → aggregated dict
+    groups: dict[tuple, dict] = {}
+    total = 0
+
+    for row in rows[1:]:
+        path = cell(row, idx_path)
+        stage = cell(row, idx_stage)
+        if path != "filtered_out" or not stage:
+            continue
+        row_company = cell(row, idx_company)
+        if company and row_company != company:
+            continue
+        ts_str = cell(row, idx_ts)
+        if cutoff is not None:
+            ts = parse_ts(ts_str)
+            if ts is not None and ts < cutoff:
+                continue
+
+        company_cats_raw = cell(row, idx_company_cats)
+        # Stored as comma-separated. Normalize for stable grouping.
+        company_cats = tuple(
+            sorted(c.strip() for c in company_cats_raw.split(",") if c.strip())
+        )
+        key = (row_company, stage, company_cats)
+        bucket = groups.get(key)
+        if bucket is None:
+            bucket = {
+                "company": row_company,
+                "failure_stage": stage,
+                "company_categories": list(company_cats),
+                "count": 0,
+                "samples": [],  # most recent up to 10
+                "missing_fields_counter": {},
+                "human_message": cell(row, idx_human),  # last seen
+            }
+            groups[key] = bucket
+        bucket["count"] += 1
+        total += 1
+
+        # Track which fields were missing across the group
+        missing_raw = cell(row, idx_missing)
+        for f in (m.strip() for m in missing_raw.split(",")):
+            if f:
+                bucket["missing_fields_counter"][f] = (
+                    bucket["missing_fields_counter"].get(f, 0) + 1
+                )
+
+        if len(bucket["samples"]) < 10:
+            bucket["samples"].append({
+                "timestamp": ts_str,
+                "member_id": cell(row, idx_member),
+                "searched_text": cell(row, idx_searched),
+                "missing_fields": [
+                    f.strip() for f in missing_raw.split(",") if f.strip()
+                ],
+            })
+
+    # Sort: most-frequent first
+    out = sorted(groups.values(), key=lambda g: g["count"], reverse=True)
+    return {"groups": out, "total": total, "days": days}
+
+
+@router.post("/job_category_keywords/append")
+async def append_job_category_keyword(
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    """Append a single row to the 職種キーワード sheet.
+
+    Used by the Phase 3 admin UI to promote a director-approved keyword
+    suggestion into the live dictionary. Always uses the canonical column
+    order from `COLUMNS["job_category_keywords"]`.
+
+    Body:
+      {
+        "company": "" | company_id,    # "" = global rule
+        "job_category": "nurse",        # required
+        "keyword": "訪問看護",          # required
+        "source_fields": "qualification",  # CSV or single
+        "weight": "1",                  # optional
+        "enabled": "TRUE",              # default TRUE
+        "note": "Phase 3 自動提案 from 生成ログ"
+      }
+    """
+    from datetime import datetime, timezone
+
+    job_category = (data.get("job_category") or "").strip()
+    keyword = (data.get("keyword") or "").strip()
+    if not job_category or not keyword:
+        raise HTTPException(400, "job_category and keyword are required")
+
+    sheet_name = SHEET_MAP["job_category_keywords"]
+    columns = COLUMNS["job_category_keywords"]
+
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    row_dict = {
+        "company": (data.get("company") or "").strip(),
+        "job_category": job_category,
+        "keyword": keyword,
+        "source_fields": (data.get("source_fields") or "qualification").strip(),
+        "weight": (data.get("weight") or "1").strip(),
+        "enabled": (data.get("enabled") or "TRUE").strip(),
+        "added_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "added_by": actor_name,
+        "note": (data.get("note") or "").strip(),
+    }
+    row_values = [row_dict.get(c, "") for c in columns]
+    sheets_writer.append_row(sheet_name, row_values)
+    return {"status": "ok", "appended": row_dict}
+
+
 @router.get("/stale_quota_companies")
 async def get_stale_quota_companies(
     max_hours: float = 24,
@@ -551,6 +959,41 @@ async def list_fix_feedback(
         items.append(item)
 
     items.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    return {"items": items}
+
+
+@router.get("/improvement_proposals")
+async def list_improvement_proposals(
+    status: Optional[str] = None,
+    operator=Depends(verify_api_key),
+):
+    """改善提案一覧を返す。created_at降順。status でフィルタ可能。
+
+    NOTE: 必ず `@router.get("/{sheet_slug}")` より前に登録すること。
+    そうしないと catchall に飲まれて 404 になる。
+    """
+    import json
+    from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
+
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_IMPROVEMENT_PROPOSALS)
+    except Exception:
+        return {"items": []}
+    if not all_rows or len(all_rows) < 2:
+        return {"items": []}
+
+    headers = [h.strip() for h in all_rows[0]]
+    items: list[dict] = []
+    for row in all_rows[1:]:
+        item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(headers)}
+        if status and item.get("status", "") != status:
+            continue
+        try:
+            item["payload"] = json.loads(item.get("payload_json", "") or "{}")
+        except Exception:
+            item["payload"] = {}
+        items.append(item)
+    items.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return {"items": items}
 
 
@@ -1199,6 +1642,134 @@ async def sync_replies(
 
 
 # ---------------------------------------------------------------------------
+# 会話ログ蓄積 (Chrome拡張 / yaml import 両対応)
+# ---------------------------------------------------------------------------
+
+CONVERSATION_LOGS_COLUMNS = [
+    "timestamp",      # ingestion time (ISO 8601)
+    "company",        # company_id
+    "member_id",
+    "candidate_name",
+    "candidate_age",
+    "candidate_gender",
+    "job_title",
+    "started",        # date of first message in the thread
+    "message_count",
+    "messages_json",  # full [{date, role, text}, ...] as JSON
+    "source",         # "extension_auto" | "extension_manual" | "yaml_import"
+    "actor",
+]
+
+
+@router.post("/conversation_logs")
+async def post_conversation_logs(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Receive conversation threads from the Chrome extension (dev
+    mode) and append them to the `会話ログ` sheet.
+
+    Body:
+      - company (str, required)
+      - threads (list[dict], required): each thread has
+          { member_id, candidate_name?, candidate_age?, candidate_gender?,
+            job_title?, started?, messages: [{date, role, text}, ...] }
+      - source (str, optional): defaults to "extension_manual"
+
+    Dedup behaviour: same (company, member_id, started) as an existing
+    row is replaced by overwriting `messages_json` + bumping timestamp.
+    This lets the extension re-sync a conversation and pick up new
+    messages without creating duplicates.
+    """
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    JST = timezone(timedelta(hours=9))
+
+    company = (data.get("company") or "").strip()
+    threads = data.get("threads") or []
+    source = (data.get("source") or "extension_manual").strip()
+    if not company:
+        raise HTTPException(400, "company is required")
+    if not isinstance(threads, list) or not threads:
+        raise HTTPException(400, "threads must be a non-empty list")
+
+    sheets_writer.ensure_sheet_exists(
+        SHEET_CONVERSATION_LOGS, CONVERSATION_LOGS_COLUMNS
+    )
+
+    # Preload existing rows so we can dedup by (company, member_id, started).
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_CONVERSATION_LOGS)
+    except Exception:
+        all_rows = [list(CONVERSATION_LOGS_COLUMNS)]
+    if not all_rows:
+        all_rows = [list(CONVERSATION_LOGS_COLUMNS)]
+
+    headers = [h.strip() for h in all_rows[0]]
+    col = {h: headers.index(h) for h in CONVERSATION_LOGS_COLUMNS if h in headers}
+
+    existing_key_to_row: dict[tuple[str, str, str], int] = {}
+    for i, row in enumerate(all_rows[1:], start=2):
+        def _get(name: str) -> str:
+            idx = col.get(name)
+            if idx is None or idx >= len(row):
+                return ""
+            return row[idx].strip()
+        key = (_get("company"), _get("member_id"), _get("started"))
+        if all(key):
+            existing_key_to_row[key] = i
+
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    now_iso = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+
+    appended = 0
+    updated = 0
+    for thread in threads:
+        member_id = (thread.get("member_id") or "").strip()
+        if not member_id:
+            continue
+        messages = thread.get("messages") or []
+        if not isinstance(messages, list):
+            continue
+        started = (thread.get("started") or "").strip()
+        if not started and messages:
+            started = str(messages[0].get("date") or "")
+
+        row_values = [
+            now_iso,
+            company,
+            member_id,
+            (thread.get("candidate_name") or "").strip(),
+            (thread.get("candidate_age") or "").strip(),
+            (thread.get("candidate_gender") or "").strip(),
+            (thread.get("job_title") or "").strip(),
+            started,
+            str(len(messages)),
+            json.dumps(messages, ensure_ascii=False),
+            source,
+            actor_name,
+        ]
+
+        key = (company, member_id, started)
+        existing_row = existing_key_to_row.get(key)
+        if existing_row is not None:
+            cells = {CONVERSATION_LOGS_COLUMNS[i]: row_values[i] for i in range(len(CONVERSATION_LOGS_COLUMNS))}
+            sheets_writer.update_cells_by_name(
+                SHEET_CONVERSATION_LOGS,
+                existing_row,
+                cells,
+                actor=f"conversation_logs:{actor_name}",
+            )
+            updated += 1
+        else:
+            sheets_writer.append_row(SHEET_CONVERSATION_LOGS, row_values)
+            appended += 1
+
+    return {"status": "ok", "appended": appended, "updated": updated}
+
+
+# ---------------------------------------------------------------------------
 # 修正フィードバック (Phase A: 蓄積 + 一覧 + status更新)
 # ---------------------------------------------------------------------------
 
@@ -1333,6 +1904,698 @@ async def update_fix_status(
         actor=f"update_fix_status:{actor_name}",
     )
     return {"status": "ok", "id": fix_id, "new_status": new_status}
+
+
+# ---------------------------------------------------------------------------
+# 修正フィードバック Phase B: AI改善提案 → 承認 → Sheets実反映
+# 第一弾: 職種キーワードへの追加提案（append-only）
+# 第二弾: プロンプトシートへの新規 section 追加（append-only）
+# patterns / 既存行 update は次フェーズ。
+# ---------------------------------------------------------------------------
+
+IMPROVEMENT_PROPOSAL_COLUMNS = [
+    "id",                 # fbprop_xxxxxxxx
+    "created_at",         # ISO 8601
+    "source_fix_ids",     # comma-separated fix_feedback ids that prompted this proposal
+    "target_sheet",       # "job_category_keywords" | "prompts"
+    "operation",          # "append" 固定（次フェーズで update/delete を追加）
+    "scope_company",      # "" = 全社共通 / company_id = 会社別
+    "payload_json",       # 追加内容を JSON dict
+    "rationale",          # AIが書いた根拠
+    "status",             # "pending" | "approved" | "rejected"
+    "actor",              # 承認/却下した人
+    "decided_at",         # ISO 8601
+]
+
+# Phase B でサポートする target_sheet と operation の組み合わせ
+SUPPORTED_PROPOSAL_TARGETS = {
+    "job_category_keywords": {"append"},
+    "prompts": {"append"},
+    "patterns": {"update"},
+}
+
+# プロンプトシートで会社固有に上書き可能な section_type（routes_admin.py 1029行に既出）
+PROMPT_COMPANY_SECTION_TYPES = {"station_features", "education", "ai_guide"}
+
+
+def _gen_proposal_id() -> str:
+    return f"fbprop_{uuid.uuid4().hex[:8]}"
+
+
+def _build_keyword_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
+    """target=job_category_keywords 用: (system_prompt, user_prompt, dedup_keys)"""
+    import json as _json
+    try:
+        kw_rows = sheets_writer.get_all_rows("職種キーワード")
+    except Exception:
+        kw_rows = []
+    existing_keywords: list[dict] = []
+    if kw_rows and len(kw_rows) >= 2:
+        kw_headers = [h.strip() for h in kw_rows[0]]
+        for row in kw_rows[1:]:
+            item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(kw_headers)}
+            if item.get("enabled", "TRUE").upper() == "FALSE":
+                continue
+            existing_keywords.append({
+                "company": item.get("company", ""),
+                "job_category": item.get("job_category", ""),
+                "keyword": item.get("keyword", ""),
+            })
+
+    system_prompt = """あなたはスカウト文生成システムの「職種キーワード辞書」を改善するアシスタントです。
+
+ディレクターが手動で修正したスカウト文の差分（before/after/reason）を読み、職種カテゴリの自動判定が外れた原因が「辞書に未登録のキーワード」であるケースを特定し、職種キーワードシートへの追加提案をJSON配列で返してください。
+
+# 判断基準
+- after で追加された語句、reason で言及されている語句のうち、職種の特定に効きそうな名詞・職種名・資格名・施設名（例: "訪問看護", "通所リハビリ", "ICU", "PT"）に注目する
+- before/after が同じ会社の同じ職種カテゴリでも、地名・氏名・候補者固有の経験は提案しない
+- 既存キーワードリスト（既に登録済み）と重複するものは提案しない
+- 1つのキーワードは1〜20文字、過度に一般的な語（"看護"単独など）は避ける
+
+# scope_company の決め方
+- 会社固有の施設名・部署名・サービス名 → scope_company を会社IDに
+- 一般的な職種名・資格名・業務名 → scope_company を空文字（全社共通）に
+
+# 出力フォーマット（厳守）
+JSON配列のみを出力すること。説明文や ``` などのマークダウンは禁止。
+各要素は次のキーを持つ:
+- "keyword": 追加するキーワード文字列
+- "job_category": 推定する職種カテゴリ（既存の職種ID: nurse / rehab_pt / rehab_st / rehab_ot / dietitian / counselor / medical_office）
+- "scope_company": "" または会社ID
+- "source_fields": "qualification" | "desired_job" | "experience" | "self_pr" のいずれか、または複数をカンマ区切り
+- "rationale": なぜこのキーワードが必要か（30〜80文字）
+- "source_fix_ids": この提案の根拠になった fix_feedback の id 配列
+
+提案は最大10件まで。提案がない場合は空配列 [] を返す。"""
+
+    fixes_for_prompt = [
+        {
+            "id": f["id"],
+            "company": f.get("company", ""),
+            "template_type": f.get("template_type", ""),
+            "before": (f.get("before") or "")[:600],
+            "after": (f.get("after") or "")[:600],
+            "reason": (f.get("reason") or "")[:300],
+        }
+        for f in pending
+    ]
+    user_prompt = (
+        "## 既存の職種キーワード（追加提案で重複を避けるため）\n"
+        + _json.dumps(existing_keywords[:200], ensure_ascii=False, indent=2)
+        + "\n\n## ディレクターによる修正フィードバック (pending)\n"
+        + _json.dumps(fixes_for_prompt, ensure_ascii=False, indent=2)
+        + "\n\nこれらの修正から、職種キーワードシートに追加すべき項目を JSON 配列で出力してください。"
+    )
+    dedup_keys = {(k["company"], k["job_category"], k["keyword"]) for k in existing_keywords}
+    return system_prompt, user_prompt, dedup_keys
+
+
+def _build_prompt_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
+    """target=prompts 用: (system_prompt, user_prompt, dedup_keys)"""
+    import json as _json
+    try:
+        prompt_rows = sheets_writer.get_all_rows("プロンプト")
+    except Exception:
+        prompt_rows = []
+    existing_prompts: list[dict] = []
+    if prompt_rows and len(prompt_rows) >= 2:
+        ph = [h.strip() for h in prompt_rows[0]]
+        for row in prompt_rows[1:]:
+            item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(ph)}
+            section_type = item.get("section_type", "")
+            if section_type not in PROMPT_COMPANY_SECTION_TYPES:
+                continue
+            existing_prompts.append({
+                "company": item.get("company", ""),
+                "section_type": section_type,
+                "job_category": item.get("job_category", ""),
+                "order": item.get("order", ""),
+                "content_excerpt": (item.get("content", "") or "")[:200],
+            })
+
+    system_prompt = """あなたはスカウト文生成パイプラインの「プロンプトシート」を改善するアシスタントです。
+
+ディレクターが手動で修正したスカウト文の差分から、AIが生成時に参照する「会社の特色 / 教育体制 / 経験別の接点ガイド」セクションに不足している情報を特定し、プロンプトシートへの追加提案をJSON配列で返してください。
+
+# 対象 section_type（厳守、これ以外は出力しない）
+- station_features: 施設の特色・どんな経験が活きるか（order=2）
+- education: 教育体制・研修制度（order=3）
+- ai_guide: 経歴別の接点対応表 + NGパターン（order=8）
+
+# 判断基準
+- after や reason に出てきた「会社の強み・サービス内容・教育制度・接点パターン」のうち、既存の同 (company, section_type, job_category) 行に書かれていないものに限る
+- 候補者個別の事情・地名・氏名などは追加しない
+- 既存 content と重複する提案はしない
+- scope_company は基本的に対象会社IDを指定する。全社共通として汎用化できる場合のみ空文字を返す
+
+# 出力フォーマット（厳守）
+JSON配列のみ。説明文や ``` などのマークダウンは禁止。
+各要素のキー:
+- "section_type": "station_features" | "education" | "ai_guide"
+- "job_category": "nurse" / "rehab_pt" / "rehab_st" / "rehab_ot" / "dietitian" / "counselor" / "medical_office"
+- "scope_company": "" または対象会社ID
+- "content": 追加する markdown 箇条書き（- で始まる行を1〜3行）
+- "rationale": なぜ追加するか（30〜80文字）
+- "source_fix_ids": fix_feedback id の配列
+
+提案は最大8件まで。なければ []。"""
+
+    fixes_for_prompt = [
+        {
+            "id": f["id"],
+            "company": f.get("company", ""),
+            "template_type": f.get("template_type", ""),
+            "before": (f.get("before") or "")[:600],
+            "after": (f.get("after") or "")[:600],
+            "reason": (f.get("reason") or "")[:300],
+        }
+        for f in pending
+    ]
+    user_prompt = (
+        "## 既存のプロンプトセクション（重複を避けるため）\n"
+        + _json.dumps(existing_prompts[:120], ensure_ascii=False, indent=2)
+        + "\n\n## ディレクターによる修正フィードバック (pending)\n"
+        + _json.dumps(fixes_for_prompt, ensure_ascii=False, indent=2)
+        + "\n\nこれらから、プロンプトシートに追加すべき section を JSON 配列で出力してください。"
+    )
+    dedup_keys = {
+        (p["company"], p["section_type"], p["job_category"], p["content_excerpt"][:80])
+        for p in existing_prompts
+    }
+    return system_prompt, user_prompt, dedup_keys
+
+
+def _build_pattern_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
+    """target=patterns 用: (system_prompt, user_prompt, dedup_keys)
+
+    patterns シートは型ごとの template_text + feature_variations + match_rules で構成され、
+    完全な append は型システム上難しい。Phase B 第3弾では feature_variations への
+    語句追加（同じ型の特色バリエーションを増やす）に絞る。
+    """
+    import json as _json
+    try:
+        pattern_rows = sheets_writer.get_all_rows("パターン")
+    except Exception:
+        pattern_rows = []
+    existing_patterns: list[dict] = []
+    if pattern_rows and len(pattern_rows) >= 2:
+        ph = [h.strip() for h in pattern_rows[0]]
+        for row in pattern_rows[1:]:
+            item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(ph)}
+            if item.get("pattern_type", "") == "QUAL":
+                continue
+            features = [f.strip() for f in (item.get("feature_variations") or "").split("|") if f.strip()]
+            existing_patterns.append({
+                "company": item.get("company", ""),
+                "job_category": item.get("job_category", ""),
+                "pattern_type": item.get("pattern_type", ""),
+                "employment_variant": item.get("employment_variant", ""),
+                "feature_variations": features,
+                "template_text_excerpt": (item.get("template_text", "") or "")[:120],
+            })
+
+    system_prompt = """あなたはスカウト文生成パイプラインの「型はめパターン」を改善するアシスタントです。
+
+ディレクターが手動修正したスカウト文の差分から、既存の型はめパターンの「特色バリエーション」(feature_variations) に追加すべき語句・短文を特定し、JSON配列で返してください。
+
+# 前提
+- パターン (型A〜G) は経験年数 × 年齢のマトリクスで選ばれる、骨格は固定の型です
+- feature_variations は型のテキスト中で差し替え可能な特色バリエーション（| 区切り）
+- 既存パターン一覧をユーザープロンプトに渡します。company / pattern_type / job_category がマッチするものに対してのみ提案してください
+
+# 判断基準
+- after や reason から、その会社の強みや業務特色を表す短い表現（10〜30文字）を抽出
+- 既に feature_variations に含まれているものは提案しない
+- 候補者個別の事情ではなく、その会社の他候補者にも使い回せる語句に限る
+- scope_company は基本的に対象会社IDを指定する
+
+# 出力フォーマット（厳守）
+JSON配列のみ。説明文や ``` 禁止。
+各要素のキー:
+- "company": 対象会社ID（必須、scope_company と同じ値）
+- "scope_company": 対象会社ID
+- "pattern_type": "A" / "B1" / "B2" / "C" / "D" / "E" / "F" / "G"
+- "job_category": "nurse" など
+- "employment_variant": "" / "就業中" / "離職中"
+- "new_feature": 追加する特色バリエーション文字列
+- "rationale": なぜ追加するか（30〜80文字）
+- "source_fix_ids": fix_feedback id 配列
+
+提案は最大6件。なければ []。"""
+
+    fixes_for_prompt = [
+        {
+            "id": f["id"],
+            "company": f.get("company", ""),
+            "template_type": f.get("template_type", ""),
+            "before": (f.get("before") or "")[:600],
+            "after": (f.get("after") or "")[:600],
+            "reason": (f.get("reason") or "")[:300],
+        }
+        for f in pending
+    ]
+    user_prompt = (
+        "## 既存の型はめパターン（提案先を選ぶための一覧）\n"
+        + _json.dumps(existing_patterns[:80], ensure_ascii=False, indent=2)
+        + "\n\n## ディレクターによる修正フィードバック (pending)\n"
+        + _json.dumps(fixes_for_prompt, ensure_ascii=False, indent=2)
+        + "\n\n適切な既存パターンに追加すべき特色バリエーションを JSON 配列で出力してください。"
+    )
+    # dedup: (company, pattern_type, job_category, employment_variant, feature)
+    dedup_keys = set()
+    for p in existing_patterns:
+        for feat in p["feature_variations"]:
+            dedup_keys.add((
+                p["company"], p["pattern_type"], p["job_category"],
+                p["employment_variant"], feat,
+            ))
+    return system_prompt, user_prompt, dedup_keys
+
+
+@router.post("/improvement_proposals/generate")
+async def generate_improvement_proposals(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """pending な fix_feedback を集約して Gemini に渡し、改善提案を生成する。
+
+    Body:
+      - target (optional, default "job_category_keywords"):
+        "job_category_keywords" | "prompts" | "patterns"
+      - company (optional)
+      - max_fixes (optional, default 50)
+      - dry_run (optional, default False)
+    """
+    import json
+    import re as _re
+    from datetime import datetime as _dt
+    from pipeline.ai_generator import generate_personalized_text
+    from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
+
+    target = (data.get("target") or "job_category_keywords").strip()
+    if target not in SUPPORTED_PROPOSAL_TARGETS:
+        raise HTTPException(400, f"Unsupported target: {target}")
+    company_filter = (data.get("company") or "").strip()
+    max_fixes = int(data.get("max_fixes") or 50)
+    dry_run = bool(data.get("dry_run") or False)
+
+    # 1. pending な fix_feedback を取得
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+    except Exception:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": "no fix_feedback sheet"}
+    if not all_rows or len(all_rows) < 2:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": "no fixes"}
+
+    headers = [h.strip() for h in all_rows[0]]
+    pending: list[dict] = []
+    for row in all_rows[1:]:
+        item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(headers)}
+        if item.get("status", "") != "pending":
+            continue
+        if company_filter and item.get("company", "") != company_filter:
+            continue
+        pending.append(item)
+        if len(pending) >= max_fixes:
+            break
+
+    if not pending:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": "no pending fixes"}
+
+    # 2. target ごとに system/user prompt + dedup_keys を組み立てる
+    if target == "job_category_keywords":
+        system_prompt, user_prompt, dedup_keys = _build_keyword_proposal_inputs(pending)
+    elif target == "prompts":
+        system_prompt, user_prompt, dedup_keys = _build_prompt_proposal_inputs(pending)
+    elif target == "patterns":
+        system_prompt, user_prompt, dedup_keys = _build_pattern_proposal_inputs(pending)
+    else:
+        raise HTTPException(400, f"Unsupported target: {target}")
+
+    # 3. Gemini 呼び出し
+    try:
+        result = await generate_personalized_text(
+            system_prompt,
+            user_prompt,
+            max_output_tokens=4096,
+            temperature=0.3,
+        )
+        raw = result.text or ""
+    except Exception as e:
+        raise HTTPException(500, f"AI生成エラー: {e}")
+
+    raw = _re.sub(r"^```[^\n]*\n", "", raw.strip())
+    raw = _re.sub(r"\n```$", "", raw.strip())
+    try:
+        suggestions = json.loads(raw)
+        if not isinstance(suggestions, list):
+            raise ValueError("Gemini did not return a list")
+    except Exception as e:
+        raise HTTPException(500, f"Gemini出力のJSONパース失敗: {e} / raw={raw[:300]}")
+
+    # 4. target ごとに proposal dict を組み立てる
+    proposals_out: list[dict] = []
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    now_iso = _dt.utcnow().isoformat(timespec="seconds")
+
+    for s in suggestions:
+        scope_company = (s.get("scope_company") or "").strip()
+
+        if target == "job_category_keywords":
+            keyword = (s.get("keyword") or "").strip()
+            job_category = (s.get("job_category") or "").strip()
+            if not keyword or not job_category:
+                continue
+            if (scope_company, job_category, keyword) in dedup_keys:
+                continue
+            payload = {
+                "keyword": keyword,
+                "job_category": job_category,
+                "source_fields": (s.get("source_fields") or "desired_job,experience,self_pr").strip(),
+                "note": f"Phase B AI提案 / {(s.get('rationale') or '')[:60]}",
+            }
+
+        elif target == "prompts":
+            section_type = (s.get("section_type") or "").strip()
+            job_category = (s.get("job_category") or "").strip()
+            content = (s.get("content") or "").strip()
+            if section_type not in PROMPT_COMPANY_SECTION_TYPES:
+                continue
+            if not job_category or not content:
+                continue
+            if (scope_company, section_type, job_category, content[:80]) in dedup_keys:
+                continue
+            order_default = "2" if section_type == "station_features" else ("3" if section_type == "education" else "8")
+            payload = {
+                "section_type": section_type,
+                "job_category": job_category,
+                "content": content,
+                "order": order_default,
+            }
+
+        else:  # patterns
+            pattern_type = (s.get("pattern_type") or "").strip()
+            job_category = (s.get("job_category") or "").strip()
+            new_feature = (s.get("new_feature") or "").strip()
+            employment_variant = (s.get("employment_variant") or "").strip()
+            target_company = (s.get("company") or scope_company or "").strip()
+            if not pattern_type or not job_category or not new_feature or not target_company:
+                continue
+            if (target_company, pattern_type, job_category, employment_variant, new_feature) in dedup_keys:
+                continue
+            scope_company = target_company  # patterns は会社固有が前提
+            payload = {
+                "pattern_type": pattern_type,
+                "job_category": job_category,
+                "employment_variant": employment_variant,
+                "new_feature": new_feature,
+            }
+
+        proposal = {
+            "id": _gen_proposal_id(),
+            "created_at": now_iso,
+            "source_fix_ids": ",".join(s.get("source_fix_ids") or []),
+            "target_sheet": target,
+            "operation": "append" if target != "patterns" else "update",
+            "scope_company": scope_company,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+            "rationale": (s.get("rationale") or "").strip()[:300],
+            "status": "pending",
+            "actor": "",
+            "decided_at": "",
+        }
+        proposals_out.append(proposal)
+
+    if not proposals_out:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": "AIから新規提案なし"}
+
+    if not dry_run:
+        sheets_writer.ensure_sheet_exists(SHEET_IMPROVEMENT_PROPOSALS, IMPROVEMENT_PROPOSAL_COLUMNS)
+        for p in proposals_out:
+            sheets_writer.append_row(
+                SHEET_IMPROVEMENT_PROPOSALS,
+                [p[c] for c in IMPROVEMENT_PROPOSAL_COLUMNS],
+            )
+
+    return {
+        "status": "ok",
+        "target": target,
+        "appended": 0 if dry_run else len(proposals_out),
+        "proposals": proposals_out,
+        "model": result.model_name if hasattr(result, "model_name") else "",
+        "actor": actor_name,
+    }
+
+
+@router.post("/improvement_proposals/{proposal_id}/decide")
+async def decide_improvement_proposal(
+    proposal_id: str,
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """改善提案の承認/却下。
+
+    Body:
+      - decision: "approve" | "reject"
+      - scope_company (optional): 承認時に scope を上書きしたい場合
+      - payload_overrides (optional dict): keyword/job_category/source_fields/note を上書き
+
+    approve の場合、target_sheet (=職種キーワード) に append し、proposal の
+    status=approved にし、紐付く fix_feedback も adopted にする。
+    """
+    import json
+    from datetime import datetime as _dt
+    from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
+
+    decision = (data.get("decision") or "").strip()
+    if decision not in ("approve", "reject"):
+        raise HTTPException(400, "decision must be 'approve' or 'reject'")
+
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_IMPROVEMENT_PROPOSALS)
+    except Exception:
+        raise HTTPException(404, "改善提案シートが存在しません")
+    if not all_rows or len(all_rows) < 2:
+        raise HTTPException(404, "改善提案がありません")
+
+    headers = [h.strip() for h in all_rows[0]]
+    try:
+        id_idx = headers.index("id")
+    except ValueError:
+        raise HTTPException(500, "改善提案シートのヘッダー不正")
+
+    target_row_idx: int | None = None
+    target_row: dict = {}
+    for i, row in enumerate(all_rows[1:], start=2):
+        if len(row) > id_idx and row[id_idx].strip() == proposal_id:
+            target_row_idx = i
+            target_row = {h: (row[j].strip() if j < len(row) else "") for j, h in enumerate(headers)}
+            break
+    if target_row_idx is None:
+        raise HTTPException(404, f"提案 '{proposal_id}' が見つかりません")
+    if target_row.get("status", "") != "pending":
+        raise HTTPException(
+            409,
+            f"提案 '{proposal_id}' は既に処理済みです (status={target_row.get('status')})",
+        )
+
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    now_iso = _dt.utcnow().isoformat(timespec="seconds")
+
+    if decision == "reject":
+        sheets_writer.update_cells_by_name(
+            SHEET_IMPROVEMENT_PROPOSALS,
+            target_row_idx,
+            {"status": "rejected", "actor": actor_name, "decided_at": now_iso},
+            actor=f"reject_proposal:{actor_name}",
+        )
+        return {"status": "ok", "id": proposal_id, "new_status": "rejected"}
+
+    # === approve ===
+    target_sheet = target_row.get("target_sheet", "")
+    operation = target_row.get("operation", "")
+    allowed_ops = SUPPORTED_PROPOSAL_TARGETS.get(target_sheet, set())
+    if operation not in allowed_ops:
+        raise HTTPException(
+            400,
+            f"未対応の target/operation: {target_sheet}/{operation}",
+        )
+
+    try:
+        payload = json.loads(target_row.get("payload_json", "") or "{}")
+    except Exception as e:
+        raise HTTPException(400, f"payload_json パース失敗: {e}")
+
+    overrides = data.get("payload_overrides") or {}
+    scope_company = data.get("scope_company")
+    if scope_company is None:
+        scope_company = target_row.get("scope_company", "")
+    scope_company = (scope_company or "").strip()
+
+    appended_row: dict = {}
+
+    if target_sheet == "job_category_keywords":
+        for k in ("keyword", "job_category", "source_fields", "note"):
+            if k in overrides and overrides[k] is not None:
+                payload[k] = str(overrides[k]).strip()
+        keyword = payload.get("keyword", "").strip()
+        job_category = payload.get("job_category", "").strip()
+        if not keyword or not job_category:
+            raise HTTPException(400, "keyword/job_category は必須です")
+        sheet_name = SHEET_MAP["job_category_keywords"]
+        columns = COLUMNS["job_category_keywords"]
+        row_dict = {
+            "company": scope_company,
+            "job_category": job_category,
+            "keyword": keyword,
+            "source_fields": payload.get("source_fields", "desired_job,experience,self_pr"),
+            "weight": "1",
+            "enabled": "TRUE",
+            "added_at": now_iso,
+            "added_by": actor_name,
+            "note": payload.get("note", ""),
+        }
+        sheets_writer.append_row(sheet_name, [row_dict.get(c, "") for c in columns])
+        appended_row = row_dict
+
+    elif target_sheet == "prompts":
+        for k in ("section_type", "job_category", "content", "order"):
+            if k in overrides and overrides[k] is not None:
+                payload[k] = str(overrides[k]).strip()
+        section_type = payload.get("section_type", "").strip()
+        job_category = payload.get("job_category", "").strip()
+        content = payload.get("content", "").strip()
+        if section_type not in PROMPT_COMPANY_SECTION_TYPES:
+            raise HTTPException(400, f"section_type は {PROMPT_COMPANY_SECTION_TYPES} のいずれかである必要があります")
+        if not job_category or not content:
+            raise HTTPException(400, "job_category / content は必須です")
+        sheet_name = SHEET_MAP["prompts"]
+        columns = COLUMNS["prompts"]
+        # content の改行を Sheets 用に \n リテラル化（既存運用に合わせる）
+        content_for_sheet = content.replace("\n", "\\n")
+        row_dict = {
+            "company": scope_company,
+            "section_type": section_type,
+            "job_category": job_category,
+            "order": str(payload.get("order", "")),
+            "content": content_for_sheet,
+        }
+        sheets_writer.append_row(sheet_name, [row_dict.get(c, "") for c in columns])
+        appended_row = row_dict
+
+    elif target_sheet == "patterns" and operation == "update":
+        # patterns の場合: 既存行の feature_variations に new_feature を append する
+        for k in ("pattern_type", "job_category", "employment_variant", "new_feature"):
+            if k in overrides and overrides[k] is not None:
+                payload[k] = str(overrides[k]).strip()
+        pattern_type = payload.get("pattern_type", "").strip()
+        job_category = payload.get("job_category", "").strip()
+        employment_variant = payload.get("employment_variant", "").strip()
+        new_feature = payload.get("new_feature", "").strip()
+        if not pattern_type or not job_category or not new_feature:
+            raise HTTPException(400, "pattern_type / job_category / new_feature は必須です")
+        if not scope_company:
+            raise HTTPException(400, "patterns の承認には scope_company（対象会社ID）が必須です")
+
+        # 該当する pattern 行を探す
+        sheet_name = SHEET_MAP["patterns"]
+        try:
+            pattern_rows = sheets_writer.get_all_rows(sheet_name)
+        except Exception as e:
+            raise HTTPException(500, f"パターンシート読み込み失敗: {e}")
+        if not pattern_rows or len(pattern_rows) < 2:
+            raise HTTPException(404, "パターンシートが空です")
+        pat_headers = [h.strip() for h in pattern_rows[0]]
+        try:
+            ic = pat_headers.index("company")
+            ipt = pat_headers.index("pattern_type")
+            ijc = pat_headers.index("job_category")
+            iev = pat_headers.index("employment_variant")
+            ifv = pat_headers.index("feature_variations")
+        except ValueError as e:
+            raise HTTPException(500, f"パターンシートヘッダー不正: {e}")
+
+        pattern_row_idx: int | None = None
+        existing_features: list[str] = []
+        for i, row in enumerate(pattern_rows[1:], start=2):
+            if (
+                len(row) > max(ic, ipt, ijc, iev, ifv)
+                and row[ic].strip() == scope_company
+                and row[ipt].strip() == pattern_type
+                and row[ijc].strip() == job_category
+                and row[iev].strip() == employment_variant
+                and row[ipt].strip() != "QUAL"
+            ):
+                pattern_row_idx = i
+                existing_features = [
+                    f.strip() for f in (row[ifv].strip() or "").split("|") if f.strip()
+                ]
+                break
+        if pattern_row_idx is None:
+            raise HTTPException(
+                404,
+                f"対象パターンが見つかりません: company={scope_company} type={pattern_type} jc={job_category} ev={employment_variant}",
+            )
+        if new_feature in existing_features:
+            raise HTTPException(409, f"feature '{new_feature}' は既に登録済みです")
+        merged = existing_features + [new_feature]
+        sheets_writer.update_cells_by_name(
+            sheet_name,
+            pattern_row_idx,
+            {"feature_variations": "|".join(merged)},
+            actor=f"approve_proposal_pattern:{actor_name}",
+        )
+        appended_row = {
+            "company": scope_company,
+            "pattern_type": pattern_type,
+            "job_category": job_category,
+            "employment_variant": employment_variant,
+            "feature_variations": "|".join(merged),
+            "added_feature": new_feature,
+            "_row_index": pattern_row_idx,
+        }
+
+    else:
+        raise HTTPException(400, f"未対応の target/operation: {target_sheet}/{operation}")
+
+    # 提案を approved に
+    sheets_writer.update_cells_by_name(
+        SHEET_IMPROVEMENT_PROPOSALS,
+        target_row_idx,
+        {"status": "approved", "actor": actor_name, "decided_at": now_iso, "scope_company": scope_company},
+        actor=f"approve_proposal:{actor_name}",
+    )
+
+    # 紐付く fix_feedback も adopted にする（best-effort）
+    adopted_fix_ids: list[str] = []
+    source_ids = (target_row.get("source_fix_ids") or "").split(",")
+    source_ids = [s.strip() for s in source_ids if s.strip()]
+    if source_ids:
+        try:
+            fix_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+            fix_headers = [h.strip() for h in fix_rows[0]]
+            id_col = fix_headers.index("id")
+            for i, row in enumerate(fix_rows[1:], start=2):
+                if len(row) > id_col and row[id_col].strip() in source_ids:
+                    sheets_writer.update_cells_by_name(
+                        SHEET_FIX_FEEDBACK,
+                        i,
+                        {"status": "adopted", "note": f"Phase B 提案 {proposal_id} 経由"},
+                        actor=f"approve_proposal_cascade:{actor_name}",
+                    )
+                    adopted_fix_ids.append(row[id_col].strip())
+        except Exception:
+            pass
+
+    return {
+        "status": "ok",
+        "id": proposal_id,
+        "new_status": "approved",
+        "target_sheet": target_sheet,
+        "appended_row": appended_row,
+        "appended_keyword": appended_row,  # 後方互換: 既存テスト名
+        "adopted_fix_ids": adopted_fix_ids,
+    }
 
 
 @router.post("/improve_template")
@@ -1649,33 +2912,47 @@ async def expand_template(
     data: dict,
     operator=Depends(verify_api_key),
 ):
-    """ソーステンプレートを元に、複数ターゲットへ適応版を一括生成する。"""
+    """ソーステンプレートを元に、複数ターゲットへ適応版を一括生成する。
+
+    targets の各要素は { job_category, template_type, company? } を持つ。
+    company を省略した場合は source と同じ会社として扱う。他会社の
+    テンプレにも展開できるようにしており、その場合は target 会社の
+    プロフィールが AI プロンプトに差し込まれる。
+    """
     import re
     from pipeline.ai_generator import generate_personalized_text
 
-    company = data.get("company", "")
+    source_company = data.get("company", "")
     source_jc = data.get("source_job_category", "")
     source_type = data.get("source_template_type", "")
     targets = data.get("targets", [])
     directive = data.get("directive", "")
 
-    if not company or not source_type or not targets:
+    if not source_company or not source_type or not targets:
         raise HTTPException(400, "company, source_template_type, targets are required")
 
     # 1. Get source template
     all_rows = sheets_writer.get_all_rows("テンプレート")
     if not all_rows:
         raise HTTPException(404, "テンプレートシートが空です")
-    headers = all_rows[0]
-    col_map = {h.strip(): i for i, h in enumerate(headers)}
+    headers = [h.strip() for h in all_rows[0]]
+    col_map = {h: i for i, h in enumerate(headers)}
+
+    def _cell(row, col_name: str, default: str = "") -> str:
+        idx = col_map.get(col_name)
+        if idx is None:
+            return default
+        return row[idx].strip() if idx < len(row) else default
 
     source_body = ""
     for row in all_rows[1:]:
-        c = row[col_map.get("company", 0)] if col_map.get("company") is not None and len(row) > col_map["company"] else ""
-        jc = row[col_map.get("job_category", 1)] if col_map.get("job_category") is not None and len(row) > col_map["job_category"] else ""
-        tt = row[col_map.get("type", 2)] if col_map.get("type") is not None and len(row) > col_map["type"] else ""
-        if c.strip() == company and jc.strip() == source_jc and tt.strip() == source_type:
-            source_body = row[col_map.get("body", 3)] if col_map.get("body") is not None and len(row) > col_map["body"] else ""
+        if (
+            _cell(row, "company") == source_company
+            and _cell(row, "job_category") == source_jc
+            and _cell(row, "type") == source_type
+        ):
+            raw = row[col_map.get("body", 3)] if col_map.get("body") is not None and len(row) > col_map["body"] else ""
+            source_body = raw
             break
 
     if not source_body:
@@ -1683,26 +2960,38 @@ async def expand_template(
 
     source_body = source_body.replace("\\n", "\n")
 
-    # 2. Load company profile
-    company_profile = sheets_client.get_company_profile(company)
+    # 2. Profile cache: target company might differ from source. We load
+    #    each distinct company profile lazily and reuse across targets.
+    profile_cache: dict[str, str] = {}
+
+    def _profile(company_id: str) -> str:
+        if company_id not in profile_cache:
+            try:
+                profile_cache[company_id] = sheets_client.get_company_profile(company_id) or ""
+            except Exception:
+                profile_cache[company_id] = ""
+        return profile_cache[company_id]
 
     # 3. Build target info + find existing templates
     target_rows = []
     for t in targets:
+        t_company = (t.get("company") or source_company).strip()
         t_jc = t.get("job_category", "")
         t_type = t.get("template_type", "")
         existing_body = ""
         row_index = None
         for idx, row in enumerate(all_rows[1:], start=2):
-            c = row[col_map.get("company", 0)] if col_map.get("company") is not None and len(row) > col_map["company"] else ""
-            jc = row[col_map.get("job_category", 1)] if col_map.get("job_category") is not None and len(row) > col_map["job_category"] else ""
-            tt = row[col_map.get("type", 2)] if col_map.get("type") is not None and len(row) > col_map["type"] else ""
-            if c.strip() == company and jc.strip() == t_jc and tt.strip() == t_type:
-                existing_body = row[col_map.get("body", 3)] if col_map.get("body") is not None and len(row) > col_map["body"] else ""
-                existing_body = existing_body.replace("\\n", "\n")
+            if (
+                _cell(row, "company") == t_company
+                and _cell(row, "job_category") == t_jc
+                and _cell(row, "type") == t_type
+            ):
+                raw = row[col_map.get("body", 3)] if col_map.get("body") is not None and len(row) > col_map["body"] else ""
+                existing_body = raw.replace("\\n", "\n")
                 row_index = idx
                 break
         target_rows.append({
+            "company": t_company,
             "job_category": t_jc,
             "template_type": t_type,
             "existing_body": existing_body,
@@ -1725,21 +3014,21 @@ async def expand_template(
         "正社員_再送": "正社員向けの再送スカウト。前回の補足として短く、新たな魅力や変化を伝える。",
     }
 
-    system_prompt = f"""あなたは介護・医療系のスカウト文テンプレートを、異なるテンプレート型・職種に適応させるエキスパートです。
-
-「お手本テンプレート」の構成・トーン・表現の質を維持しながら、ターゲットの型や職種に合わせて適応してください。
-
-## ルール
-- {{personalized_text}} プレースホルダーは必ず維持
-- お手本の構成（段落構成、CTA位置）を基本的に踏襲
-- 型の違い（初回↔再送、パート↔正社員）に応じてトーンと内容を調整
-- 職種の違いに応じて業務内容の表現を適切に変更
-- 再送テンプレートは初回より短く、「再度のご連絡」のトーンに
-- 正社員は待遇・キャリア面を強調、パートは柔軟性・働きやすさを強調
-- テンプレート本文のみ出力（説明不要）
-
-{f'## 会社情報{chr(10)}{company_profile[:2000]}' if company_profile else ''}
-"""
+    def _build_system_prompt(target_company: str) -> str:
+        profile = _profile(target_company)
+        return (
+            "あなたは介護・医療系のスカウト文テンプレートを、異なるテンプレート型・職種に適応させるエキスパートです。\n\n"
+            "「お手本テンプレート」の構成・トーン・表現の質を維持しながら、ターゲットの型や職種に合わせて適応してください。\n\n"
+            "## ルール\n"
+            "- {personalized_text} プレースホルダーは必ず維持\n"
+            "- お手本の構成（段落構成、CTA位置）を基本的に踏襲\n"
+            "- 型の違い（初回↔再送、パート↔正社員）に応じてトーンと内容を調整\n"
+            "- 職種の違いに応じて業務内容の表現を適切に変更\n"
+            "- 再送テンプレートは初回より短く、「再度のご連絡」のトーンに\n"
+            "- 正社員は待遇・キャリア面を強調、パートは柔軟性・働きやすさを強調\n"
+            "- テンプレート本文のみ出力（説明不要）\n"
+            + (f"\n## 会社情報（{target_company}）\n{profile[:2000]}\n" if profile else "")
+        )
 
     # 5. Generate for each target (sequential to avoid rate limits)
     results = []
@@ -1749,6 +3038,8 @@ async def expand_template(
         source_jc_name = JOB_CATEGORY_NAMES.get(source_jc, source_jc)
 
         adaptation_notes = []
+        if tr["company"] != source_company:
+            adaptation_notes.append(f"会社変更: {source_company} → {tr['company']}")
         if tr["job_category"] != source_jc:
             adaptation_notes.append(f"職種変更: {source_jc_name} → {t_jc_name}")
         if tr["template_type"] != source_type:
@@ -1756,10 +3047,11 @@ async def expand_template(
 
         user_prompt = f"""以下のお手本テンプレートを適応してください。
 
-## お手本（{source_jc_name} / {source_type}）
+## お手本（{source_company} / {source_jc_name} / {source_type}）
 {source_body}
 
 ## 適応先
+- 会社: {tr['company']}
 - 職種: {t_jc_name}
 - テンプレート型: {tr['template_type']}
 - {t_type_rule}
@@ -1767,6 +3059,8 @@ async def expand_template(
 {f'{chr(10)}## ディレクターの指示{chr(10)}{directive}' if directive else ''}
 
 テンプレート本文のみ出力してください。"""
+
+        system_prompt = _build_system_prompt(tr["company"])
 
         try:
             result = await generate_personalized_text(
@@ -1782,6 +3076,7 @@ async def expand_template(
             proposed = proposed.strip()
 
             results.append({
+                "company": tr["company"],
                 "job_category": tr["job_category"],
                 "template_type": tr["template_type"],
                 "original": tr["existing_body"],
@@ -1790,6 +3085,7 @@ async def expand_template(
             })
         except Exception as e:
             results.append({
+                "company": tr["company"],
                 "job_category": tr["job_category"],
                 "template_type": tr["template_type"],
                 "original": tr["existing_body"],
@@ -1801,30 +3097,167 @@ async def expand_template(
     return {"status": "ok", "results": results}
 
 
+@router.post("/expand_template/to_prompt_proposals")
+async def expand_template_to_prompt_proposals(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Mode B: テンプレ展開で承認された差分を、プロンプトシート提案に変換する。
+
+    `approved_diffs` は承認済みの target 差分リスト。各要素は
+    { company, job_category, template_type, original, merged } を持つ。
+
+    差分を fix_feedback 相当の pending 入力に詰め直したあと、既存の
+    `_build_prompt_proposal_inputs` と同じフォーマットで Gemini に提案を
+    書かせて、`改善提案` シートに status=pending で append する。
+
+    実テンプレート更新は一切行わない。フォローアップとして管理画面の
+    「修正フィードバック」タブから個別承認してもらう。
+    """
+    import json
+    import re as _re
+    from datetime import datetime as _dt
+    from pipeline.ai_generator import generate_personalized_text
+    from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
+
+    company = (data.get("company") or "").strip()
+    source = data.get("source") or {}
+    approved_diffs = data.get("approved_diffs") or []
+
+    if not company or not approved_diffs:
+        raise HTTPException(400, "company と approved_diffs は必須です")
+
+    # 1. approved_diffs を pending fix_feedback 相当に変換
+    pending_like: list[dict] = []
+    for i, d in enumerate(approved_diffs):
+        merged = (d.get("merged") or "").strip()
+        original = (d.get("original") or "").strip()
+        if not merged:
+            continue
+        pending_like.append({
+            "id": f"expand_{i}",
+            "company": (d.get("company") or company).strip(),
+            "template_type": (d.get("template_type") or ""),
+            "before": original[:1200],
+            "after": merged[:1200],
+            "reason": (
+                f"テンプレ展開の差分 "
+                f"(source={source.get('job_category','')}:{source.get('template_type','')} "
+                f"→ target={d.get('job_category','')}:{d.get('template_type','')})"
+            )[:300],
+        })
+
+    if not pending_like:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": "空の差分"}
+
+    # 2. 既存 helper で system/user prompt 組み立て
+    system_prompt, user_prompt, dedup_keys = _build_prompt_proposal_inputs(pending_like)
+
+    # 3. Gemini 呼び出し
+    try:
+        result = await generate_personalized_text(
+            system_prompt,
+            user_prompt,
+            max_output_tokens=4096,
+            temperature=0.3,
+        )
+        raw = result.text or ""
+    except Exception as e:
+        raise HTTPException(500, f"AI生成エラー: {e}")
+
+    raw = _re.sub(r"^```[^\n]*\n", "", raw.strip())
+    raw = _re.sub(r"\n```$", "", raw.strip())
+    try:
+        suggestions = json.loads(raw)
+        if not isinstance(suggestions, list):
+            raise ValueError("Gemini did not return a list")
+    except Exception as e:
+        raise HTTPException(500, f"Gemini出力のJSONパース失敗: {e} / raw={raw[:300]}")
+
+    # 4. 既存 generate_improvement_proposals と同じ形式で proposal dict を作る
+    proposals_out: list[dict] = []
+    now_iso = _dt.utcnow().isoformat(timespec="seconds")
+    for s in suggestions:
+        scope_company = (s.get("scope_company") or company).strip()
+        section_type = (s.get("section_type") or "").strip()
+        job_category = (s.get("job_category") or "").strip()
+        content = (s.get("content") or "").strip()
+        if section_type not in PROMPT_COMPANY_SECTION_TYPES:
+            continue
+        if not job_category or not content:
+            continue
+        if (scope_company, section_type, job_category, content[:80]) in dedup_keys:
+            continue
+        order_default = "2" if section_type == "station_features" else ("3" if section_type == "education" else "8")
+        payload = {
+            "section_type": section_type,
+            "job_category": job_category,
+            "content": content,
+            "order": order_default,
+        }
+        proposal = {
+            "id": _gen_proposal_id(),
+            "created_at": now_iso,
+            "source_fix_ids": ",".join(s.get("source_fix_ids") or []),
+            "target_sheet": "prompts",
+            "operation": "append",
+            "scope_company": scope_company,
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+            "rationale": (s.get("rationale") or "").strip()[:300],
+            "status": "pending",
+            "actor": "",
+            "decided_at": "",
+        }
+        proposals_out.append(proposal)
+
+    if not proposals_out:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": "AIから新規提案なし"}
+
+    sheets_writer.ensure_sheet_exists(SHEET_IMPROVEMENT_PROPOSALS, IMPROVEMENT_PROPOSAL_COLUMNS)
+    for p in proposals_out:
+        sheets_writer.append_row(
+            SHEET_IMPROVEMENT_PROPOSALS,
+            [p[c] for c in IMPROVEMENT_PROPOSAL_COLUMNS],
+        )
+
+    return {
+        "status": "ok",
+        "appended": len(proposals_out),
+        "proposals": proposals_out,
+        "proposal_ids": [p["id"] for p in proposals_out],
+    }
+
+
 @router.post("/batch_update_templates")
 async def batch_update_templates(
     data: dict,
     operator=Depends(verify_api_key),
 ):
-    """複数テンプレートを一括更新（バージョニング+変更履歴付き）。"""
-    from datetime import datetime, timedelta, timezone
-    JST = timezone(timedelta(hours=9))
+    """複数テンプレートを一括更新（バージョニング+変更履歴付き）。
 
+    Body comparison and version increment are delegated to
+    `_bump_template_body`, which is shared with the single-row PUT path
+    so the two cannot drift out of sync.
+    """
     updates = data.get("updates", [])
     if not updates:
         raise HTTPException(400, "updates is required")
 
-    all_rows = sheets_writer.get_all_rows("テンプレート")
-    if not all_rows:
+    # Touch the sheet once up front so we fail fast if it's empty.
+    preflight = sheets_writer.get_all_rows("テンプレート")
+    if not preflight:
         raise HTTPException(404, "テンプレートシートが空です")
-    header = all_rows[0]
-    columns = COLUMNS.get("templates", [])
 
     updated = 0
+    noop = 0
+    skipped: list[dict] = []
+    errors: list[dict] = []
+
     for upd in updates:
         row_index = upd.get("row_index")
         new_body = upd.get("body", "")
         reason = upd.get("reason", "一括展開")
+        upd_company = (upd.get("company") or "").strip() or None
 
         if not new_body:
             continue
@@ -1841,53 +3274,38 @@ async def batch_update_templates(
                 updated += 1
             continue
 
-        if row_index < 2 or row_index > len(all_rows):
+        try:
+            result = _bump_template_body(
+                row_index=int(row_index),
+                new_body=new_body,
+                reason=reason,
+                actor="admin_ui:batch_update",
+                expected_company=upd_company,
+            )
+        except ValueError as e:
+            msg = str(e)
+            # A missing required column is a configuration bug — surface
+            # it as 500 so directors notice before more drift accrues.
+            if "必須列がありません" in msg or "requires columns" in msg:
+                raise HTTPException(500, f"テンプレートシートの列構成に問題があります: {msg}")
+            errors.append({"row_index": row_index, "error": msg})
             continue
 
-        existing_row = all_rows[row_index - 1]
-        existing_row += [""] * (len(header) - len(existing_row))
-        existing = {header[i]: existing_row[i] for i in range(len(header))}
-
-        if existing.get("body", "") == new_body:
-            continue  # no change
-
-        # Version increment
-        old_version = existing.get("version", "1")
-        try:
-            new_version = str(int(old_version) + 1)
-        except (ValueError, TypeError):
-            new_version = "2"
-
-        # Log history
-        try:
-            sheets_writer.ensure_sheet_exists("テンプレート変更履歴", [
-                "timestamp", "company", "job_category", "type",
-                "old_version", "new_version", "reason", "old_body",
-            ])
-            sheets_writer.append_row("テンプレート変更履歴", [
-                datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
-                existing.get("company", ""),
-                existing.get("job_category", ""),
-                existing.get("type", ""),
-                old_version,
-                new_version,
-                reason,
-                existing.get("body", ""),
-            ])
-        except Exception:
-            pass
-
-        # Update only body + version cells, by name (safe against column reorder)
-        sheets_writer.update_cells_by_name(
-            "テンプレート",
-            row_index,
-            {"body": new_body, "version": new_version},
-            actor="admin_ui:batch_update",
-        )
-        updated += 1
+        if result["status"] == "updated":
+            updated += 1
+        elif result["status"] == "no-op":
+            noop += 1
+        elif result["status"] == "skipped":
+            skipped.append(result)
 
     sheets_client.reload()
-    return {"status": "ok", "updated": updated}
+    return {
+        "status": "ok",
+        "updated": updated,
+        "noop": noop,
+        "skipped": skipped,
+        "errors": errors,
+    }
 
 
 @router.post("/analyze_cycle")
@@ -2118,38 +3536,42 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
         if key in valid_cols:
             cells[key] = "" if value is None else str(value)
 
-    # Template versioning: auto-increment version + log history on body change
-    if sheet_slug == "templates" and "body" in cells and cells["body"] != existing.get("body", ""):
-        from datetime import datetime, timedelta, timezone
-        JST = timezone(timedelta(hours=9))
-
-        old_version = existing.get("version", "1")
+    # Template body update: delegate to the shared version-bump helper so
+    # single-row PUT and batch_update_templates never drift apart.
+    if sheet_slug == "templates" and "body" in cells:
+        reason = data.get("_change_reason", "管理画面から更新")
         try:
-            new_version = str(int(old_version) + 1)
-        except (ValueError, TypeError):
-            new_version = "2"
-        cells["version"] = new_version
+            bump_result = _bump_template_body(
+                row_index=row_index,
+                new_body=cells["body"],
+                reason=reason,
+                actor="admin_ui",
+            )
+        except ValueError as e:
+            raise HTTPException(500, f"テンプレート更新エラー: {e}")
 
-        # Log old version to history sheet
-        try:
-            sheets_writer.ensure_sheet_exists("テンプレート変更履歴", [
-                "timestamp", "company", "job_category", "type",
-                "old_version", "new_version", "reason", "old_body",
-            ])
-            reason = data.get("_change_reason", "管理画面から更新")
-            sheets_writer.append_row("テンプレート変更履歴", [
-                datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
-                existing.get("company", ""),
-                existing.get("job_category", ""),
-                existing.get("type", ""),
-                old_version,
-                new_version,
-                reason,
-                existing.get("body", ""),
-            ])
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"Failed to log template history: {e}")
+        # Handle any non-body columns the same PUT also wants to touch
+        # (e.g. job_category rename). body+version are owned by the helper.
+        other_cells = {k: v for k, v in cells.items() if k not in ("body", "version")}
+        if other_cells:
+            other_result = sheets_writer.update_cells_by_name(
+                sheet_name, row_index, other_cells, actor="admin_ui",
+            )
+            merged_fields = list(other_result["updated"]) + (
+                ["body", "version"] if bump_result["status"] == "updated" else []
+            )
+            skipped_fields = other_result["skipped"]
+        else:
+            merged_fields = ["body", "version"] if bump_result["status"] == "updated" else []
+            skipped_fields = []
+
+        sheets_client.reload()
+        return {
+            "status": bump_result["status"],
+            "merged_fields": merged_fields,
+            "skipped_fields": skipped_fields,
+            "version": bump_result["new_version"],
+        }
 
     if not cells:
         return {"status": "no-op", "merged_fields": [], "version": existing.get("version", "")}

@@ -199,6 +199,7 @@ class SheetsWriter:
         cells: dict[str, str],
         *,
         actor: str = "",
+        strict_columns: list[str] | None = None,
     ) -> dict:
         """Safely update specific cells in a row by column name.
 
@@ -207,6 +208,12 @@ class SheetsWriter:
         Cells in `cells` whose names aren't in the sheet header are silently
         skipped (logged as a warning). Cells not in `cells` are left
         untouched.
+
+        If `strict_columns` is given, any name in that list that isn't in
+        the sheet header causes a ValueError to be raised BEFORE any write
+        happens. Use this when the caller depends on certain columns
+        existing (e.g. `version` for the template versioning flow) — silent
+        skipping of those would corrupt downstream bookkeeping.
 
         Snapshots the previous row contents to the audit sheet before
         writing, so the operation is recoverable if something goes wrong.
@@ -225,6 +232,18 @@ class SheetsWriter:
             )
 
         headers = [h.strip() for h in all_rows[0]]
+
+        # Strict column check: refuse to write if any required column is
+        # missing from the sheet header. Do this BEFORE the audit snapshot
+        # so nothing lands on disk.
+        if strict_columns:
+            missing = [c for c in strict_columns if c not in headers]
+            if missing:
+                raise ValueError(
+                    f"update_cells_by_name on '{sheet_name}' requires columns "
+                    f"{missing} but sheet header is {headers}"
+                )
+
         previous_row = all_rows[row_index - 1]
         previous_row += [""] * (len(headers) - len(previous_row))
         previous_dict = {headers[i]: previous_row[i] for i in range(len(headers))}
