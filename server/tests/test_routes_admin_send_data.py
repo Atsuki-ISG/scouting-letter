@@ -101,3 +101,89 @@ class TestDeleteSendDataRow:
         with patch("api.routes_admin.sheets_writer") as mw:
             res = client.delete("/api/v1/admin/send_data/ark-visiting-nurse/1")
         assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/v1/admin/send_data/{company_id}/{row_index}
+# ---------------------------------------------------------------------------
+
+class TestPatchSendDataRow:
+    def test_patch_updates_only_changed_cells(self, client):
+        rows = [SEND_DATA_HEADERS, _row("M001"), _row("M002")]
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = rows
+            mw.update_cells_by_name.return_value = {
+                "updated": ["会員番号", "テンプレート種別"],
+                "skipped": [],
+            }
+            res = client.patch(
+                "/api/v1/admin/send_data/ark-visiting-nurse/3",
+                json={"cells": {"会員番号": "M999", "テンプレート種別": "_お気に入り"}},
+            )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["status"] == "ok"
+        assert body["row_index"] == 3
+        assert "会員番号" in body["updated"]
+        mw.update_cells_by_name.assert_called_once()
+        args, kwargs = mw.update_cells_by_name.call_args
+        # sheet name, row_index, cells
+        assert args[0] == "送信_アーク訪看"
+        assert args[1] == 3
+        assert args[2] == {"会員番号": "M999", "テンプレート種別": "_お気に入り"}
+        assert kwargs.get("actor", "").startswith("edit_send_data:")
+
+    def test_patch_rejects_immutable_timestamp(self, client):
+        rows = [SEND_DATA_HEADERS, _row("M001")]
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = rows
+            res = client.patch(
+                "/api/v1/admin/send_data/ark-visiting-nurse/2",
+                json={"cells": {"日時": "2026-01-01T00:00:00"}},
+            )
+        assert res.status_code == 400
+        # update_cells_by_name must NOT have been called
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = rows
+            client.patch(
+                "/api/v1/admin/send_data/ark-visiting-nurse/2",
+                json={"cells": {"日時": "x"}},
+            )
+            mw.update_cells_by_name.assert_not_called()
+
+    def test_patch_rejects_drifted_header(self, client):
+        # Legacy 15-col header — drift guard must trigger
+        legacy_header = [
+            "日時", "会員番号", "テンプレート種別", "生成パス", "パターン",
+            "年齢層", "資格", "経験区分", "希望雇用形態", "就業状況",
+            "曜日", "時間帯", "返信", "返信日", "返信カテゴリ",
+        ]
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = [legacy_header, ["", "M001"] + [""] * 13]
+            res = client.patch(
+                "/api/v1/admin/send_data/ark-visiting-nurse/2",
+                json={"cells": {"会員番号": "M999"}},
+            )
+        assert res.status_code == 409
+        assert "drifted" in res.json()["detail"].lower() or "schema" in res.json()["detail"].lower()
+
+    def test_patch_unknown_company_returns_404(self, client):
+        res = client.patch(
+            "/api/v1/admin/send_data/no-such-company/2",
+            json={"cells": {"会員番号": "M999"}},
+        )
+        assert res.status_code == 404
+
+    def test_patch_invalid_row_index_returns_400(self, client):
+        res = client.patch(
+            "/api/v1/admin/send_data/ark-visiting-nurse/1",
+            json={"cells": {"会員番号": "M999"}},
+        )
+        assert res.status_code == 400
+
+    def test_patch_empty_cells_returns_400(self, client):
+        res = client.patch(
+            "/api/v1/admin/send_data/ark-visiting-nurse/2",
+            json={"cells": {}},
+        )
+        assert res.status_code == 400
