@@ -68,8 +68,22 @@ COMPANY_DISPLAY_NAMES = {
 
 
 def _send_data_sheet_name(company_id: str) -> str:
-    """Get the per-company send data sheet name."""
-    display = COMPANY_DISPLAY_NAMES.get(company_id, company_id)
+    """Get the per-company send data sheet name.
+
+    Primary source is the プロフィール sheet's display_name column (single
+    source of truth, so newly-added companies don't require code changes).
+    Falls back to the legacy hardcoded map, then the raw ID.
+    """
+    display: str = ""
+    try:
+        from db.sheets_client import sheets_client
+        candidate = sheets_client.get_company_display_name(company_id)
+        if candidate and candidate != company_id:
+            display = candidate
+    except Exception:
+        display = ""
+    if not display:
+        display = COMPANY_DISPLAY_NAMES.get(company_id, company_id)
     return f"送信_{display}"
 
 

@@ -64,8 +64,28 @@ def month_display(year_month: str) -> str:
 
 
 def list_companies() -> list[tuple[str, str]]:
-    """Return [(company_id, display_name), ...] for all configured companies."""
-    return [(cid, name) for cid, name in COMPANY_DISPLAY_NAMES.items()]
+    """Return [(company_id, display_name), ...] for all configured companies.
+
+    Primary source is the プロフィール sheet (single source of truth — newly
+    added companies show up automatically). Merged with the legacy hardcoded
+    COMPANY_DISPLAY_NAMES so nothing silently disappears if a company exists
+    only in the old dict. Sorted by ID for stable ordering.
+    """
+    merged: dict[str, str] = {}
+    try:
+        for item in sheets_client.get_companies_with_keywords():
+            cid = (item.get("id") or "").strip()
+            if not cid:
+                continue
+            display = (item.get("display_name") or "").strip() or cid
+            merged[cid] = display
+    except Exception as e:
+        logger.warning(f"Failed to load companies from Sheets: {e}")
+
+    for cid, display in COMPANY_DISPLAY_NAMES.items():
+        merged.setdefault(cid, display)
+
+    return sorted(merged.items(), key=lambda x: x[0])
 
 
 def _row_to_dict(headers: list[str], row: list[str]) -> dict[str, str]:
