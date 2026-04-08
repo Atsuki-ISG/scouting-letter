@@ -83,6 +83,41 @@ function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Pr
   return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Fetch with retry for transient 5xx errors (Cloud Run cold starts, gateway hiccups).
+ * Retries on 502/503/504 and network errors with exponential backoff.
+ * 4xx (including 429) are returned immediately — caller decides how to surface them.
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  maxRetries = 2,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, init, timeoutMs);
+      // Retry on transient server errors
+      if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt))); // 1s, 2s
+        continue;
+      }
+      return res;
+    } catch (e) {
+      // Network error / abort — retry unless we're out of attempts
+      lastError = e;
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+        continue;
+      }
+      throw e;
+    }
+  }
+  // Should be unreachable, but TypeScript needs a return
+  throw lastError ?? new Error('fetchWithRetry: exhausted retries');
+}
+
 function formatApiError(status: number, text: string): string {
   if (status === 429) return 'API枠超過（レート制限）。しばらく待ってから再試行してください';
   if (status === 401) return 'APIキーが無効です。設定を確認してください';
@@ -110,7 +145,7 @@ export const apiClient = {
   ): Promise<GenerateResponse> {
     const endpoint = await this.getEndpoint();
     const headers = await this.getHeaders();
-    const res = await fetchWithTimeout(`${endpoint}/api/v1/generate`, {
+    const res = await fetchWithRetry(`${endpoint}/api/v1/generate`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ company_id: companyId, profile, options }),
@@ -129,7 +164,7 @@ export const apiClient = {
   ): Promise<BatchGenerateResponse> {
     const endpoint = await this.getEndpoint();
     const headers = await this.getHeaders();
-    const res = await fetchWithTimeout(`${endpoint}/api/v1/generate/batch`, {
+    const res = await fetchWithRetry(`${endpoint}/api/v1/generate/batch`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
