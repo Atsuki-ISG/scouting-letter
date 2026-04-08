@@ -294,7 +294,7 @@ export class CandidateList {
         <div class="candidate-header">
           <span class="member-id">${escapeHtml(candidate.member_id)}</span>
           ${templateBadge}
-          ${candidate.is_favorite ? '<span style="background:#fee2e2;color:#dc2626;font-size:10px;padding:1px 4px;border-radius:3px;margin-left:2px;">★気になる</span>' : ''}
+          ${candidate.is_favorite ? '<span class="favorite-badge">★気になる</span>' : ''}
           <span class="candidate-status ${candidate.status}">${statusLabel}</span>
         </div>
         ${validationHtml}

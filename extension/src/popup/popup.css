@@ -1,0 +1,176 @@
+@import '../shared/tokens.css';
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  color: var(--color-text);
+  background: var(--color-bg);
+  width: 300px;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Header ---------- */
+.popup-header {
+  background: linear-gradient(135deg, var(--color-brand-700) 0%, var(--color-brand-600) 100%);
+  color: var(--color-text-on-brand);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+}
+
+.popup-header h1 {
+  font-size: var(--text-xl);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.3px;
+}
+
+.popup-header__sub {
+  font-size: var(--text-sm);
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
+/* ---------- Body ---------- */
+.popup-body {
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---------- Card ---------- */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-sm);
+}
+
+.card__title {
+  font-size: var(--text-md);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.card > * + * {
+  margin-top: var(--space-2);
+}
+
+.card__title + * {
+  margin-top: 0;
+}
+
+/* ---------- Field ---------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field label {
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-2);
+}
+
+.field input[type='text'],
+.field input[type='password'],
+.field select {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+  outline: none;
+  border-color: var(--color-brand-500);
+  box-shadow: var(--shadow-glow);
+}
+
+.field-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-md);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.field-inline input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-brand-500);
+}
+
+/* ---------- Button ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
+  font-weight: var(--fw-medium);
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background var(--transition), box-shadow var(--transition);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring), var(--shadow-sm);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--color-brand-500);
+  color: var(--color-text-on-brand);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-brand-600);
+}
+
+.btn-secondary {
+  background: var(--color-surface-3);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-border-2);
+}
+
+/* ---------- Status line ---------- */
+.status {
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  min-height: 1em;
+}
+.status--ok    { color: var(--color-success); }
+.status--error { color: var(--color-danger); }
+.status.hidden { display: none; }

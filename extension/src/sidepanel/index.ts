@@ -16,20 +16,26 @@ import { gasClient } from '../shared/gas-client';
 function setupTabs(): void {
   const tabs = document.querySelectorAll<HTMLButtonElement>('.tab');
   const panels = document.querySelectorAll<HTMLElement>('.panel');
+  const settingsBtn = document.getElementById('btn-open-settings') as HTMLButtonElement | null;
+
+  const activate = (target: string | undefined, clickedEl: HTMLElement | null) => {
+    if (!target) return;
+    tabs.forEach((t) => t.classList.remove('active'));
+    settingsBtn?.classList.remove('active');
+    panels.forEach((p) => p.classList.add('hidden'));
+
+    if (clickedEl) clickedEl.classList.add('active');
+    const panel = document.getElementById(`panel-${target}`);
+    if (panel) panel.classList.remove('hidden');
+  };
 
   tabs.forEach((tab) => {
-    tab.addEventListener('click', () => {
-      const target = tab.dataset.tab;
+    tab.addEventListener('click', () => activate(tab.dataset.tab, tab));
+  });
 
-      tabs.forEach((t) => t.classList.remove('active'));
-      panels.forEach((p) => p.classList.add('hidden'));
-
-      tab.classList.add('active');
-      const panel = document.getElementById(`panel-${target}`);
-      if (panel) {
-        panel.classList.remove('hidden');
-      }
-    });
+  // ヘッダー歯車ボタン → 設定パネルを開く
+  settingsBtn?.addEventListener('click', () => {
+    activate('settings', settingsBtn);
   });
 }
 

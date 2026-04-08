@@ -25,9 +25,10 @@ async function init(): Promise<void> {
   // 会社選択変更時に保存
   companySelect.addEventListener('change', async () => {
     await storage.setCompany(companySelect.value);
-    statusEl.style.display = 'block';
+    statusEl.textContent = '保存しました';
+    statusEl.className = 'status status--ok';
     setTimeout(() => {
-      statusEl.style.display = 'none';
+      statusEl.className = 'status hidden';
     }, 2000);
   });
 
@@ -69,9 +70,8 @@ function setupGASSettings(): void {
 
   // 接続テスト
   btnTest.addEventListener('click', async () => {
-    gasStatus.style.display = 'block';
+    gasStatus.className = 'status';
     gasStatus.textContent = 'テスト中...';
-    gasStatus.style.color = '#6b7280';
 
     // URLを最新で保存してからテスト
     await storage.setGASEndpoint(gasUrl.value.trim());
@@ -79,10 +79,10 @@ function setupGASSettings(): void {
 
     if (result.success) {
       gasStatus.textContent = '接続成功';
-      gasStatus.style.color = '#22c55e';
+      gasStatus.className = 'status status--ok';
     } else {
       gasStatus.textContent = `接続失敗: ${result.error}`;
-      gasStatus.style.color = '#ef4444';
+      gasStatus.className = 'status status--error';
     }
   });
 }
@@ -112,9 +112,8 @@ function setupAPISettings(): void {
 
   // 接続テスト
   btnTest.addEventListener('click', async () => {
-    apiStatus.style.display = 'block';
+    apiStatus.className = 'status';
     apiStatus.textContent = 'テスト中...';
-    apiStatus.style.color = '#6b7280';
 
     // 最新値を保存してからテスト
     await storage.setAPIEndpoint(apiEndpoint.value.trim());
@@ -123,10 +122,10 @@ function setupAPISettings(): void {
 
     if (result.success) {
       apiStatus.textContent = '接続成功';
-      apiStatus.style.color = '#22c55e';
+      apiStatus.className = 'status status--ok';
     } else {
       apiStatus.textContent = `接続失敗: ${result.error}`;
-      apiStatus.style.color = '#ef4444';
+      apiStatus.className = 'status status--error';
     }
   });
 }

@@ -4,106 +4,56 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Scout Assistant 設定</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', sans-serif;
-      font-size: 13px;
-      color: #333;
-      width: 280px;
-      padding: 16px;
-    }
-    h2 {
-      font-size: 15px;
-      font-weight: 600;
-      margin-bottom: 12px;
-      color: #2563eb;
-    }
-    .field {
-      margin-bottom: 12px;
-    }
-    label {
-      display: block;
-      font-size: 12px;
-      font-weight: 500;
-      color: #6b7280;
-      margin-bottom: 4px;
-    }
-    select, input {
-      width: 100%;
-      padding: 6px 10px;
-      border: 1px solid #d1d5db;
-      border-radius: 4px;
-      font-size: 13px;
-    }
-    .btn {
-      width: 100%;
-      padding: 8px;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      cursor: pointer;
-      background: #2563eb;
-      color: white;
-      margin-top: 8px;
-    }
-    .btn:hover { background: #1d4ed8; }
-    .status {
-      font-size: 11px;
-      color: #22c55e;
-      margin-top: 8px;
-      display: none;
-    }
-  </style>
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h2>Scout Assistant 設定</h2>
+  <header class="popup-header">
+    <h1>Scout Assistant</h1>
+    <div class="popup-header__sub">設定 & 接続</div>
+  </header>
 
-  <div class="field">
-    <label for="company">会社:</label>
-    <select id="company"></select>
+  <div class="popup-body">
+    <!-- 会社選択 -->
+    <section class="card">
+      <div class="card__title">会社</div>
+      <div class="field">
+        <select id="company"></select>
+      </div>
+      <button id="btn-open-panel" class="btn btn-primary">サイドパネルを開く</button>
+    </section>
+
+    <!-- API 設定 -->
+    <section class="card">
+      <div class="card__title">API 設定</div>
+      <div class="field">
+        <label for="api-endpoint">エンドポイント</label>
+        <input type="text" id="api-endpoint" placeholder="https://scout-api-xxxxx.run.app">
+      </div>
+      <div class="field">
+        <label for="api-key">パスワード</label>
+        <input type="password" id="api-key" placeholder="パスワードを入力">
+      </div>
+      <button id="btn-test-api" class="btn btn-secondary">接続テスト</button>
+      <div id="api-status" class="status hidden"></div>
+    </section>
+
+    <!-- GAS 連携 -->
+    <section class="card">
+      <div class="card__title">GAS 連携</div>
+      <label class="field-inline">
+        <input type="checkbox" id="gas-enabled">
+        <span>有効化</span>
+      </label>
+      <div class="field">
+        <label for="gas-url">Web App URL</label>
+        <input type="text" id="gas-url" placeholder="https://script.google.com/...">
+      </div>
+      <button id="btn-test-gas" class="btn btn-secondary">接続テスト</button>
+      <div id="gas-status" class="status hidden"></div>
+    </section>
+
+    <div id="status" class="status hidden">保存しました</div>
   </div>
-
-  <button id="btn-open-panel" class="btn">サイドパネルを開く</button>
-
-  <hr style="margin: 12px 0; border: none; border-top: 1px solid #e5e7eb;">
-
-  <h3 style="font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px;">GAS連携</h3>
-
-  <div class="field">
-    <label for="gas-enabled">
-      <input type="checkbox" id="gas-enabled" style="width:auto; margin-right:4px;">
-      有効化
-    </label>
-  </div>
-
-  <div class="field">
-    <label for="gas-url">GAS Web App URL:</label>
-    <input type="text" id="gas-url" placeholder="https://script.google.com/...">
-  </div>
-
-  <button id="btn-test-gas" class="btn" style="background:#6b7280; margin-top:4px;">接続テスト</button>
-  <div id="gas-status" class="status"></div>
-
-  <hr style="margin: 12px 0; border: none; border-top: 1px solid #e5e7eb;">
-
-  <h3 style="font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px;">API設定</h3>
-
-  <div class="field">
-    <label for="api-endpoint">APIエンドポイント:</label>
-    <input type="text" id="api-endpoint" placeholder="https://scout-api-xxxxx.run.app">
-  </div>
-
-  <div class="field">
-    <label for="api-key">パスワード:</label>
-    <input type="password" id="api-key" placeholder="パスワード">
-  </div>
-
-  <button id="btn-test-api" class="btn" style="background:#6b7280; margin-top:4px;">接続テスト</button>
-  <div id="api-status" class="status"></div>
-
-  <div id="status" class="status">保存しました</div>
 
   <script src="Popup.ts" type="module"></script>
 </body>

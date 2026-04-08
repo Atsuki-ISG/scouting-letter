@@ -9,20 +9,60 @@
 <body>
   <div id="app">
     <header class="header">
-      <h1>Scout Assistant</h1>
+      <div class="header__top">
+        <h1>Scout Assistant</h1>
+        <button id="btn-open-settings" class="header__icon-btn" data-tab="settings" aria-label="設定を開く" title="設定">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
       <div class="company-select">
-        <label for="company">会社:</label>
+        <label for="company">会社</label>
         <select id="company"></select>
       </div>
     </header>
 
     <nav class="tabs">
-      <button class="tab active" data-tab="extract">📋 抽出</button>
-      <button class="tab" data-tab="generate">🤖 API生成</button>
-      <button class="tab dev-only hidden" data-tab="personalized">🧪 新パーソナライズ</button>
-      <button class="tab" data-tab="send">📤 送信</button>
-      <button class="tab" data-tab="conversation">💬 返信</button>
-      <button class="tab" data-tab="settings">⚙ 設定</button>
+      <button class="tab active" data-tab="extract">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+          <rect x="8" y="2" width="8" height="4" rx="1"/>
+          <path d="M8 11h8"/>
+          <path d="M8 16h6"/>
+        </svg>
+        <span>抽出</span>
+      </button>
+      <button class="tab" data-tab="generate">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9.94 15.5A2 2 0 0 0 8.5 14.06l-6.14-1.58a.5.5 0 0 1 0-.96L8.5 9.94A2 2 0 0 0 9.94 8.5l1.58-6.14a.5.5 0 0 1 .96 0L14.06 8.5A2 2 0 0 0 15.5 9.94l6.14 1.58a.5.5 0 0 1 0 .96L15.5 14.06a2 2 0 0 0-1.44 1.44l-1.58 6.14a.5.5 0 0 1-.96 0z"/>
+        </svg>
+        <span>AI生成</span>
+      </button>
+      <button class="tab dev-only hidden" data-tab="personalized">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M10 2v7.31"/>
+          <path d="M14 9.3V2"/>
+          <path d="M8.5 2h7"/>
+          <path d="M14 9.3a6.5 6.5 0 1 1-4 0"/>
+          <path d="M5.58 16.5h12.85"/>
+        </svg>
+        <span>新パーソナ</span>
+      </button>
+      <button class="tab" data-tab="send">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m22 2-7 20-4-9-9-4Z"/>
+          <path d="M22 2 11 13"/>
+        </svg>
+        <span>送信</span>
+      </button>
+      <button class="tab" data-tab="conversation">
+        <svg class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>
+        </svg>
+        <span>返信</span>
+      </button>
     </nav>
 
     <!-- Phase 1: 抽出パネル -->
@@ -117,13 +157,11 @@
 
     <!-- 🧪 新パーソナライズ生成パネル (developer mode only) -->
     <section id="panel-personalized" class="panel hidden">
+      <div class="info-banner info-banner--info personalized-note">
+        <span class="info-banner__icon">ℹ️</span>
+        <span>L2/L3 構造化生成。テンプレに <code>{opening}</code> <code>{bridge}</code> <code>{facility_intro}</code> <code>{job_framing}</code> <code>{closing_cta}</code> のプレースホルダーが必要です。</span>
+      </div>
       <div class="generate-info">
-        <p style="font-size:11px;color:#6b7280;margin-bottom:8px;">
-          L2/L3 構造化生成。テンプレに
-          <code>{opening}</code> <code>{bridge}</code> <code>{facility_intro}</code>
-          <code>{job_framing}</code> <code>{closing_cta}</code>
-          のプレースホルダーが必要です。
-        </p>
         <p>抽出済み: <strong id="personalized-profile-count">0</strong>件</p>
       </div>
 
@@ -152,7 +190,7 @@
       </div>
 
       <div id="personalized-result-summary" class="result-summary hidden"></div>
-      <div id="personalized-results" style="margin-top:12px;"></div>
+      <div id="personalized-results" class="personalized-results"></div>
     </section>
 
     <!-- Phase 3: 送信アシストパネル -->
@@ -175,21 +213,40 @@
         <button id="btn-paste-import" class="btn btn-primary btn-block">インポート</button>
       </div>
 
-      <div class="auto-job-offer-controls">
-        <label class="toggle-label">
-          <input type="checkbox" id="toggle-auto-job-offer" checked>
-          求人自動選択
-        </label>
-      </div>
-
-      <div class="continuous-send-controls">
-        <label class="toggle-label">
-          <input type="checkbox" id="toggle-continuous">
-          連続送信アシスト
-        </label>
-        <button id="btn-start-continuous" class="btn btn-primary hidden">開始</button>
-        <button id="btn-skip-continuous" class="btn btn-secondary hidden">スキップ</button>
-        <button id="btn-stop-continuous" class="btn btn-danger hidden">停止</button>
+      <div class="settings-card send-options">
+        <div class="settings-card__header">
+          <h3 class="settings-card__title">送信オプション</h3>
+        </div>
+        <div class="settings-card__body">
+          <div class="send-option-row">
+            <label class="toggle-label" for="toggle-auto-job-offer">
+              <input type="checkbox" id="toggle-auto-job-offer" checked>
+              <span>求人自動選択</span>
+            </label>
+          </div>
+          <div class="send-option-row">
+            <label class="toggle-label" for="toggle-continuous">
+              <input type="checkbox" id="toggle-continuous">
+              <span>連続送信アシスト</span>
+            </label>
+            <div class="send-option-actions">
+              <button id="btn-start-continuous" class="btn btn-primary btn-sm hidden">開始</button>
+              <button id="btn-skip-continuous" class="btn btn-secondary btn-sm hidden">スキップ</button>
+              <button id="btn-stop-continuous" class="btn btn-danger btn-sm hidden">停止</button>
+            </div>
+          </div>
+          <div class="send-option-divider" role="separator" aria-hidden="true"></div>
+          <div class="send-option-row send-option-row--compact">
+            <label class="toggle-label" for="toggle-dry-run">
+              <input type="checkbox" id="toggle-dry-run">
+              <span>ドライラン</span>
+            </label>
+            <label class="toggle-label" for="toggle-debug-log">
+              <input type="checkbox" id="toggle-debug-log">
+              <span>デバッグログ</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div id="send-progress" class="progress-section hidden">
@@ -208,16 +265,6 @@
         <button id="btn-export-fixes" class="btn btn-secondary btn-block">修正履歴エクスポート</button>
       </div>
 
-      <div class="debug-controls">
-        <label class="toggle-label">
-          <input type="checkbox" id="toggle-dry-run">
-          ドライランモード
-        </label>
-        <label class="toggle-label">
-          <input type="checkbox" id="toggle-debug-log">
-          デバッグログ
-        </label>
-      </div>
       <div id="debug-log-panel" class="hidden">
         <div class="debug-log-header">
           <span>デバッグログ</span>
@@ -253,76 +300,107 @@
 
       <div class="export-section">
         <button id="btn-sync-replies" class="btn btn-primary btn-block">サーバーに返信データを同期</button>
-        <div id="sync-replies-status" class="hidden" style="font-size:12px;margin:4px 0;"></div>
+        <div id="sync-replies-status" class="export-status hidden"></div>
         <button id="btn-send-conversation-logs" class="btn btn-primary btn-block dev-only hidden">会話ログをサーバーに送信</button>
-        <div id="send-conversation-logs-status" class="hidden" style="font-size:12px;margin:4px 0;"></div>
+        <div id="send-conversation-logs-status" class="export-status hidden"></div>
         <button id="btn-export-all-conversations" class="btn btn-secondary btn-block">全件YAMLエクスポート</button>
         <button id="btn-export-reply-records" class="btn btn-secondary btn-block">返信スカウト記録エクスポート</button>
       </div>
     </section>
     <!-- 設定パネル -->
     <section id="panel-settings" class="panel hidden">
-      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">開発者モード</h3>
-      <label class="toggle-label" style="margin-bottom:12px;display:flex;align-items:center;gap:6px;">
-        <input type="checkbox" id="settings-dev-mode">
-        <span>開発者モードを有効化（🧪 新パーソナライズタブが表示されます）</span>
-      </label>
-
-      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
-
-      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">API設定</h3>
-      <div class="input-group">
-        <label for="settings-api-endpoint">APIエンドポイント:</label>
-        <input type="text" id="settings-api-endpoint" placeholder="https://scout-api-xxxxx.run.app">
-      </div>
-      <div class="input-group">
-        <label for="settings-api-key">パスワード:</label>
-        <input type="password" id="settings-api-key" placeholder="パスワードを入力">
-      </div>
-      <button id="btn-test-api" class="btn btn-secondary" style="margin-top:8px;">接続テスト</button>
-      <div id="settings-api-status" style="font-size:12px;margin-top:6px;"></div>
-
-      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
-
-      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">GAS連携</h3>
-      <div class="input-group">
-        <label for="settings-gas-enabled">
-          <input type="checkbox" id="settings-gas-enabled" style="width:auto;margin-right:4px;">
-          有効化
+      <!-- 開発者モード -->
+      <div class="settings-card">
+        <div class="settings-card__header">
+          <h3 class="settings-card__title">開発者モード</h3>
+          <span class="settings-card__badge settings-card__badge--dev">DEV</span>
+        </div>
+        <p class="settings-card__desc">有効化すると「🧪 新パーソナライズ」タブが表示されます。</p>
+        <label class="toggle-label">
+          <input type="checkbox" id="settings-dev-mode">
+          <span>開発者モードを有効化</span>
         </label>
       </div>
-      <div class="input-group">
-        <label for="settings-gas-url">GAS Web App URL:</label>
-        <input type="text" id="settings-gas-url" placeholder="https://script.google.com/...">
+
+      <!-- API 設定 -->
+      <div class="settings-card">
+        <div class="settings-card__header">
+          <h3 class="settings-card__title">API 設定</h3>
+        </div>
+        <div class="settings-card__body">
+          <div class="input-group">
+            <label for="settings-api-endpoint">エンドポイント</label>
+            <input type="text" id="settings-api-endpoint" placeholder="https://scout-api-xxxxx.run.app">
+          </div>
+          <div class="input-group">
+            <label for="settings-api-key">パスワード</label>
+            <input type="password" id="settings-api-key" placeholder="パスワードを入力">
+          </div>
+        </div>
+        <div class="settings-card__footer">
+          <button id="btn-test-api" class="btn btn-secondary">接続テスト</button>
+          <div id="settings-api-status" class="settings-card__status"></div>
+        </div>
       </div>
-      <button id="btn-test-gas-settings" class="btn btn-secondary" style="margin-top:8px;">接続テスト</button>
-      <div id="settings-gas-status" style="font-size:12px;margin-top:6px;"></div>
 
-      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
-
-      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">求人抽出・登録</h3>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">ジョブメドレーのスカウト画面から求人リストを抽出し、APIに登録します。</p>
-      <button id="btn-extract-job-offers" class="btn btn-primary" style="margin-bottom:8px;">求人を取得</button>
-      <div id="job-offers-extract-status" style="font-size:12px;margin-bottom:8px;"></div>
-      <div id="job-offers-extract-list" style="max-height:200px;overflow-y:auto;"></div>
-      <button id="btn-register-job-offers" class="btn btn-primary btn-block hidden" style="margin-top:8px;">選択した求人をAPIに登録</button>
-      <div id="job-offers-register-status" style="font-size:12px;margin-top:6px;"></div>
-
-      <hr style="margin:16px 0;border:none;border-top:1px solid #e5e7eb;">
-
-      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;">施設情報抽出</h3>
-      <p style="font-size:12px;color:#6b7280;margin-bottom:8px;">施設・求人情報ページから施設情報と各求人のプレビューを取得します。</p>
-      <button id="btn-scan-facilities" class="btn btn-secondary" style="margin-bottom:8px;">施設一覧を取得</button>
-      <div id="facility-list-area" class="hidden" style="margin-bottom:8px;">
-        <div id="facility-checklist" style="max-height:150px;overflow-y:auto;margin-bottom:8px;"></div>
-        <button id="btn-extract-facility" class="btn btn-primary">選択した施設の求人を取得</button>
-        <button id="btn-stop-facility" class="btn btn-danger hidden">停止</button>
+      <!-- GAS 連携 -->
+      <div class="settings-card">
+        <div class="settings-card__header">
+          <h3 class="settings-card__title">GAS 連携</h3>
+        </div>
+        <div class="settings-card__body">
+          <label class="toggle-label">
+            <input type="checkbox" id="settings-gas-enabled">
+            <span>有効化</span>
+          </label>
+          <div class="input-group">
+            <label for="settings-gas-url">Web App URL</label>
+            <input type="text" id="settings-gas-url" placeholder="https://script.google.com/...">
+          </div>
+        </div>
+        <div class="settings-card__footer">
+          <button id="btn-test-gas-settings" class="btn btn-secondary">接続テスト</button>
+          <div id="settings-gas-status" class="settings-card__status"></div>
+        </div>
       </div>
-      <div id="facility-extract-status" style="font-size:12px;margin-bottom:8px;"></div>
-      <div id="facility-extract-result" class="hidden" style="margin-top:8px;">
-        <div id="facility-info-summary" style="font-size:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:8px;margin-bottom:8px;max-height:300px;overflow-y:auto;white-space:pre-wrap;"></div>
-        <button id="btn-download-profile-md" class="btn btn-primary btn-block">profile.md をダウンロード</button>
-        <button id="btn-download-raw-text" class="btn btn-secondary btn-block" style="margin-top:4px;">生テキストをダウンロード（デバッグ用）</button>
+
+      <!-- 求人抽出・登録 -->
+      <div class="settings-card">
+        <div class="settings-card__header">
+          <h3 class="settings-card__title">求人抽出・登録</h3>
+        </div>
+        <p class="settings-card__desc">ジョブメドレーのスカウト画面から求人リストを抽出し、APIに登録します。</p>
+        <div class="settings-card__body">
+          <button id="btn-extract-job-offers" class="btn btn-primary">求人を取得</button>
+          <div id="job-offers-extract-status" class="settings-card__status"></div>
+          <div id="job-offers-extract-list" class="settings-scroll-box"></div>
+          <button id="btn-register-job-offers" class="btn btn-primary btn-block hidden">選択した求人をAPIに登録</button>
+          <div id="job-offers-register-status" class="settings-card__status"></div>
+        </div>
+      </div>
+
+      <!-- 施設情報抽出 -->
+      <div class="settings-card">
+        <div class="settings-card__header">
+          <h3 class="settings-card__title">施設情報抽出</h3>
+        </div>
+        <p class="settings-card__desc">施設・求人情報ページから施設情報と各求人のプレビューを取得します。</p>
+        <div class="settings-card__body">
+          <button id="btn-scan-facilities" class="btn btn-secondary">施設一覧を取得</button>
+          <div id="facility-list-area" class="hidden">
+            <div id="facility-checklist" class="settings-scroll-box settings-scroll-box--sm"></div>
+            <div class="settings-card__footer">
+              <button id="btn-extract-facility" class="btn btn-primary">選択した施設の求人を取得</button>
+              <button id="btn-stop-facility" class="btn btn-danger hidden">停止</button>
+            </div>
+          </div>
+          <div id="facility-extract-status" class="settings-card__status"></div>
+          <div id="facility-extract-result" class="hidden">
+            <div id="facility-info-summary" class="settings-pre-box"></div>
+            <button id="btn-download-profile-md" class="btn btn-primary btn-block">profile.md をダウンロード</button>
+            <button id="btn-download-raw-text" class="btn btn-secondary btn-block">生テキストをダウンロード（デバッグ用）</button>
+          </div>
+        </div>
       </div>
     </section>
 

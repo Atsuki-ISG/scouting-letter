@@ -1,0 +1,116 @@
+/* =====================================================================
+ * Design Tokens — Scout Assistant Extension
+ * sidepanel / popup で共有する単一の出所。
+ * 旧 --c-* 変数は互換用エイリアスとして残している（段階移行中）。
+ * ===================================================================== */
+
+:root {
+  /* ---------- Brand ---------- */
+  --color-brand-50:  #f0fdfa;
+  --color-brand-100: #ccfbf1;
+  --color-brand-200: #99f6e4;
+  --color-brand-500: #0d9488;
+  --color-brand-600: #0f766e;
+  --color-brand-700: #115e59;
+
+  /* ---------- Surface ---------- */
+  --color-bg:        #f7f6f3;
+  --color-surface:   #ffffff;
+  --color-surface-2: #faf9f6;
+  --color-surface-3: #f1f0ed;
+  --color-border:    #e2e0db;
+  --color-border-2:  #eeede9;
+
+  /* ---------- Text (WCAG AA on --color-bg) ---------- */
+  --color-text:         #1a1a2e;  /* 16.5:1 */
+  --color-text-2:       #4a4a5c;  /*  7.6:1 */
+  --color-text-3:       #6b6b7d;  /*  4.7:1 */
+  --color-text-on-brand:#ffffff;
+
+  /* ---------- Semantic ---------- */
+  --color-danger:    #e11d48;
+  --color-danger-bg: #fff1f2;
+  --color-warning:   #b45309;
+  --color-warning-bg:#fef3c7;
+  --color-success:   #047857;
+  --color-success-bg:#ecfdf5;
+  --color-info:      #0369a1;
+  --color-info-bg:   #eff6ff;
+
+  /* ---------- Accent ---------- */
+  --color-accent:    #f59e0b;
+  --color-dev-bg:    #fef3c7;
+  --color-dev-border:#fde68a;
+
+  /* ---------- Typography ---------- */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Hiragino Sans',
+               'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+
+  --text-xs:   10px;
+  --text-sm:   11px;
+  --text-base: 12px;
+  --text-md:   13px;
+  --text-lg:   14px;
+  --text-xl:   15px;
+
+  --leading-tight:  1.3;
+  --leading-snug:   1.4;
+  --leading-normal: 1.5;
+
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  /* ---------- Spacing (4px grid) ---------- */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* ---------- Radius ---------- */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-full: 9999px;
+
+  /* ---------- Shadow ---------- */
+  --shadow-sm:   0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md:   0 4px 12px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg:   0 8px 24px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06);
+  --shadow-glow: 0 0 0 3px rgba(13,148,136,0.18);
+
+  /* ---------- Motion ---------- */
+  --transition:      0.2s cubic-bezier(0.4,0,0.2,1);
+  --transition-fast: 0.12s cubic-bezier(0.4,0,0.2,1);
+
+  /* ---------- Focus ring (2px gap + 2px brand) ---------- */
+  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-brand-500);
+
+  /* ========================================================
+   * Legacy aliases — 段階移行のため旧名も提供
+   * ======================================================== */
+  --c-primary:       var(--color-brand-500);
+  --c-primary-dark:  var(--color-brand-600);
+  --c-primary-light: var(--color-brand-200);
+  --c-primary-bg:    var(--color-brand-50);
+  --c-accent:        var(--color-accent);
+  --c-accent-light:  var(--color-warning-bg);
+  --c-bg:            var(--color-bg);
+  --c-surface:       var(--color-surface);
+  --c-surface-alt:   var(--color-surface-3);
+  --c-border:        var(--color-border);
+  --c-border-light:  var(--color-border-2);
+  --c-text:          var(--color-text);
+  --c-text-secondary:var(--color-text-2);
+  --c-text-muted:    var(--color-text-3);
+  --c-danger:        var(--color-danger);
+  --c-danger-bg:     var(--color-danger-bg);
+  --c-success:       var(--color-success);
+  --c-success-bg:    var(--color-success-bg);
+}
