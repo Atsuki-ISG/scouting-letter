@@ -7,7 +7,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from config import CORS_ORIGINS
 from api.routes_generate import router as generate_router
 from api.routes_companies import router as companies_router
 from api.routes_admin import router as admin_router
@@ -19,8 +18,11 @@ app = FastAPI(title="Scout Generation API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS.split(","),
-    allow_credentials=True,
+    # chrome-extension://<id> と管理画面(https) の両方を許可。
+    # cookie 認証は使っていないので credentials は False で OK（
+    # credentials=True + allow_origins=["*"] は Starlette が ACAO を送らない壊れた組み合わせ）。
+    allow_origin_regex=r"^(chrome-extension://.*|https?://.*)$",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
