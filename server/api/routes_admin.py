@@ -3856,6 +3856,22 @@ async def export_report_google_docs(
     }
 
 
+def _safe_reload() -> dict:
+    """Reload sheets cache, but never let a reload failure turn a successful
+    write into a 500. The row is already in Sheets — the client can re-fetch
+    on next GET. Returns a small status dict for inclusion in the response.
+    """
+    try:
+        sheets_client.reload()
+        return {"cache_reloaded": True}
+    except Exception as e:  # pragma: no cover - transient infra errors
+        import logging
+        logging.getLogger(__name__).warning(
+            f"sheets_client.reload() failed after write (write still succeeded): {e}"
+        )
+        return {"cache_reloaded": False, "reload_error": str(e)[:200]}
+
+
 @router.post("/{sheet_slug}")
 async def create_row(sheet_slug: str, data: dict, operator=Depends(verify_api_key)):
     sheet_name = SHEET_MAP.get(sheet_slug)
@@ -3870,8 +3886,8 @@ async def create_row(sheet_slug: str, data: dict, operator=Depends(verify_api_ke
     values = [data.get(col, "") for col in columns]
     sheets_writer.ensure_sheet_exists(sheet_name, headers=columns)
     sheets_writer.append_row(sheet_name, values)
-    sheets_client.reload()
-    return {"status": "created"}
+    reload_status = _safe_reload()
+    return {"status": "created", **reload_status}
 
 
 @router.put("/{sheet_slug}/{row_index}")
@@ -3935,12 +3951,13 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
             merged_fields = ["body", "version"] if bump_result["status"] == "updated" else []
             skipped_fields = []
 
-        sheets_client.reload()
+        reload_status = _safe_reload()
         return {
             "status": bump_result["status"],
             "merged_fields": merged_fields,
             "skipped_fields": skipped_fields,
             "version": bump_result["new_version"],
+            **reload_status,
         }
 
     if not cells:
@@ -3949,12 +3966,13 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
     result = sheets_writer.update_cells_by_name(
         sheet_name, row_index, cells, actor="admin_ui",
     )
-    sheets_client.reload()
+    reload_status = _safe_reload()
     return {
         "status": "updated",
         "merged_fields": result["updated"],
         "skipped_fields": result["skipped"],
         "version": cells.get("version", existing.get("version", "")),
+        **reload_status,
     }
 
 
@@ -3965,8 +3983,8 @@ async def delete_row(sheet_slug: str, row_index: int, operator=Depends(verify_ap
         raise HTTPException(404, f"Unknown sheet: {sheet_slug}")
 
     sheets_writer.delete_row(sheet_name, row_index, actor="admin_ui")
-    sheets_client.reload()
-    return {"status": "deleted"}
+    reload_status = _safe_reload()
+    return {"status": "deleted", **reload_status}
 
 
 # --- Cost monitoring endpoints ---
