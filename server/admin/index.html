@@ -4,85 +4,164 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scout Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 :root {
-  --c-primary: #0d9488;
-  --c-primary-dark: #0f766e;
+  /* Editorial Teal — deep teal + ivory + serif display */
+  --c-primary: #115e59;          /* teal-800 */
+  --c-primary-dark: #0f4a46;
   --c-primary-light: #99f6e4;
-  --c-primary-bg: #f0fdfa;
-  --c-accent: #f59e0b;
+  --c-primary-bg: #f0fbfa;
+  --c-accent: #b45309;           /* amber-700 — editorial burnt sienna */
   --c-accent-light: #fef3c7;
-  --c-bg: #f7f6f3;
+  --c-bg: #faf8f3;               /* ivory / newsprint */
   --c-surface: #ffffff;
-  --c-surface-alt: #f1f0ed;
-  --c-border: #e2e0db;
-  --c-border-light: #eeede9;
-  --c-text: #1a1a2e;
-  --c-text-secondary: #5c5c6d;
-  --c-text-muted: #9d9daa;
-  --c-danger: #e11d48;
-  --c-danger-bg: #fff1f2;
-  --c-success: #059669;
+  --c-surface-alt: #f3f1ea;
+  --c-border: #dcd8cc;
+  --c-border-light: #eae6da;
+  --c-rule: #1f2937;             /* editorial rule */
+  --c-text: #111827;             /* near-black */
+  --c-text-secondary: #374151;   /* AAA */
+  --c-text-muted: #6b7280;       /* AA pass 4.7:1 */
+  --c-text-tertiary: #9ca3af;
+  --c-danger: #b91c1c;           /* restrained red */
+  --c-danger-bg: #fef2f2;
+  --c-success: #047857;
   --c-success-bg: #ecfdf5;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif;
+  --font-sans: 'IBM Plex Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif;
+  --font-serif: 'Zen Old Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  --font-display: 'Playfair Display', 'Zen Old Mincho', Georgia, serif;
   --font-mono: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.04);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.05);
+  --shadow-sm: 0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.06);
+  --shadow-md: 0 2px 4px rgba(15,23,42,0.04), 0 4px 14px rgba(15,23,42,0.08);
+  --shadow-lg: 0 4px 12px rgba(15,23,42,0.05), 0 12px 40px rgba(15,23,42,0.1);
   --shadow-glow: 0 0 0 3px rgba(13,148,136,0.12);
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+  --shadow-focus: 0 0 0 3px rgba(13,148,136,0.35);
+  --radius-sm: 8px;              /* 旧 6px */
+  --radius-md: 12px;             /* 旧 10px */
+  --radius-lg: 16px;             /* 旧 14px */
   --radius-xl: 20px;
-  --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
+  --transition: 0.18s cubic-bezier(0.4,0,0.2,1);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
   font-family: var(--font-sans);
-  background: var(--c-bg);
+  background:
+    radial-gradient(ellipse 1200px 400px at 50% 0%, rgba(17,94,89,0.035), transparent 70%),
+    var(--c-bg);
   color: var(--c-text);
+  font-size: 14px;
   line-height: 1.7;
+  font-feature-settings: "palt" 1, "lnum" 1;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Header */
+/* Editorial display styles — apply via .serif and h1/h2/h3 in content areas */
+.serif, .editorial-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  font-feature-settings: "palt" 1;
+}
+.figures, .oldstyle-figures {
+  font-family: var(--font-display);
+  font-feature-settings: "onum" 1, "lnum" 0;
+  font-variant-numeric: oldstyle-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Inline SVG icons (Lucide-style, 1.5 stroke) */
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+.icon-sm { width: 14px; height: 14px; }
+.icon-md { width: 16px; height: 16px; }
+.icon-lg { width: 20px; height: 20px; }
+
+/* Global focus ring for keyboard users */
+:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+button:focus-visible, a:focus-visible, [role="tab"]:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* Header — editorial: flat solid + bottom rule */
 .header {
-  background: #0f766e;
-  padding: 14px 28px;
+  background: #0f4a46;
+  padding: 12px 28px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   flex-wrap: wrap;
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  border-bottom: 1px solid rgba(0,0,0,0.2);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 8px 24px -12px rgba(15,23,42,0.25);
 }
 
 .header-title {
-  font-size: 18px;
+  font-family: var(--font-serif);
+  font-size: 22px;
   font-weight: 700;
   color: #fff;
   margin-right: 8px;
-  letter-spacing: 0.03em;
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  line-height: 1;
+  padding-right: 14px;
+  border-right: 1px solid rgba(255,255,255,0.18);
+}
+.header-title::after {
+  content: 'ADMIN';
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  color: rgba(255,255,255,0.55);
+  align-self: center;
+  padding: 2px 6px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 2px;
+  margin-left: -2px;
 }
 
 .header select, .header button {
-  height: 36px;
+  height: 34px;
   border-radius: var(--radius-sm);
-  border: 1px solid rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.18);
   padding: 0 12px;
   font-size: 13px;
   font-family: var(--font-sans);
 }
 
 .header select {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.1);
   color: #fff;
-  min-width: 200px;
-  backdrop-filter: blur(4px);
+  min-width: 220px;
+  backdrop-filter: blur(6px);
+  font-weight: 500;
 }
 
 .header select option { color: var(--c-text); background: var(--c-surface); }
@@ -94,21 +173,24 @@ body {
   font-size: 13px;
   font-weight: 500;
   font-family: var(--font-sans);
-  padding: 0 16px;
-  height: 36px;
+  padding: 0 14px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  transition: all var(--transition);
+  transition: transform var(--transition), background var(--transition), box-shadow var(--transition), color var(--transition), border-color var(--transition);
+  white-space: nowrap;
 }
+.btn:active { transform: translateY(1px); }
 
-.btn-primary { background: var(--c-primary); color: #fff; }
-.btn-primary:hover { background: var(--c-primary-dark); box-shadow: var(--shadow-glow); }
-.btn-secondary { background: var(--c-surface-alt); color: var(--c-text-secondary); border: 1px solid var(--c-border); }
-.btn-secondary:hover { background: var(--c-surface); border-color: var(--c-primary); color: var(--c-primary); }
-.btn-danger { background: var(--c-danger-bg); color: var(--c-danger); }
-.btn-danger:hover { background: #ffe4e6; }
-.btn-sm { height: 30px; padding: 0 10px; font-size: 12px; }
+.btn-primary { background: var(--c-primary); color: #fff; box-shadow: 0 1px 0 rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.15); }
+.btn-primary:hover { background: var(--c-primary-dark); box-shadow: 0 2px 6px rgba(13,148,136,0.28), inset 0 1px 0 rgba(255,255,255,0.18); }
+.btn-secondary { background: var(--c-surface); color: var(--c-text-secondary); border: 1px solid var(--c-border); }
+.btn-secondary:hover { background: var(--c-surface-alt); border-color: var(--c-primary); color: var(--c-primary); }
+.btn-danger { background: var(--c-danger-bg); color: var(--c-danger); border: 1px solid transparent; }
+.btn-danger:hover { background: #ffe4e6; border-color: rgba(225,29,72,0.2); }
+.btn-sm { height: 30px; padding: 0 12px; font-size: 12px; border-radius: var(--radius-sm); }
 
 .header .btn-secondary {
   background: rgba(255,255,255,0.12);
@@ -124,51 +206,85 @@ body {
 
 .header-right { margin-left: auto; display: flex; gap: 8px; }
 
-/* Tabs */
+/* Tabs — editorial masthead style */
 .tabs {
   display: flex;
   gap: 0;
   background: var(--c-surface);
-  border-bottom: 1px solid var(--c-border);
+  border-bottom: 2px solid var(--c-rule);
   padding: 0 28px;
   overflow-x: auto;
-  box-shadow: var(--shadow-sm);
+  scrollbar-width: thin;
 }
+.tabs::-webkit-scrollbar { height: 0; }
 
 .tab {
-  padding: 14px 22px;
+  padding: 16px 20px 13px;
   cursor: pointer;
+  font-family: var(--font-sans);
   font-size: 13px;
   font-weight: 500;
-  color: var(--c-text-muted);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  color: var(--c-text-secondary);
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
   white-space: nowrap;
-  transition: all var(--transition);
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
   user-select: none;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.05em;
+  position: relative;
 }
 
 .tab:hover { color: var(--c-primary); }
-.tab.active { color: var(--c-primary); border-bottom-color: var(--c-primary); font-weight: 600; }
+.tab.active {
+  color: var(--c-primary);
+  border-bottom-color: var(--c-primary);
+  font-weight: 700;
+}
 
 /* Content */
-.content { padding: 28px; max-width: 1400px; margin: 0 auto; }
+.content { padding: 28px 24px 56px; max-width: 1440px; margin: 0 auto; }
 
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.toolbar-title { font-size: 15px; font-weight: 600; color: var(--c-text-secondary); letter-spacing: 0.01em; }
+.toolbar-title {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: -0.02em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  line-height: 1.2;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--c-rule);
+  margin-bottom: 6px;
+  width: 100%;
+}
+.toolbar-title .count {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--c-text-muted);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  letter-spacing: 0;
+}
 
 /* Table */
 .table-wrap {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   overflow-x: auto;
   box-shadow: var(--shadow-sm);
 }
@@ -176,26 +292,27 @@ body {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 thead th {
-  background: var(--c-surface-alt);
-  border-bottom: 1px solid var(--c-border);
-  padding: 10px 14px;
+  background: var(--c-surface);
+  border-bottom: 2px solid var(--c-rule);
+  padding: 13px 16px 10px;
   text-align: left;
+  font-family: var(--font-sans);
   font-weight: 600;
-  font-size: 12px;
-  color: var(--c-text-muted);
+  font-size: 10px;
+  color: var(--c-text);
   white-space: nowrap;
   position: sticky;
   top: 0;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.14em;
 }
 
 tbody td {
-  padding: 10px 14px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--c-border-light);
   max-width: 320px;
   line-height: 1.6;
@@ -206,24 +323,34 @@ tbody td {
 }
 
 tbody td .cell-text {
-  max-height: 4.8em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
   cursor: pointer;
   position: relative;
+  word-break: break-word;
+  transition: -webkit-line-clamp 0.15s ease;
 }
 
 tbody td .cell-text.expanded {
-  max-height: none;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  display: block;
 }
 
 tbody td .cell-text.clipped::after {
-  content: '...';
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  background: var(--c-surface);
-  padding-left: 4px;
-  color: var(--c-text-muted);
+  content: '';
+}
+
+tbody td .cell-text.clipped {
+  position: relative;
+}
+
+/* Show expand indicator on hover for clipped cells */
+tbody tr:hover .cell-text.clipped {
+  box-shadow: inset 0 -1px 0 var(--c-primary-light);
 }
 
 tbody tr { transition: background var(--transition); }
@@ -239,9 +366,20 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 
 .empty-msg {
   text-align: center;
-  padding: 56px 24px;
-  color: var(--c-text-muted);
+  padding: 72px 24px;
+  color: var(--c-text-secondary);
   font-size: 14px;
+  line-height: 1.7;
+}
+.empty-msg::before {
+  content: '';
+  display: block;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: var(--c-surface-alt) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><line x1='12' y1='8' x2='12' y2='12'/><line x1='12' y1='16' x2='12.01' y2='16'/></svg>") center/20px no-repeat;
+  border: 1px solid var(--c-border-light);
 }
 
 /* Modal */
@@ -686,7 +824,7 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   animation: modalIn 0.3s cubic-bezier(0.4,0,0.2,1);
 }
 
-.apikey-box h3 { margin-bottom: 18px; font-size: 18px; font-weight: 600; color: var(--c-text); }
+.apikey-box h3 { font-family: var(--font-serif); margin-bottom: 18px; font-size: 24px; font-weight: 700; color: var(--c-text); letter-spacing: -0.01em; }
 .apikey-box input {
   width: 100%;
   border: 1px solid var(--c-border);
@@ -876,18 +1014,26 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 .flow-node-header:hover { background: var(--c-primary-bg); }
 
 .flow-node-num {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 40px;
+  height: 40px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-family: var(--font-display);
+  font-variant-numeric: oldstyle-nums;
+  font-feature-settings: "onum" 1;
+  font-size: 20px;
   font-weight: 700;
-  color: #fff;
+  font-style: italic;
+  color: var(--c-primary) !important;
+  background: transparent !important;
   flex-shrink: 0;
   letter-spacing: -0.02em;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  box-shadow: none;
+  border-right: 1px solid var(--c-border);
+  padding-right: 14px;
+  margin-right: 4px;
 }
 
 .flow-node-title {
@@ -1105,68 +1251,86 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 /* View mode toggle */
 .view-toggle {
   display: inline-flex;
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.2);
-  height: 36px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  gap: 0;
+  height: 34px;
+  align-items: stretch;
 }
 
 .view-toggle button {
   border: none;
-  background: rgba(255,255,255,0.08);
-  padding: 0 14px;
-  font-size: 12px;
-  font-weight: 500;
+  background: transparent;
+  padding: 0 16px;
+  font-size: 11px;
+  font-weight: 600;
   font-family: var(--font-sans);
   cursor: pointer;
-  color: rgba(255,255,255,0.6);
-  transition: all var(--transition);
+  color: rgba(255,255,255,0.55);
+  transition: color var(--transition), border-color var(--transition);
+  border-radius: 0;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border-bottom: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
 }
 
 .view-toggle button.active {
-  background: rgba(255,255,255,0.22);
+  background: transparent;
   color: #fff;
+  box-shadow: none;
+  border-bottom-color: var(--c-accent);
 }
 
 .view-toggle button:not(.active):hover {
-  background: rgba(255,255,255,0.15);
+  background: transparent;
   color: rgba(255,255,255,0.85);
 }
 
-/* Send Summary Bar */
+/* Send Summary Bar — editorial deck/byline */
 .send-summary-bar {
-  background: var(--c-surface);
-  border-bottom: 1px solid var(--c-border);
-  padding: 10px 24px;
+  background: var(--c-bg);
+  border-bottom: 1px solid var(--c-border-light);
+  padding: 10px 28px;
 }
 .send-summary-content {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  max-width: 1200px;
+  align-items: baseline;
+  gap: 14px;
+  max-width: 1440px;
   margin: 0 auto;
   font-size: 13px;
 }
 .send-summary-total {
+  font-family: var(--font-display);
+  font-variant-numeric: oldstyle-nums;
+  font-feature-settings: "onum" 1;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
   color: var(--c-text);
+  letter-spacing: -0.01em;
+  font-style: italic;
 }
 .send-summary-categories {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 .send-summary-badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border-radius: 12px;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 999px;
   background: var(--c-surface-alt);
-  border: 1px solid var(--c-border);
-  font-size: 12px;
-  color: var(--c-text-muted);
+  border: 1px solid var(--c-border-light);
+  font-size: 11px;
+  color: var(--c-text-secondary);
+  font-weight: 500;
 }
 .send-summary-badge .count {
   font-weight: 700;
@@ -1190,11 +1354,14 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   margin-bottom: 16px;
 }
 .dashboard-month {
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 22px;
   font-weight: 700;
   color: var(--c-text);
-  min-width: 90px;
+  min-width: 120px;
   text-align: center;
+  font-style: italic;
+  letter-spacing: -0.02em;
 }
 .dashboard-table {
   width: 100%;
@@ -1234,9 +1401,14 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   border-bottom: none;
 }
 .dashboard-num {
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums oldstyle-nums;
+  font-feature-settings: "onum" 1, "tnum" 1;
   font-weight: 700;
+  font-size: 16px;
   text-align: right;
+  color: var(--c-text);
+  letter-spacing: -0.01em;
 }
 .dashboard-num.muted {
   color: var(--c-text-muted);
@@ -1423,8 +1595,11 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 .help-section-header:hover { background: var(--c-surface-alt); }
 
 .help-section-header h3 {
-  font-size: 15px;
-  font-weight: 600;
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--c-text);
+  letter-spacing: -0.01em;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1725,12 +1900,15 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   background: linear-gradient(135deg, var(--c-surface-alt) 0%, var(--c-surface) 100%);
 }
 .analysis-panel-header h3 {
-  font-size: 14px; font-weight: 700; margin: 0;
-  display: flex; align-items: center; gap: 8px;
+  font-family: var(--font-serif);
+  font-size: 18px; font-weight: 700; margin: 0;
+  display: flex; align-items: center; gap: 10px;
+  letter-spacing: -0.01em;
+  color: var(--c-text);
 }
 .analysis-panel-header h3::before {
-  content: ''; width: 3px; height: 16px; border-radius: 2px;
-  background: var(--c-primary); display: inline-block;
+  content: ''; width: 3px; height: 18px; border-radius: 0;
+  background: var(--c-accent); display: inline-block;
 }
 
 /* Template Editor */
@@ -2017,10 +2195,45 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 
 <div id="appMain" style="display:none;">
 <script>if(localStorage.getItem('scout_admin_password'))document.getElementById('appMain').style.display='';</script>
+
+<!-- Inline SVG icon sprite (Lucide-based) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+    <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></symbol>
+    <symbol id="i-bar-chart" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 4.5a2.5 2.5 0 0 0-5 0 2.5 2.5 0 0 0-2 4 2.5 2.5 0 0 0 0 5 2.5 2.5 0 0 0 2 4 2.5 2.5 0 0 0 5 0zM12 4.5a2.5 2.5 0 0 1 5 0 2.5 2.5 0 0 1 2 4 2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 1-2 4 2.5 2.5 0 0 1-5 0z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+    <symbol id="i-rotate-ccw" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></symbol>
+  </defs>
+</svg>
+<script>
+// Icon helper — returns SVG use element as string
+window.icon = function(name, cls='icon-sm') {
+  return `<svg class="icon ${cls}"><use href="#i-${name}"/></svg>`;
+};
+</script>
 <header class="header">
-  <span class="header-title">Scout Admin</span>
+  <span class="header-title">Scout</span>
   <select id="companySelect"></select>
-  <button class="btn btn-secondary btn-sm" onclick="showAddCompanyDialog()">＋ 新規会社</button>
+  <button class="btn btn-secondary btn-sm" onclick="showAddCompanyDialog()"><svg class="icon icon-sm"><use href="#i-plus"/></svg> 新規会社</button>
   <div class="view-toggle">
     <button id="viewFlowBtn" class="active" onclick="setViewMode('flow')">フロー</button>
     <button id="viewTableBtn" onclick="setViewMode('table')">テーブル</button>
@@ -2029,8 +2242,8 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
     <button id="viewAnalysisBtn" onclick="setViewMode('analysis')">分析</button>
   </div>
   <div class="header-right">
-    <button class="btn btn-secondary" onclick="reloadCache()">キャッシュ更新</button>
-    <button class="btn btn-secondary" onclick="showApiKeyDialog()">パスワード設定</button>
+    <button class="btn btn-secondary" onclick="reloadCache()"><svg class="icon icon-sm"><use href="#i-refresh"/></svg> キャッシュ更新</button>
+    <button class="btn btn-secondary" onclick="showApiKeyDialog()"><svg class="icon icon-sm"><use href="#i-key"/></svg> パスワード設定</button>
   </div>
 </header>
 
@@ -2062,12 +2275,12 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 <div id="dashboardView" style="display:none">
   <div class="dashboard-container">
     <div class="dashboard-toolbar">
-      <button class="btn btn-secondary btn-sm" id="dashPrevMonth">‹ 前月</button>
+      <button class="btn btn-secondary btn-sm" id="dashPrevMonth"><svg class="icon icon-sm"><use href="#i-chevron-left"/></svg> 前月</button>
       <span class="dashboard-month" id="dashMonthLabel">—</span>
-      <button class="btn btn-secondary btn-sm" id="dashNextMonth">翌月 ›</button>
+      <button class="btn btn-secondary btn-sm" id="dashNextMonth">翌月 <svg class="icon icon-sm"><use href="#i-chevron-right"/></svg></button>
       <span style="flex:1"></span>
-      <button class="btn btn-secondary btn-sm" id="dashRefresh">↻ 再読込</button>
-      <button class="btn btn-primary btn-sm" id="dashEditTargets">🎯 目標を編集</button>
+      <button class="btn btn-secondary btn-sm" id="dashRefresh"><svg class="icon icon-sm"><use href="#i-refresh"/></svg> 再読込</button>
+      <button class="btn btn-primary btn-sm" id="dashEditTargets"><svg class="icon icon-sm"><use href="#i-target"/></svg> 目標を編集</button>
     </div>
     <div id="dashboardBody">
       <div class="loading"><div class="spinner"></div></div>
@@ -2083,46 +2296,46 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   <div class="analysis-container">
     <div class="analysis-toolbar">
       <select id="analysisTemplateSelect"></select>
-      <button class="btn btn-primary btn-sm" onclick="applyAnnotations()">&#x2714; 提案を適用</button>
-      <button class="btn btn-secondary btn-sm" onclick="resetAnnotations()">&#x21BA; リセット</button>
+      <button class="btn btn-primary btn-sm" onclick="applyAnnotations()"><svg class="icon icon-sm"><use href="#i-check"/></svg> 提案を適用</button>
+      <button class="btn btn-secondary btn-sm" onclick="resetAnnotations()"><svg class="icon icon-sm"><use href="#i-rotate-ccw"/></svg> リセット</button>
       <span style="flex:1"></span>
-      <a id="linkSendData" href="#" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;" title="送信データ・生成ログ">📋 送信データ</a>
-      <a id="linkDashboard" href="#" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;" title="ダッシュボード・スカウト管理">📊 ダッシュボード</a>
+      <a id="linkSendData" href="#" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;" title="送信データ・生成ログ"><svg class="icon icon-sm"><use href="#i-file-text"/></svg> 送信データ</a>
+      <a id="linkDashboard" href="#" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none;" title="ダッシュボード・スカウト管理"><svg class="icon icon-sm"><use href="#i-bar-chart"/></svg> ダッシュボード</a>
     </div>
     <div class="analysis-panels">
       <div class="analysis-panel" style="position:relative;">
         <div class="analysis-panel-header">
           <h3>テンプレート編集</h3>
           <span style="font-size:11px;color:var(--c-text-muted);font-weight:500;">テキスト選択 → ツール表示</span>
-          <button class="btn btn-secondary btn-sm" style="margin-left:auto;font-size:11px;" onclick="openExpandFromCurrentTemplate()" title="このテンプレートを他のテンプレートに展開">📤 展開</button>
+          <button class="btn btn-secondary btn-sm" style="margin-left:auto;font-size:11px;" onclick="openExpandFromCurrentTemplate()" title="このテンプレートを他のテンプレートに展開"><svg class="icon icon-sm"><use href="#i-share"/></svg> 展開</button>
         </div>
         <div class="ann-toolbar hidden" id="annToolbar">
-          <button class="ann-btn" onclick="applyStrikethrough()" title="取り消し線">&#x2715; 削除</button>
-          <button class="ann-btn" onclick="applyComment()" title="コメント追加">&#x1F4AC; メモ</button>
-          <button class="ann-btn" onclick="applyAddition()" title="テキスト追記">&#xFF0B; 追記</button>
+          <button class="ann-btn" onclick="applyStrikethrough()" title="取り消し線"><svg class="icon icon-sm"><use href="#i-x"/></svg> 削除</button>
+          <button class="ann-btn" onclick="applyComment()" title="コメント追加"><svg class="icon icon-sm"><use href="#i-message"/></svg> メモ</button>
+          <button class="ann-btn" onclick="applyAddition()" title="テキスト追記"><svg class="icon icon-sm"><use href="#i-plus"/></svg> 追記</button>
         </div>
         <div class="template-editor" id="templateEditor" contenteditable="true"></div>
         <div id="diffView" class="diff-view" style="display:none;"></div>
         <div id="diffActions" class="diff-actions" style="display:none;">
-          <button class="btn btn-primary btn-sm" onclick="applyImprovement()">&#x2705; 選択を適用</button>
-          <button class="btn btn-secondary btn-sm" onclick="switchDiffViewMode()">&#x21C4; 表示切替</button>
-          <button class="btn btn-secondary btn-sm" onclick="exitDiffMode()">&#x21A9; 戻す</button>
+          <button class="btn btn-primary btn-sm" onclick="applyImprovement()"><svg class="icon icon-sm"><use href="#i-check"/></svg> 選択を適用</button>
+          <button class="btn btn-secondary btn-sm" onclick="switchDiffViewMode()"><svg class="icon icon-sm"><use href="#i-refresh"/></svg> 表示切替</button>
+          <button class="btn btn-secondary btn-sm" onclick="exitDiffMode()"><svg class="icon icon-sm"><use href="#i-undo"/></svg> 戻す</button>
         </div>
         <!-- 一括展開UI -->
         <div id="expandSection" style="display:none;margin-top:12px;">
           <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:12px;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <strong style="font-size:13px;">📤 他のテンプレートに展開</strong>
+              <strong style="font-size:13px;"><svg class="icon icon-sm"><use href="#i-share"/></svg> 他のテンプレートに展開</strong>
             </div>
             <!-- モード切替 -->
             <div id="expandModeSwitch" style="display:flex;gap:12px;margin-bottom:8px;font-size:12px;">
-              <label style="cursor:pointer;">
+              <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
                 <input type="radio" name="expandMode" value="template" checked onchange="onExpandModeChange()" style="accent-color:var(--c-primary);">
-                📝 テンプレート展開
+                <svg class="icon icon-sm"><use href="#i-edit"/></svg> テンプレート展開
               </label>
-              <label style="cursor:pointer;">
+              <label style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
                 <input type="radio" name="expandMode" value="prompt_proposal" onchange="onExpandModeChange()" style="accent-color:var(--c-primary);">
-                🧠 プロンプト反映（提案追加）
+                <svg class="icon icon-sm"><use href="#i-brain"/></svg> プロンプト反映（提案追加）
               </label>
             </div>
             <div id="expandModeHint" style="font-size:11px;color:#4b5563;margin-bottom:8px;padding:6px 8px;background:#fff;border-radius:4px;"></div>
@@ -2160,8 +2373,8 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
         <div class="analysis-panel-header">
           <h3>サイクル分析</h3>
           <label style="font-size:11px;color:var(--c-text-muted);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="crossCompanyCheck" style="accent-color:var(--c-primary);"> 全社横断</label>
-          <button class="btn btn-primary btn-sm" onclick="runAnalysis()">&#x25B6; 分析を実行</button>
-          <button class="btn btn-secondary btn-sm" id="btnExportReport" onclick="openReportExport()" disabled style="margin-left:4px;">&#x1F4C4; 顧客向けレポート出力</button>
+          <button class="btn btn-primary btn-sm" onclick="runAnalysis()"><svg class="icon icon-sm"><use href="#i-play"/></svg> 分析を実行</button>
+          <button class="btn btn-secondary btn-sm" id="btnExportReport" onclick="openReportExport()" disabled style="margin-left:4px;"><svg class="icon icon-sm"><use href="#i-download"/></svg> 顧客向けレポート出力</button>
         </div>
         <div id="analysisResults" style="flex:1;padding:20px;overflow-y:auto;">
           <div class="analysis-empty">「分析を実行」を押すと送信データのクロス集計とAI分析が表示されます</div>
@@ -2527,7 +2740,7 @@ function renderFlowNodes() {
     const summary = getFlowSummary(step.id);
     html += `<div class="flow-node" data-step="${step.id}" data-state="collapsed">
       <div class="flow-node-header" onclick="toggleFlowNode('${step.id}')">
-        <span class="flow-node-num" style="background:${step.color}">${step.num}</span>
+        <span class="flow-node-num">${step.num}</span>
         <span class="flow-node-title">${step.title}</span>
         <span class="flow-node-summary">${escHtml(summary)}</span>
         <button class="flow-node-expand">▾</button>
@@ -4469,9 +4682,17 @@ function renderDashboardTable() {
       }).join('')
     }</div>`;
 
+    // Never fetched = neutral (gray), 24-48h = yellow warning, 48h+ = red critical
+    const neverFetched = !c.snapshot_at;
     const staleLevel = _stalenessLevel(c.snapshot_at);
-    const rowStaleClass = staleLevel === 2 ? 'row-very-stale' : staleLevel === 1 ? 'row-stale' : '';
+    const rowStaleClass = neverFetched ? 'row-unfetched'
+      : staleLevel === 2 ? 'row-very-stale'
+      : staleLevel === 1 ? 'row-stale' : '';
     const expanded = _dashExpanded.has(c.company_id);
+
+    const stalenessLabel = neverFetched
+      ? `<span class="dash-staleness unfetched">未取得</span>`
+      : `<span class="dash-staleness${staleLevel >= 1 ? ' stale' : ''}${staleLevel === 2 ? ' very-stale' : ''}">${_formatRelative(c.snapshot_at)}</span>`;
 
     return `
       <tr class="${expanded ? 'expanded ' : ''}${rowStaleClass}" data-company="${escHtml(c.company_id)}" onclick="toggleDashRow('${escHtml(c.company_id)}')">
@@ -4482,22 +4703,31 @@ function renderDashboardTable() {
         <td class="dash-progress-cell">${progressHtml}</td>
         <td>${trendHtml}</td>
         <td class="dashboard-num ${c.tool_sent_total ? '' : 'muted'}">${c.tool_sent_total || 0}</td>
-        <td><span class="dash-staleness${staleLevel >= 1 ? ' stale' : ''}${staleLevel === 2 ? ' very-stale' : ''}">${_formatRelative(c.snapshot_at)}</span></td>
+        <td>${stalenessLabel}</td>
       </tr>
       ${expanded ? `<tr class="dash-detail-row"><td colspan="8"><div class="dash-detail-inner" id="dash-detail-${escHtml(c.company_id)}"><div class="loading"><div class="spinner"></div></div></div></td></tr>` : ''}
     `;
   }).join('');
 
-  // Stale companies banner
-  const staleCount = _dashData.companies.filter(c => _stalenessLevel(c.snapshot_at) >= 1).length;
-  const veryStaleCount = _dashData.companies.filter(c => _stalenessLevel(c.snapshot_at) === 2).length;
-  const banner = staleCount > 0
-    ? `<div class="stale-banner ${veryStaleCount > 0 ? 'critical' : 'warning'}">
-        <strong>⚠️ 残数が古い会社が ${staleCount} 社</strong>
-        ${veryStaleCount > 0 ? `（うち ${veryStaleCount} 社は 48時間以上未更新）` : ''}
-        — 該当会社のジョブメドレー画面を Chrome 拡張で1度開いて残数を更新してください
+  // Stale companies banner — only count genuinely stale (48h+ AND never-fetched)
+  const veryStaleCount = _dashData.companies.filter(c => _stalenessLevel(c.snapshot_at) === 2 && c.snapshot_at).length;
+  const unfetchedCount = _dashData.companies.filter(c => !c.snapshot_at).length;
+  const warnCount = _dashData.companies.filter(c => _stalenessLevel(c.snapshot_at) === 1).length;
+  const criticalTotal = veryStaleCount;
+  const banner = (criticalTotal > 0 || warnCount > 0)
+    ? `<div class="stale-banner ${criticalTotal > 0 ? 'critical' : 'warning'}">
+        <svg class="icon icon-md" style="vertical-align:-3px"><use href="#i-alert"/></svg>
+        <strong>残数更新が必要</strong>
+        ${criticalTotal > 0 ? `<span>— ${criticalTotal} 社が 48 時間以上未更新</span>` : ''}
+        ${warnCount > 0 ? `<span>／ ${warnCount} 社が 24 時間超過</span>` : ''}
+        ${unfetchedCount > 0 ? `<span class="unfetched-note">（${unfetchedCount} 社は未取得：初回スクレイプ前）</span>` : ''}
       </div>`
-    : '';
+    : unfetchedCount > 0
+      ? `<div class="stale-banner info">
+          <svg class="icon icon-md" style="vertical-align:-3px"><use href="#i-clock"/></svg>
+          ${unfetchedCount} 社が未取得（Chrome 拡張で1度開くと自動記録されます）
+        </div>`
+      : '';
 
   body.innerHTML = `
     ${banner}
@@ -4524,25 +4754,93 @@ function renderDashboardTable() {
       ・行の黄色 = 24時間以上未更新、赤 = 48時間以上未更新。残数が古いと「使用」「進捗」も実態とズレます。
     </p>
     <style>
-      .row-stale { background: #fffbeb !important; }
+      /* Row states: unfetched (neutral) / stale (24-48h) / very-stale (48h+) */
+      .row-unfetched { background: transparent; }
+      .row-unfetched td:first-child { box-shadow: inset 3px 0 0 var(--c-border); }
+      .row-stale { background: #fffbea !important; }
+      .row-stale td:first-child { box-shadow: inset 3px 0 0 #f59e0b; }
       .row-very-stale { background: #fef2f2 !important; }
-      .row-stale:hover, .row-very-stale:hover { filter: brightness(0.97); }
-      .dash-staleness.very-stale { color: #dc2626; font-weight: 600; }
+      .row-very-stale td:first-child { box-shadow: inset 3px 0 0 var(--c-danger); }
+      .row-stale:hover, .row-very-stale:hover { filter: brightness(0.98); }
+
+      /* Staleness label */
+      .dash-staleness {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+      .dash-staleness.unfetched {
+        color: var(--c-text-muted);
+        font-style: italic;
+      }
+      .dash-staleness.unfetched::before {
+        content: '';
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--c-text-tertiary);
+        display: inline-block;
+      }
+      .dash-staleness.stale {
+        color: #92400e;
+        font-weight: 500;
+      }
+      .dash-staleness.stale::before {
+        content: '';
+        width: 6px; height: 6px; border-radius: 50%;
+        background: #f59e0b;
+        display: inline-block;
+      }
+      .dash-staleness.very-stale {
+        color: var(--c-danger);
+        font-weight: 600;
+      }
+      .dash-staleness.very-stale::before {
+        content: '';
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--c-danger);
+        display: inline-block;
+        animation: stalePulse 2s ease-in-out infinite;
+      }
+      @keyframes stalePulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+
+      /* Banner */
       .stale-banner {
-        padding: 10px 14px;
-        border-radius: 6px;
-        margin-bottom: 12px;
+        padding: 12px 16px;
+        border-radius: var(--radius-sm);
+        margin-bottom: 14px;
         font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .stale-banner strong { font-weight: 700; }
+      .stale-banner.info {
+        background: var(--c-surface-alt);
+        color: var(--c-text-secondary);
+        border: 1px solid var(--c-border-light);
       }
       .stale-banner.warning {
-        background: #fef3c7;
-        color: #92400e;
+        background: #fffbea;
+        color: #78350f;
         border: 1px solid #fde68a;
+        border-left: 3px solid #f59e0b;
       }
       .stale-banner.critical {
-        background: #fee2e2;
+        background: #fef2f2;
         color: #991b1b;
-        border: 1px solid #fca5a5;
+        border: 1px solid #fecaca;
+        border-left: 3px solid var(--c-danger);
+      }
+      .stale-banner .unfetched-note {
+        color: var(--c-text-muted);
+        font-weight: 400;
+        font-size: 12px;
       }
     </style>
   `;
@@ -5499,8 +5797,8 @@ function renderHelpView() {
   const adminUrl = location.origin + '/admin/';
 
   el.innerHTML = `<div class="help-container">
-<h2 style="font-size:22px;font-weight:700;margin-bottom:6px;">ヘルプ・リンク集</h2>
-<p style="color:var(--c-text-muted);font-size:13px;margin-bottom:24px;">管理画面の使い方と関連リソースへのリンクです。</p>
+<h2 class="serif" style="font-size:36px;font-weight:700;margin-bottom:4px;letter-spacing:-0.02em;padding-bottom:10px;border-bottom:2px solid var(--c-rule);">ヘルプ・リンク集</h2>
+<p style="color:var(--c-text-muted);font-size:14px;font-style:italic;font-family:var(--font-display);margin-bottom:28px;">管理画面の使い方と関連リソースへのリンクです。</p>
 
 <div class="help-links" id="helpLinks">
   <a href="${adminUrl}" class="help-link-card">
