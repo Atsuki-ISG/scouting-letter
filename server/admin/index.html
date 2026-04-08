@@ -358,6 +358,19 @@ tbody tr:hover { background: var(--c-primary-bg); }
 tbody tr:nth-child(even) { background: rgba(0,0,0,0.01); }
 tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
 
+/* 生成ログ専用：16列を扱うため列幅を明示し、数値列は右寄せ tabular */
+.logs-table-wrap { overflow-x: auto; }
+.logs-table { table-layout: fixed; width: max-content; min-width: 100%; font-size: 13px; }
+.logs-table thead th { padding: 10px 10px 8px; font-size: 10px; }
+.logs-table tbody td { padding: 9px 10px; max-width: none; font-size: 13px; line-height: 1.5; }
+.logs-table thead th.num,
+.logs-table tbody td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.logs-table tbody td .cell-text { -webkit-line-clamp: 3; line-clamp: 3; }
+
 .actions-cell {
   white-space: nowrap;
   display: flex;
@@ -3665,6 +3678,29 @@ function renderTable() {
   const hideColumns = isLogs ? ['_row_index', 'personalized_text_preview'] : ['_row_index'];
   const displayHeaders = currentHeaders.filter(h => !hideColumns.includes(h));
 
+  // 生成ログ専用の列幅。16列あるため auto layout だと崩れる → fixed にして各列を明示する。
+  // failure_* 系は普段は空なので狭く、detail / failure_searched_text / failure_human_message だけ広めに取る。
+  const LOG_COL_WIDTHS = {
+    timestamp: 150,
+    company: 110,
+    member_id: 100,
+    job_category: 90,
+    template_type: 110,
+    generation_path: 100,
+    pattern_type: 90,
+    status: 80,
+    detail: 320,
+    prompt_tokens: 80,
+    output_tokens: 80,
+    estimated_cost: 90,
+    failure_stage: 110,
+    failure_missing_fields: 140,
+    failure_searched_text: 200,
+    failure_company_categories: 140,
+    failure_human_message: 220,
+  };
+  const LOG_NUMERIC_COLS = new Set(['prompt_tokens', 'output_tokens', 'estimated_cost']);
+
   // Log stats summary
   let logStats = '';
   if (isLogs) {
@@ -3691,10 +3727,14 @@ function renderTable() {
         ` : ''}
       </div>
     </div>
-    <div class="table-wrap">
-      <table>
+    <div class="table-wrap${isLogs ? ' logs-table-wrap' : ''}">
+      <table${isLogs ? ' class="logs-table"' : ''}>
+        ${isLogs ? `<colgroup>${displayHeaders.map(h => `<col style="width:${LOG_COL_WIDTHS[h] || 120}px">`).join('')}</colgroup>` : ''}
         <thead><tr>
-          ${displayHeaders.map(h => `<th>${FIELD_LABELS[h] || h}</th>`).join('')}
+          ${displayHeaders.map(h => {
+            const align = isLogs && LOG_NUMERIC_COLS.has(h) ? ' class="num"' : '';
+            return `<th${align}>${FIELD_LABELS[h] || h}</th>`;
+          }).join('')}
           ${!isReadOnly ? '<th>操作</th>' : ''}
         </tr></thead>
         <tbody>`;
@@ -3709,8 +3749,13 @@ function renderTable() {
         html += `<td>${renderLogStatusBadge(String(val))}</td>`;
       } else if (isLogs && h === 'generation_path') {
         html += `<td>${renderLogPathBadge(String(val))}</td>`;
+      } else if (isLogs && LOG_NUMERIC_COLS.has(h)) {
+        const display = h === 'estimated_cost' && val
+          ? `$${Number(val).toFixed(4)}`
+          : (val || '');
+        html += `<td class="num">${escHtml(String(display))}</td>`;
       } else if (isLogs && h === 'detail' && val) {
-        html += `<td><div class="cell-text" style="max-width:300px" title="${escHtml(val)}">${formatCellText(String(val))}</div></td>`;
+        html += `<td><div class="cell-text" title="${escHtml(val)}">${formatCellText(String(val))}</div></td>`;
       } else if (isPatterns && h === 'pattern_type') {
         html += `<td>${renderPatternBadge(String(val))}</td>`;
       } else if (isPrompts && h === 'section_type') {
