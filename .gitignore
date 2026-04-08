@@ -10,3 +10,11 @@ server/__pycache__/
 server/**/__pycache__/
 *.pyc
 .pytest_cache/
+
+# Claude Code 作業領域 (セッションローカル)
+.agent/
+.claude/launch.json
+.claude/worktrees/
+
+# Extension build artifacts
+extension/dist/
