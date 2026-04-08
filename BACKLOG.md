@@ -30,7 +30,7 @@
 - [ ] **送信通数管理 Phase D-3**: Gmail API 経由でジョブメドレー残数通知メールを自動 ingest（メール存在確認必要）
 - [x] ~~送信履歴の行編集 (PATCH) UI~~ — 完了。`PATCH /admin/send_data/{company_id}/{row_index}` を追加し、管理画面の送信履歴タブに「編集」ボタンを追加。日時はimmutable、ヘッダードリフト時は409で拒否、`sheets_writer.update_cells_by_name` 経由で監査ログに前値スナップショットを残す。テスト12件すべてpass
 - [ ] **送信ペース予測** — 月次目標 / 残数スナップショット履歴 / 当月の経過日数から「このペースだと月末何通」を算出してダッシュボードに表示。Phase A の履歴データが活きる
-- [ ] **分析結果・改善提案の顧客向けレポートエクスポート**
+- [x] ~~分析結果・改善提案の顧客向けレポートエクスポート~~ — 完了。管理画面「分析」タブに「顧客向けレポート出力」ボタンを追加。`POST /api/v1/admin/export_report` が顧客向けに絞ったクロス集計（内部の パターン/生成パス/テンプレートVer/曜日/時間帯 は除外）+ AI所感（JSON形式に強制、AIっぽい表現禁止プロンプト）をサーバ側でMarkdown整形して返却。編集可能モーダルで .md ダウンロード / コピー / **Google Docs で開く** が選べる。Google Docs は事前に PM が共有した Drive フォルダに作成（env `REPORTS_DRIVE_FOLDER_ID`、SA を Editor 共有）。新ファイル: `server/db/docs_exporter.py`, `server/prompts/customer_report.md`, `server/tests/test_routes_admin_export_report.py` (8件 pass)
 - [x] ~~一括テンプレート展開+確認UI~~ — 完了。2モード構成:
   - **モードA (テンプレート展開)**: 同会社/他会社の他職種・他型に展開、hunk単位の✓採用/✗却下 + target単位の3状態承認 (承認/保留/破棄)、承認分のみ `batch_update_templates` で Sheets に書き戻し
   - **モードB (プロンプト反映)**: 差分をプロンプトシート提案に変換して `改善提案` シートに pending 追加、既存の修正フィードバックタブで個別承認 → プロンプトシート反映

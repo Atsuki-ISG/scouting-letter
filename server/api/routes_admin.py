@@ -3486,6 +3486,376 @@ async def analyze_cycle(
     }
 
 
+# ---------------------------------------------------------------------------
+# Customer-facing report export
+# ---------------------------------------------------------------------------
+
+# Dimensions kept in the customer-facing report. Internal bookkeeping
+# columns (パターン / 生成パス / テンプレートVer / 曜日 / 時間帯) are
+# deliberately excluded — clients don't need to see our machinery.
+_CUSTOMER_REPORT_DIMENSIONS = [
+    "地域",
+    "年齢層",
+    "経験区分",
+    "希望雇用形態",
+    "就業状況",
+    "テンプレート種別",
+]
+
+_CUSTOMER_REPORT_TOP_N = 5  # cap each cross-tab at top 5 buckets by volume
+
+
+def _collect_send_data_single(company: str, date_from: str, date_to: str):
+    """Load and filter send data for a single company within a date range.
+
+    Returns (headers, col_map, filtered_rows, kpi) where kpi is
+    {total, replied, reply_rate_pct (float)} — or (None, {}, [], None) if
+    the sheet is missing / empty / has no rows in range.
+    """
+    from pipeline.orchestrator import _send_data_sheet_name
+
+    sheet_name = _send_data_sheet_name(company)
+    try:
+        all_rows = sheets_writer.get_all_rows(sheet_name)
+    except Exception:
+        return None, {}, [], None
+    if len(all_rows) < 2:
+        return None, {}, [], None
+
+    headers = all_rows[0]
+    col_map = {h: i for i, h in enumerate(headers)}
+    date_col = col_map.get("日時")
+    reply_col = col_map.get("返信")
+
+    filtered = []
+    for row in all_rows[1:]:
+        row_date = ""
+        if date_col is not None and len(row) > date_col and row[date_col]:
+            row_date = row[date_col][:10]
+        if date_from <= row_date <= date_to:
+            filtered.append(row)
+
+    if not filtered:
+        return headers, col_map, [], None
+
+    total = len(filtered)
+    replied = 0
+    if reply_col is not None:
+        replied = sum(
+            1
+            for r in filtered
+            if len(r) > reply_col and r[reply_col] == "有"
+        )
+    kpi = {
+        "total": total,
+        "replied": replied,
+        "reply_rate_pct": (replied / total * 100) if total > 0 else 0.0,
+    }
+    return headers, col_map, filtered, kpi
+
+
+def _build_customer_cross_tabs(
+    filtered_rows: list,
+    col_map: dict,
+    dimensions: list = _CUSTOMER_REPORT_DIMENSIONS,
+    top_n: int = _CUSTOMER_REPORT_TOP_N,
+):
+    """Compute cross-tabs for customer-facing dimensions only.
+
+    Returns dict: {dim: {bucket_label: {total, replied, rate (str)}}}
+    capped at top_n buckets per dimension (by volume).
+    """
+    reply_col = col_map.get("返信")
+    result = {}
+    for dim in dimensions:
+        idx = col_map.get(dim)
+        if idx is None:
+            continue
+        buckets = {}
+        for row in filtered_rows:
+            val = row[idx] if len(row) > idx and row[idx] else "(未設定)"
+            if val not in buckets:
+                buckets[val] = {"total": 0, "replied": 0}
+            buckets[val]["total"] += 1
+            if reply_col is not None and len(row) > reply_col and row[reply_col] == "有":
+                buckets[val]["replied"] += 1
+        if len(buckets) <= 1:
+            continue
+        ordered = sorted(buckets.items(), key=lambda kv: -kv[1]["total"])[:top_n]
+        result[dim] = {
+            k: {
+                "total": v["total"],
+                "replied": v["replied"],
+                "rate": f"{(v['replied']/v['total']*100):.1f}%" if v["total"] > 0 else "0.0%",
+            }
+            for k, v in ordered
+        }
+    return result
+
+
+_CUSTOMER_REPORT_PROMPT = """あなたは介護・医療系求人のスカウト運用をRPO（採用代行）として請け負っている担当者です。
+以下のスカウト送信実績データをもとに、**クライアント（発注元の施設）に提出する報告所感**を作成してください。
+
+## 禁止事項（必ず守る）
+- 「と考えられます」「〜が示唆されます」「〜と推察されます」「AI分析」「興味深いことに」などAIっぽい婉曲表現は一切使わない
+- 絵文字や装飾記号を入れない
+- 箇条書きの多用を避け、段落で書く（数値は地の文に埋め込む）
+- 施策の効果を断定せず、事実ベースで述べる
+
+## トーン
+- 「ございました」「しております」「いたしました」系の事務的な丁寧語
+- 「◯通の送信のうち◯件の返信があり、返信率は◯%でした」のように数値を文章に織り込む
+- 読み手は当該施設の採用担当者。運用の中身ではなく**結果と次の重点**に関心がある
+
+## 出力形式（厳守）
+JSON オブジェクトを **1 つだけ**出力してください。前後に解説文や ```json フェンスを含めないこと。
+
+{
+  "situation": "今期の送信状況を2〜4文（段落）で。数値は地の文に埋め込む。",
+  "findings": "目立った傾向を2〜4文（段落）で。どのセグメントが反応良い/悪いかと、その数値根拠を明記する。",
+  "next_actions": "次サイクルで取り組むべき観点を2〜3文（段落）で。具体的な施策名ではなく方向性として書く。"
+}
+"""
+
+
+def _format_report_markdown(
+    company_display: str,
+    period: str,
+    kpi: dict,
+    cross_tabs: dict,
+    narrative: dict,
+) -> str:
+    """Assemble the final customer-facing report as Markdown."""
+    lines = []
+    lines.append(f"# {company_display} スカウト送信レポート")
+    lines.append("")
+    lines.append(f"期間: {period}")
+    lines.append("")
+    lines.append("## サマリー")
+    lines.append("")
+    lines.append(f"- 送信数: {kpi['total']}通")
+    lines.append(f"- 返信数: {kpi['replied']}件")
+    lines.append(f"- 返信率: {kpi['reply_rate_pct']:.1f}%")
+    lines.append("")
+
+    if cross_tabs:
+        lines.append("## 内訳")
+        lines.append("")
+        for dim, buckets in cross_tabs.items():
+            lines.append(f"### {dim}別")
+            lines.append("")
+            lines.append("| 区分 | 送信 | 返信 | 返信率 |")
+            lines.append("|---|---:|---:|---:|")
+            for label, stats in buckets.items():
+                lines.append(
+                    f"| {label} | {stats['total']} | {stats['replied']} | {stats['rate']} |"
+                )
+            lines.append("")
+
+    situation = (narrative or {}).get("situation", "").strip()
+    findings = (narrative or {}).get("findings", "").strip()
+    next_actions = (narrative or {}).get("next_actions", "").strip()
+
+    if situation:
+        lines.append("## 今期の状況")
+        lines.append("")
+        lines.append(situation)
+        lines.append("")
+    if findings:
+        lines.append("## 見えてきた傾向")
+        lines.append("")
+        lines.append(findings)
+        lines.append("")
+    if next_actions:
+        lines.append("## 次サイクルの重点")
+        lines.append("")
+        lines.append(next_actions)
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _parse_narrative_json(raw_text: str) -> dict:
+    """Extract the JSON object from a Gemini response.
+
+    Tolerates wrapping ```json fences or a trailing period. Returns
+    an empty dict if parsing fails so the caller can fall back to a
+    KPI-only report.
+    """
+    import json
+    import re
+
+    if not raw_text:
+        return {}
+    text = raw_text.strip()
+    # Strip ```json ... ``` fences if present.
+    fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+    if fence:
+        text = fence.group(1).strip()
+    # Find the first { ... last } span.
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return {}
+    try:
+        obj = json.loads(text[start : end + 1])
+    except Exception:
+        return {}
+    if not isinstance(obj, dict):
+        return {}
+    return {
+        "situation": str(obj.get("situation", "")).strip(),
+        "findings": str(obj.get("findings", "")).strip(),
+        "next_actions": str(obj.get("next_actions", "")).strip(),
+    }
+
+
+@router.post("/export_report")
+async def export_report(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Generate a customer-facing Markdown report from send data analytics."""
+    from datetime import datetime, timedelta, timezone
+    from pipeline.orchestrator import COMPANY_DISPLAY_NAMES
+    from pipeline.ai_generator import generate_personalized_text
+
+    JST = timezone(timedelta(hours=9))
+    company = (data.get("company") or "").strip()
+    if not company or company == "all":
+        raise HTTPException(400, "company is required (cross-company report is not supported)")
+
+    now = datetime.now(JST)
+    date_from = data.get("date_from") or (now - timedelta(days=30)).strftime("%Y-%m-%d")
+    date_to = data.get("date_to") or now.strftime("%Y-%m-%d")
+    directive = (data.get("directive") or "").strip()
+
+    headers, col_map, filtered, kpi = _collect_send_data_single(company, date_from, date_to)
+    if not filtered or kpi is None:
+        return {
+            "status": "error",
+            "detail": f"{company} の {date_from}〜{date_to} に送信データがありません",
+        }
+
+    cross_tabs = _build_customer_cross_tabs(filtered, col_map)
+
+    company_display = COMPANY_DISPLAY_NAMES.get(company, company)
+    period = f"{date_from} 〜 {date_to}"
+
+    # Build user prompt (data payload for Gemini).
+    user_lines = [
+        f"## 対象",
+        f"- 施設: {company_display}",
+        f"- 期間: {period}",
+        "",
+        f"## KPI",
+        f"- 送信数: {kpi['total']}通",
+        f"- 返信数: {kpi['replied']}件",
+        f"- 返信率: {kpi['reply_rate_pct']:.1f}%",
+        "",
+    ]
+    if cross_tabs:
+        user_lines.append("## セグメント別の集計（顧客向けに絞り込み済）")
+        for dim, buckets in cross_tabs.items():
+            user_lines.append(f"\n### {dim}別")
+            for label, stats in buckets.items():
+                user_lines.append(
+                    f"- {label}: 送信{stats['total']}通 / 返信{stats['replied']}件 ({stats['rate']})"
+                )
+        user_lines.append("")
+    if directive:
+        user_lines.append("## ディレクターからの補足")
+        user_lines.append(directive)
+
+    user_prompt = "\n".join(user_lines)
+
+    narrative: dict = {}
+    ai_error = None
+    try:
+        result = await generate_personalized_text(
+            _CUSTOMER_REPORT_PROMPT,
+            user_prompt,
+            max_output_tokens=4096,
+            temperature=0.5,
+        )
+        narrative = _parse_narrative_json(result.text)
+    except Exception as e:
+        ai_error = str(e)
+
+    markdown_text = _format_report_markdown(
+        company_display=company_display,
+        period=period,
+        kpi=kpi,
+        cross_tabs=cross_tabs,
+        narrative=narrative,
+    )
+
+    return {
+        "status": "ok",
+        "company": company,
+        "company_display": company_display,
+        "period": period,
+        "date_from": date_from,
+        "date_to": date_to,
+        "kpi": {
+            "total": kpi["total"],
+            "replied": kpi["replied"],
+            "reply_rate": f"{kpi['reply_rate_pct']:.1f}%",
+        },
+        "cross_tabs": cross_tabs,
+        "narrative": narrative,
+        "markdown": markdown_text,
+        "ai_error": ai_error,
+    }
+
+
+@router.post("/export_report/google_docs")
+async def export_report_google_docs(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Create a Google Doc in the configured Drive folder from provided markdown."""
+    import os
+    from pipeline.orchestrator import COMPANY_DISPLAY_NAMES
+
+    folder_id = os.environ.get("REPORTS_DRIVE_FOLDER_ID", "").strip()
+    if not folder_id:
+        raise HTTPException(
+            500,
+            "REPORTS_DRIVE_FOLDER_ID が設定されていません。Cloud Run の環境変数に出力先 Drive フォルダ ID を設定してください。",
+        )
+
+    company = (data.get("company") or "").strip()
+    markdown_text = data.get("markdown") or ""
+    date_from = (data.get("date_from") or "").strip()
+    date_to = (data.get("date_to") or "").strip()
+    if not company or not markdown_text:
+        raise HTTPException(400, "company と markdown は必須です")
+
+    company_display = COMPANY_DISPLAY_NAMES.get(company, company)
+    title_parts = [f"{company_display}_スカウトレポート"]
+    if date_from and date_to:
+        title_parts.append(f"{date_from}_{date_to}")
+    doc_title = "_".join(title_parts)
+
+    try:
+        from db.docs_exporter import docs_exporter
+        result = docs_exporter.create_doc_from_markdown(
+            title=doc_title,
+            markdown_text=markdown_text,
+            parent_folder_id=folder_id,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Google Docs 作成に失敗しました: {e}")
+
+    return {
+        "status": "ok",
+        "doc_id": result.get("id"),
+        "web_view_link": result.get("webViewLink"),
+        "title": doc_title,
+    }
+
+
 @router.post("/{sheet_slug}")
 async def create_row(sheet_slug: str, data: dict, operator=Depends(verify_api_key)):
     sheet_name = SHEET_MAP.get(sheet_slug)

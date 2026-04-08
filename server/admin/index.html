@@ -2161,6 +2161,7 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
           <h3>サイクル分析</h3>
           <label style="font-size:11px;color:var(--c-text-muted);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="crossCompanyCheck" style="accent-color:var(--c-primary);"> 全社横断</label>
           <button class="btn btn-primary btn-sm" onclick="runAnalysis()">&#x25B6; 分析を実行</button>
+          <button class="btn btn-secondary btn-sm" id="btnExportReport" onclick="openReportExport()" disabled style="margin-left:4px;">&#x1F4C4; 顧客向けレポート出力</button>
         </div>
         <div id="analysisResults" style="flex:1;padding:20px;overflow-y:auto;">
           <div class="analysis-empty">「分析を実行」を押すと送信データのクロス集計とAI分析が表示されます</div>
@@ -2185,6 +2186,47 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
       <button class="btn btn-primary" id="modalSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Report Export Dialog -->
+<div class="modal-overlay" id="reportExportOverlay">
+  <div class="modal" style="max-width:1200px;width:94%;max-height:92vh;display:flex;flex-direction:column;">
+    <div class="modal-header">
+      <h3>顧客向けレポート</h3>
+      <button class="modal-close" onclick="closeReportExport()">&times;</button>
+    </div>
+    <div class="modal-body" id="reportExportBody" style="flex:1;overflow:hidden;padding:0;">
+      <div id="reportExportLoading" style="padding:40px;text-align:center;">
+        <div class="spinner"></div>
+        <div style="margin-top:12px;color:var(--c-text-muted);">レポートを生成中...</div>
+      </div>
+      <div id="reportExportContent" style="display:none;height:100%;">
+        <div style="display:flex;gap:12px;padding:12px 20px 0 20px;align-items:center;border-bottom:1px solid var(--c-border);">
+          <span style="font-size:12px;color:var(--c-text-muted);">期間:</span>
+          <span id="reportExportPeriod" style="font-size:13px;font-weight:600;"></span>
+          <span style="font-size:12px;color:var(--c-text-muted);margin-left:12px;">会社:</span>
+          <span id="reportExportCompany" style="font-size:13px;font-weight:600;"></span>
+          <div id="reportExportAiWarning" style="display:none;margin-left:auto;font-size:11px;color:var(--c-danger);"></div>
+        </div>
+        <div style="display:flex;gap:12px;height:calc(100% - 40px);padding:12px 20px;">
+          <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+            <div style="font-size:11px;color:var(--c-text-muted);margin-bottom:4px;">📝 Markdown（編集可）</div>
+            <textarea id="reportExportMarkdown" style="flex:1;min-height:400px;padding:12px;border:1px solid var(--c-border);border-radius:4px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;resize:none;"></textarea>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;min-width:0;">
+            <div style="font-size:11px;color:var(--c-text-muted);margin-bottom:4px;">👁 プレビュー</div>
+            <div id="reportExportPreview" class="analysis-md" style="flex:1;min-height:400px;padding:12px;border:1px solid var(--c-border);border-radius:4px;overflow-y:auto;background:var(--c-surface);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn btn-secondary" onclick="closeReportExport()">閉じる</button>
+      <button class="btn btn-secondary" id="reportExportCopyBtn" onclick="copyReportMarkdown()" disabled>&#x1F4CB; コピー</button>
+      <button class="btn btn-secondary" id="reportExportDownloadBtn" onclick="downloadReportMarkdown()" disabled>&#x2B07; .md ダウンロード</button>
+      <button class="btn btn-primary" id="reportExportGdocsBtn" onclick="exportReportToGoogleDocs()" disabled>&#x1F4DD; Google Docs で開く</button>
     </div>
   </div>
 </div>
@@ -6807,6 +6849,14 @@ async function runAnalysis() {
     el.innerHTML = html;
     // Show improve button after analysis completes
     document.getElementById('improveInputArea').style.display = '';
+    // Enable report export button
+    const exportBtn = document.getElementById('btnExportReport');
+    if (exportBtn) {
+      exportBtn.disabled = isCross; // cross-company report is not supported
+      exportBtn.dataset.company = company;
+      exportBtn.dataset.dateFrom = '';
+      exportBtn.dataset.dateTo = '';
+    }
 
     // Build analysis summary for improve_template
     let summaryParts = [];
@@ -6822,6 +6872,197 @@ async function runAnalysis() {
     lastAnalysisSummary = summaryParts.join('\n\n');
   } catch (e) {
     el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">分析エラー: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// --- Customer-facing report export ---
+
+let lastReportData = null; // cached response of /export_report for reuse by Google Docs button
+
+async function openReportExport() {
+  const isCross = document.getElementById('crossCompanyCheck')?.checked;
+  if (isCross) {
+    toast('顧客向けレポートは1会社ずつ出力します。「全社横断」を外してください。', true);
+    return;
+  }
+  const company = document.getElementById('companySelect').value;
+  if (!company) {
+    toast('会社を選択してください', true);
+    return;
+  }
+
+  // Open modal in loading state
+  document.getElementById('reportExportOverlay').classList.add('open');
+  document.getElementById('reportExportLoading').style.display = '';
+  document.getElementById('reportExportContent').style.display = 'none';
+  document.getElementById('reportExportCopyBtn').disabled = true;
+  document.getElementById('reportExportDownloadBtn').disabled = true;
+  document.getElementById('reportExportGdocsBtn').disabled = true;
+  lastReportData = null;
+
+  try {
+    const data = await api('POST', '/api/v1/admin/export_report', { company });
+    if (data.status === 'error') {
+      document.getElementById('reportExportLoading').innerHTML =
+        `<div style="color:var(--c-danger);padding:20px;">${escHtml(data.detail || 'レポート生成に失敗しました')}</div>`;
+      return;
+    }
+    lastReportData = data;
+
+    // Populate UI
+    document.getElementById('reportExportPeriod').textContent = data.period || '';
+    document.getElementById('reportExportCompany').textContent = data.company_display || data.company || '';
+    const aiWarn = document.getElementById('reportExportAiWarning');
+    if (data.ai_error) {
+      aiWarn.style.display = '';
+      aiWarn.textContent = `⚠ AI所感の生成に失敗しました（KPI・集計のみ出力）: ${data.ai_error}`;
+    } else {
+      aiWarn.style.display = 'none';
+      aiWarn.textContent = '';
+    }
+
+    const ta = document.getElementById('reportExportMarkdown');
+    ta.value = data.markdown || '';
+    updateReportPreview();
+    ta.oninput = updateReportPreview;
+
+    document.getElementById('reportExportLoading').style.display = 'none';
+    document.getElementById('reportExportContent').style.display = '';
+    document.getElementById('reportExportCopyBtn').disabled = false;
+    document.getElementById('reportExportDownloadBtn').disabled = false;
+    document.getElementById('reportExportGdocsBtn').disabled = false;
+  } catch (e) {
+    document.getElementById('reportExportLoading').innerHTML =
+      `<div style="color:var(--c-danger);padding:20px;">レポート生成エラー: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// Markdown renderer tailored to the customer-facing report: supports # h1,
+// ## h2, ### h3, bullet lists, GitHub-style tables, and **bold**. Kept
+// separate from simpleMarkdown() so we don't affect existing consumers.
+function renderReportMarkdown(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  let html = '';
+  let inList = false;
+  let i = 0;
+  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  const isTableSeparator = (line) => /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(line);
+  const splitRow = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+  const inline = (s) => escHtml(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Table: current line starts with | and next line is a separator
+    if (trimmed.startsWith('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      closeList();
+      const header = splitRow(trimmed);
+      const bodyRows = [];
+      i += 2; // skip header + separator
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        bodyRows.push(splitRow(lines[i].trim()));
+        i += 1;
+      }
+      html += '<table class="report-table"><thead><tr>';
+      for (const h of header) html += `<th>${inline(h)}</th>`;
+      html += '</tr></thead><tbody>';
+      for (const row of bodyRows) {
+        html += '<tr>';
+        for (const cell of row) html += `<td>${inline(cell)}</td>`;
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+      continue;
+    }
+
+    if (trimmed.startsWith('### ')) {
+      closeList();
+      html += `<h3>${inline(trimmed.slice(4))}</h3>`;
+    } else if (trimmed.startsWith('## ')) {
+      closeList();
+      html += `<h2>${inline(trimmed.slice(3))}</h2>`;
+    } else if (trimmed.startsWith('# ')) {
+      closeList();
+      html += `<h1>${inline(trimmed.slice(2))}</h1>`;
+    } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      if (!inList) { html += '<ul>'; inList = true; }
+      html += `<li>${inline(trimmed.slice(2))}</li>`;
+    } else if (trimmed === '') {
+      closeList();
+    } else {
+      closeList();
+      html += `<p>${inline(trimmed)}</p>`;
+    }
+    i += 1;
+  }
+  closeList();
+  return html;
+}
+
+function updateReportPreview() {
+  const md = document.getElementById('reportExportMarkdown').value;
+  document.getElementById('reportExportPreview').innerHTML = renderReportMarkdown(md);
+}
+
+function closeReportExport() {
+  document.getElementById('reportExportOverlay').classList.remove('open');
+}
+
+async function copyReportMarkdown() {
+  const md = document.getElementById('reportExportMarkdown').value;
+  try {
+    await navigator.clipboard.writeText(md);
+    toast('クリップボードにコピーしました');
+  } catch (e) {
+    toast('コピーに失敗しました: ' + e.message, true);
+  }
+}
+
+function downloadReportMarkdown() {
+  if (!lastReportData) return;
+  const md = document.getElementById('reportExportMarkdown').value;
+  const company = lastReportData.company_display || lastReportData.company || 'report';
+  const dateFrom = lastReportData.date_from || '';
+  const dateTo = lastReportData.date_to || '';
+  const fname = `${company}_スカウトレポート_${dateFrom}_${dateTo}.md`.replace(/\s+/g, '_');
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fname;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function exportReportToGoogleDocs() {
+  if (!lastReportData) return;
+  const btn = document.getElementById('reportExportGdocsBtn');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '作成中...';
+  try {
+    const md = document.getElementById('reportExportMarkdown').value;
+    const res = await api('POST', '/api/v1/admin/export_report/google_docs', {
+      company: lastReportData.company,
+      markdown: md,
+      date_from: lastReportData.date_from,
+      date_to: lastReportData.date_to,
+    });
+    if (res.web_view_link) {
+      window.open(res.web_view_link, '_blank');
+      toast('Google Docs を作成しました');
+    } else {
+      toast('Google Docs を作成しましたがURLを取得できませんでした', true);
+    }
+  } catch (e) {
+    toast('Google Docs 作成エラー: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
   }
 }
 
