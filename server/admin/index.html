@@ -6,7 +6,7 @@
 <title>Scout Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Old+Mincho:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Zen+Old+Mincho:wght@500;700;900&family=IBM+Plex+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   /* Editorial Teal — deep teal + ivory + serif display */
@@ -30,9 +30,10 @@
   --c-danger-bg: #fef2f2;
   --c-success: #047857;
   --c-success-bg: #ecfdf5;
-  --font-sans: 'IBM Plex Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif;
+  --font-sans: 'Inter', 'IBM Plex Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', sans-serif;
   --font-serif: 'Zen Old Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
-  --font-display: 'Playfair Display', 'Zen Old Mincho', Georgia, serif;
+  /* Previously 'Playfair Display' italic — reverted to a clean sans with tabular figures */
+  --font-display: 'Inter', 'IBM Plex Sans JP', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', sans-serif;
   --font-mono: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   --shadow-sm: 0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.06);
   --shadow-md: 0 2px 4px rgba(15,23,42,0.04), 0 4px 14px rgba(15,23,42,0.08);
@@ -70,10 +71,10 @@ body {
   font-feature-settings: "palt" 1;
 }
 .figures, .oldstyle-figures {
-  font-family: var(--font-display);
-  font-feature-settings: "onum" 1, "lnum" 0;
-  font-variant-numeric: oldstyle-nums;
-  letter-spacing: -0.01em;
+  font-family: var(--font-sans);
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 /* Inline SVG icons (Lucide-style, 1.5 stroke) */
@@ -1367,14 +1368,14 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   margin-bottom: 16px;
 }
 .dashboard-month {
-  font-family: var(--font-display);
-  font-size: 22px;
-  font-weight: 700;
+  font-family: var(--font-sans);
+  font-size: 20px;
+  font-weight: 600;
   color: var(--c-text);
   min-width: 120px;
   text-align: center;
-  font-style: italic;
-  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 .dashboard-table {
   width: 100%;
@@ -1414,14 +1415,14 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   border-bottom: none;
 }
 .dashboard-num {
-  font-family: var(--font-display);
-  font-variant-numeric: tabular-nums oldstyle-nums;
-  font-feature-settings: "onum" 1, "tnum" 1;
-  font-weight: 700;
-  font-size: 16px;
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-weight: 600;
+  font-size: 15px;
   text-align: right;
   color: var(--c-text);
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
 }
 .dashboard-num.muted {
   color: var(--c-text-muted);
@@ -5843,7 +5844,7 @@ function renderHelpView() {
 
   el.innerHTML = `<div class="help-container">
 <h2 class="serif" style="font-size:36px;font-weight:700;margin-bottom:4px;letter-spacing:-0.02em;padding-bottom:10px;border-bottom:2px solid var(--c-rule);">ヘルプ・リンク集</h2>
-<p style="color:var(--c-text-muted);font-size:14px;font-style:italic;font-family:var(--font-display);margin-bottom:28px;">管理画面の使い方と関連リソースへのリンクです。</p>
+<p style="color:var(--c-text-muted);font-size:14px;margin-bottom:28px;">管理画面の使い方と関連リソースへのリンクです。</p>
 
 <div class="help-links" id="helpLinks">
   <a href="${adminUrl}" class="help-link-card">
