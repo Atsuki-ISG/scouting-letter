@@ -207,10 +207,51 @@ export class GeneratePanel {
     this.progressText.textContent = `生成中... 0/${profiles.length}`;
 
     try {
-      const response = await apiClient.generateBatch(company, profiles, options);
+      // バッチ一括ではなく順次リクエスト (並列度 CONCURRENCY) で進捗をリアルタイム表示。
+      // サーバの /generate/batch は内部で並列処理するが 1 レスポンスなので 0/N のまま固定だった。
+      const CONCURRENCY = 10;
+      const total = profiles.length;
+      const results: GenerateResponse[] = new Array(total);
+      let done = 0;
+      let nextIndex = 0;
+
+      const worker = async () => {
+        while (true) {
+          const i = nextIndex++;
+          if (i >= total) return;
+          try {
+            results[i] = await apiClient.generate(company, profiles[i], options);
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            results[i] = {
+              member_id: profiles[i].member_id,
+              template_type: '',
+              generation_path: 'filtered_out',
+              personalized_text: '',
+              full_scout_text: '',
+              validation_warnings: [],
+              filter_reason: `生成エラー: ${msg}`,
+            };
+          }
+          done += 1;
+          this.progressFill.style.width = `${(done / total) * 100}%`;
+          this.progressText.textContent = `生成中... ${done}/${total}`;
+        }
+      };
+
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker()));
+
+      // クライアント側で summary を再構築 (サーババッチと同じ形)
+      const summary = {
+        total,
+        ai_generated: results.filter(r => r.generation_path === 'ai').length,
+        pattern_matched: results.filter(r => r.generation_path === 'pattern').length,
+        filtered_out: results.filter(r => r.generation_path === 'filtered_out').length,
+      };
+      const response = { results, summary };
 
       this.progressFill.style.width = '100%';
-      this.progressText.textContent = `完了 ${profiles.length}/${profiles.length}`;
+      this.progressText.textContent = `完了 ${done}/${total}`;
 
       const errorResults = response.results.filter(
         (r: GenerateResponse) => r.generation_path === 'filtered_out' && r.filter_reason?.startsWith('生成エラー')
