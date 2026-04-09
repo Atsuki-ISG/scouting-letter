@@ -15,10 +15,14 @@ JST = timezone(timedelta(hours=9))
 def _format_cost_message(summary: dict, title: str) -> str:
     """Format a cost summary into a human-readable message."""
     cost = summary["estimated_cost_usd"]
+    ai_reqs = summary.get("ai_requests", 0)
+    pattern_reqs = summary.get("pattern_requests", max(0, summary["requests"] - ai_reqs))
     lines = [
         f"📊 *{title}*",
         f"期間: {summary.get('date') or summary.get('month')}",
-        f"リクエスト数: {summary['requests']:,}",
+        f"総生成数: {summary['requests']:,}",
+        f"  ├ AI生成: {ai_reqs:,}",
+        f"  └ パターン: {pattern_reqs:,}",
         f"入力トークン: {summary['prompt_tokens']:,}",
         f"出力トークン: {summary['output_tokens']:,}",
         f"推定コスト: ${cost:.4f}",
@@ -60,14 +64,17 @@ async def _daily_report() -> None:
     monthly = cost_tracker.get_monthly_summary()
     if summary["requests"] > 0:
         message = _format_cost_message(summary, "日次コストレポート")
-        message += f"\n\n📅 今月累計: ${monthly['estimated_cost_usd']:.4f}"
     else:
         message = (
             f"📊 *日次コストレポート*\n"
             f"期間: {yesterday}\n"
-            f"リクエスト数: 0\n"
-            f"\n📅 今月累計: ${monthly['estimated_cost_usd']:.4f}"
+            f"総生成数: 0"
         )
+    message += (
+        f"\n\n📅 今月累計: ${monthly['estimated_cost_usd']:.4f} "
+        f"(AI {monthly.get('ai_requests', 0):,} / "
+        f"パターン {monthly.get('pattern_requests', 0):,})"
+    )
     await notify_google_chat(message)
 
 

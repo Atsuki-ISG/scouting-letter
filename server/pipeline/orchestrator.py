@@ -520,8 +520,8 @@ async def _process_candidate(
             # Mock mode: skip AI call, return placeholder text
             personalized_text = "【テストモード】AI生成をスキップしました。実際の運用ではここにGeminiが生成したパーソナライズ文が入ります。"
             pattern_type = None
-            generation_path = "ai"
-            logger.info(f"[{profile.member_id}] ai: MOCK mode")
+            generation_path = "mock"
+            logger.info(f"[{profile.member_id}] mock: skipped AI call")
         else:
             system_prompt = build_system_prompt(
                 jc_prompt_sections,
@@ -637,14 +637,16 @@ async def generate_single(
         config,
     )
 
-    # Record cost
-    if token_usage:
+    # Record generation (including pattern & mock paths so the daily report
+    # reflects actual usage volume, not just billable AI calls).
+    if response.generation_path and response.generation_path != "filtered_out":
         try:
             from monitoring.cost_tracker import cost_tracker
             cost_tracker.record(
-                token_usage["prompt_tokens"],
-                token_usage["output_tokens"],
-                GEMINI_MODEL,
+                prompt_tokens=token_usage.get("prompt_tokens", 0) if token_usage else 0,
+                output_tokens=token_usage.get("output_tokens", 0) if token_usage else 0,
+                model_name=GEMINI_MODEL,
+                generation_path=response.generation_path,
             )
         except Exception as e:
             logger.warning(f"Failed to record cost: {e}")
@@ -742,18 +744,22 @@ async def generate_batch(
     tasks = [process_one(profile) for profile in request.profiles]
     results = await asyncio.gather(*tasks)
 
-    # Record costs
-    if all_token_usage:
-        try:
-            from monitoring.cost_tracker import cost_tracker
-            for usage in all_token_usage.values():
-                cost_tracker.record(
-                    usage["prompt_tokens"],
-                    usage["output_tokens"],
-                    GEMINI_MODEL,
-                )
-        except Exception as e:
-            logger.warning(f"Failed to record costs: {e}")
+    # Record every generation (including pattern/mock paths). AI calls also
+    # contribute token counts; pattern/mock paths contribute request counts only.
+    try:
+        from monitoring.cost_tracker import cost_tracker
+        for result in results:
+            if not result.generation_path or result.generation_path == "filtered_out":
+                continue
+            usage = all_token_usage.get(result.member_id) or {}
+            cost_tracker.record(
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+                model_name=GEMINI_MODEL,
+                generation_path=result.generation_path,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to record costs: {e}")
 
     summary = {
         "total": len(results),

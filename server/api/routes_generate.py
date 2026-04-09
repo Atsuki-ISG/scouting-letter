@@ -82,7 +82,21 @@ async def generate_personalized_endpoint(
             )
         raise HTTPException(status_code=500, detail=f"生成エラー: {error_msg}")
 
-    # Strip internal-only token usage before serialization (it's not in
-    # the response model).
-    result_dict.pop("token_usage", None)
+    # Record cost before stripping token_usage. The personalized pipeline's
+    # ai_structured path consumes real Gemini tokens and was previously
+    # flying under the radar because this endpoint dropped the usage data.
+    token_usage = result_dict.pop("token_usage", None) or {}
+    gen_path = result_dict.get("generation_path") or ""
+    if gen_path and gen_path != "filtered_out":
+        try:
+            from monitoring.cost_tracker import cost_tracker
+            cost_tracker.record(
+                prompt_tokens=int(token_usage.get("prompt_tokens", 0) or 0),
+                output_tokens=int(token_usage.get("output_tokens", 0) or 0),
+                model_name=token_usage.get("model_name", ""),
+                generation_path="ai" if gen_path.startswith("ai") else gen_path,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record personalized cost: {e}")
+
     return PersonalizedGenerateResponse(**result_dict)

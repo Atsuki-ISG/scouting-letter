@@ -20,10 +20,16 @@ JST = timezone(timedelta(hours=9))
 COST_SHEET = "コスト集計"
 COST_HEADERS = [
     "date", "requests", "prompt_tokens", "output_tokens",
-    "total_tokens", "estimated_cost_usd",
+    "total_tokens", "estimated_cost_usd", "ai_requests",
 ]
 
-_EMPTY_STATS = {"requests": 0, "prompt_tokens": 0, "output_tokens": 0, "estimated_cost": 0.0}
+_EMPTY_STATS = {
+    "requests": 0,
+    "ai_requests": 0,
+    "prompt_tokens": 0,
+    "output_tokens": 0,
+    "estimated_cost": 0.0,
+}
 
 
 def _parse_int(v: str, default: int = 0) -> int:
@@ -72,6 +78,7 @@ class CostTracker:
                 str(stats["output_tokens"]),
                 str(stats["prompt_tokens"] + stats["output_tokens"]),
                 f"{stats['estimated_cost']:.6f}",
+                str(stats.get("ai_requests", 0)),
             ]
 
             # Find existing row for this date (skip header at index 0)
@@ -102,6 +109,8 @@ class CostTracker:
                         "prompt_tokens": _parse_int(row[2] if len(row) > 2 else "0"),
                         "output_tokens": _parse_int(row[3] if len(row) > 3 else "0"),
                         "estimated_cost": _parse_float(row[5] if len(row) > 5 else "0"),
+                        # ai_requests列は後方互換: 無い場合は requests と同値扱い(旧データ想定)
+                        "ai_requests": _parse_int(row[6] if len(row) > 6 else "0"),
                     }
         except Exception as e:
             logger.warning(f"Failed to read cost from Sheets for {date_str}: {e}")
@@ -120,6 +129,7 @@ class CostTracker:
                     total["prompt_tokens"] += _parse_int(row[2] if len(row) > 2 else "0")
                     total["output_tokens"] += _parse_int(row[3] if len(row) > 3 else "0")
                     total["estimated_cost"] += _parse_float(row[5] if len(row) > 5 else "0")
+                    total["ai_requests"] += _parse_int(row[6] if len(row) > 6 else "0")
         except Exception as e:
             logger.warning(f"Failed to read monthly cost from Sheets: {e}")
         return total
@@ -128,13 +138,30 @@ class CostTracker:
     # Public API
     # ------------------------------------------------------------------
 
-    def record(self, prompt_tokens: int, output_tokens: int, model_name: str) -> None:
-        """Record a single AI generation's token usage and persist to Sheets."""
-        pricing = get_model_pricing(model_name)
-        cost = (
-            prompt_tokens * pricing["input"]
-            + output_tokens * pricing["output"]
-        ) / 1_000_000
+    def record(
+        self,
+        prompt_tokens: int,
+        output_tokens: int,
+        model_name: str,
+        generation_path: str = "ai",
+    ) -> None:
+        """Record a single generation to daily stats + Sheets.
+
+        `generation_path` is one of "ai" / "pattern" / "mock" / "filtered_out".
+        Patterns and mock calls don't consume tokens but still count as
+        requests — they're tracked so we can see the ratio of AI vs
+        pattern generation in daily reports.
+        """
+        if generation_path == "ai" and (prompt_tokens > 0 or output_tokens > 0):
+            pricing = get_model_pricing(model_name)
+            cost = (
+                prompt_tokens * pricing["input"]
+                + output_tokens * pricing["output"]
+            ) / 1_000_000
+        else:
+            cost = 0.0
+            prompt_tokens = 0
+            output_tokens = 0
 
         today = datetime.now(JST).strftime("%Y-%m-%d")
 
@@ -147,6 +174,8 @@ class CostTracker:
                     stats.update(sheets_stats)
 
             stats["requests"] += 1
+            if generation_path == "ai":
+                stats["ai_requests"] += 1
             stats["prompt_tokens"] += prompt_tokens
             stats["output_tokens"] += output_tokens
             stats["estimated_cost"] += cost
@@ -157,7 +186,8 @@ class CostTracker:
         self._upsert_today_to_sheets(today, snapshot)
 
         logger.info(
-            f"Cost recorded: {prompt_tokens}+{output_tokens} tokens, "
+            f"Cost recorded [{generation_path}]: "
+            f"{prompt_tokens}+{output_tokens} tokens, "
             f"${cost:.6f} ({model_name})"
         )
 
@@ -175,6 +205,8 @@ class CostTracker:
                     return {
                         "date": date_str,
                         "requests": stats["requests"],
+                        "ai_requests": stats.get("ai_requests", 0),
+                        "pattern_requests": stats["requests"] - stats.get("ai_requests", 0),
                         "prompt_tokens": stats["prompt_tokens"],
                         "output_tokens": stats["output_tokens"],
                         "estimated_cost_usd": round(stats["estimated_cost"], 6),
@@ -186,6 +218,8 @@ class CostTracker:
             return {
                 "date": date_str,
                 "requests": sheets_stats["requests"],
+                "ai_requests": sheets_stats.get("ai_requests", 0),
+                "pattern_requests": sheets_stats["requests"] - sheets_stats.get("ai_requests", 0),
                 "prompt_tokens": sheets_stats["prompt_tokens"],
                 "output_tokens": sheets_stats["output_tokens"],
                 "estimated_cost_usd": round(sheets_stats["estimated_cost"], 6),
@@ -194,6 +228,8 @@ class CostTracker:
         return {
             "date": date_str,
             "requests": 0,
+            "ai_requests": 0,
+            "pattern_requests": 0,
             "prompt_tokens": 0,
             "output_tokens": 0,
             "estimated_cost_usd": 0.0,
@@ -209,6 +245,8 @@ class CostTracker:
         return {
             "month": month_prefix,
             "requests": total["requests"],
+            "ai_requests": total.get("ai_requests", 0),
+            "pattern_requests": total["requests"] - total.get("ai_requests", 0),
             "prompt_tokens": total["prompt_tokens"],
             "output_tokens": total["output_tokens"],
             "estimated_cost_usd": round(total["estimated_cost"], 6),
@@ -243,6 +281,7 @@ class CostTracker:
             summary["date"],
             {
                 "requests": summary["requests"],
+                "ai_requests": summary.get("ai_requests", 0),
                 "prompt_tokens": summary["prompt_tokens"],
                 "output_tokens": summary["output_tokens"],
                 "estimated_cost": summary["estimated_cost_usd"],

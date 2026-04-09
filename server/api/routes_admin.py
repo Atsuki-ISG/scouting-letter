@@ -4035,14 +4035,17 @@ async def cron_daily_report(operator=Depends(verify_api_key)):
 
     if summary["requests"] > 0:
         message = _format_cost_message(summary, "日次コストレポート")
-        message += f"\n\n📅 今月累計: ${monthly['estimated_cost_usd']:.4f}"
     else:
         message = (
             f"📊 *日次コストレポート*\n"
             f"期間: {yesterday}\n"
-            f"リクエスト数: 0\n"
-            f"\n📅 今月累計: ${monthly['estimated_cost_usd']:.4f}"
+            f"総生成数: 0"
         )
+    message += (
+        f"\n\n📅 今月累計: ${monthly['estimated_cost_usd']:.4f} "
+        f"(AI {monthly.get('ai_requests', 0):,} / "
+        f"パターン {monthly.get('pattern_requests', 0):,})"
+    )
 
     sent = await notify_google_chat(message)
     await _check_alert()
