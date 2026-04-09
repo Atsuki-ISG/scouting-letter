@@ -5,9 +5,17 @@ import logging
 import re
 from dataclasses import dataclass
 
+from google.api_core import exceptions as api_exceptions
 from google.api_core import retry as api_retry
 
-from config import GEMINI_MODEL, GEMINI_API_KEY, PROJECT_ID, LOCATION, MOCK_AI
+from config import (
+    GEMINI_MODEL,
+    GEMINI_FALLBACK_MODELS,
+    GEMINI_API_KEY,
+    PROJECT_ID,
+    LOCATION,
+    MOCK_AI,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +34,32 @@ _NO_RETRY = api_retry.Retry(initial=0, maximum=0, deadline=0)
 
 _initialized = False
 _use_vertex = False
+
+
+def _model_chain(primary: str) -> list[str]:
+    """Return [primary, ...fallbacks] de-duplicated, preserving order.
+
+    The primary model comes from GEMINI_MODEL (or a per-call override);
+    on 429 / ResourceExhausted we walk through GEMINI_FALLBACK_MODELS in
+    order. Empty fallback env disables the chain (primary only).
+    """
+    chain = [primary]
+    raw = (GEMINI_FALLBACK_MODELS or "").replace(",", "|")
+    for m in raw.split("|"):
+        m = m.strip()
+        if m and m not in chain:
+            chain.append(m)
+    return chain
+
+
+def _is_quota_error(exc: BaseException) -> bool:
+    """True if the exception looks like a Gemini RPD/TPM/RPM 429."""
+    if isinstance(exc, api_exceptions.ResourceExhausted):
+        return True
+    # google-generativeai sometimes wraps 429 inside RetryError or a
+    # generic Exception whose message contains the status.
+    msg = str(exc)
+    return "429" in msg or "RESOURCE_EXHAUSTED" in msg or "quota" in msg.lower()
 
 
 def _ensure_initialized() -> None:
@@ -70,36 +104,63 @@ async def generate_personalized_text(
     - Gemini Developer API (GEMINI_API_KEY set) — free tier, API key auth
     - Vertex AI (GEMINI_API_KEY not set) — GCP, service account auth
     """
-    name = model_name or GEMINI_MODEL
+    primary = model_name or GEMINI_MODEL
 
     # Mock mode for local testing
     if MOCK_AI:
         await asyncio.sleep(0.1)  # simulate latency
         return GenerationResult(
             text=f"【モック生成】候補者の経歴を拝見し、当ステーションでのご活躍を期待しております。（system_prompt: {len(system_prompt)}文字, user_prompt: {len(user_prompt)}文字）",
-            model_name=name,
+            model_name=primary,
         )
 
     _ensure_initialized()
 
-    if _use_vertex:
-        from vertexai.generative_models import GenerativeModel
-        model = GenerativeModel(model_name=name, system_instruction=system_prompt)
-        response = await model.generate_content_async(
-            user_prompt,
-            generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
-        )
-    else:
-        import google.generativeai as genai
-        model = genai.GenerativeModel(model_name=name, system_instruction=system_prompt)
-        # google-generativeai doesn't have async, run in thread
-        # Explicitly disable retry to avoid burning free-tier quota
-        response = await asyncio.to_thread(
-            model.generate_content,
-            user_prompt,
-            generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
-            request_options={"retry": _NO_RETRY},
-        )
+    chain = _model_chain(primary)
+    last_exc: BaseException | None = None
+    response = None
+    name = primary
+
+    for idx, candidate in enumerate(chain):
+        try:
+            if _use_vertex:
+                from vertexai.generative_models import GenerativeModel
+                model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
+                response = await model.generate_content_async(
+                    user_prompt,
+                    generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
+                )
+            else:
+                import google.generativeai as genai
+                model = genai.GenerativeModel(model_name=candidate, system_instruction=system_prompt)
+                # google-generativeai doesn't have async, run in thread
+                # Explicitly disable retry to avoid burning quota
+                response = await asyncio.to_thread(
+                    model.generate_content,
+                    user_prompt,
+                    generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
+                    request_options={"retry": _NO_RETRY},
+                )
+            name = candidate
+            if idx > 0:
+                logger.warning(
+                    f"AI fallback used: {primary} -> {candidate} "
+                    f"(primary exhausted, fallback step {idx})"
+                )
+            break
+        except Exception as exc:
+            if _is_quota_error(exc) and idx + 1 < len(chain):
+                logger.warning(
+                    f"AI quota exhausted on {candidate}: {type(exc).__name__}; "
+                    f"falling back to {chain[idx + 1]}"
+                )
+                last_exc = exc
+                continue
+            raise
+
+    if response is None:
+        # Should be unreachable: either break sets response or we raised.
+        raise last_exc or RuntimeError("AI生成: 応答が取得できませんでした")
 
     if not response.text:
         raise ValueError("AI生成で空の応答が返されました")
@@ -150,7 +211,7 @@ async def generate_structured(
     """
     import json as _json
 
-    name = model_name or GEMINI_MODEL
+    primary = model_name or GEMINI_MODEL
 
     # Mock mode: return a deterministic stub matching the schema so
     # local tests and offline development both work without burning
@@ -172,7 +233,7 @@ async def generate_structured(
                 mock_dict[key] = ""
         return mock_dict, GenerationResult(
             text=_json.dumps(mock_dict, ensure_ascii=False),
-            model_name=name,
+            model_name=primary,
         )
 
     _ensure_initialized()
@@ -184,22 +245,48 @@ async def generate_structured(
         "response_schema": response_schema,
     }
 
-    if _use_vertex:
-        from vertexai.generative_models import GenerativeModel
-        model = GenerativeModel(model_name=name, system_instruction=system_prompt)
-        response = await model.generate_content_async(
-            user_prompt,
-            generation_config=generation_config,
-        )
-    else:
-        import google.generativeai as genai
-        model = genai.GenerativeModel(model_name=name, system_instruction=system_prompt)
-        response = await asyncio.to_thread(
-            model.generate_content,
-            user_prompt,
-            generation_config=generation_config,
-            request_options={"retry": _NO_RETRY},
-        )
+    chain = _model_chain(primary)
+    last_exc: BaseException | None = None
+    response = None
+    name = primary
+
+    for idx, candidate in enumerate(chain):
+        try:
+            if _use_vertex:
+                from vertexai.generative_models import GenerativeModel
+                model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
+                response = await model.generate_content_async(
+                    user_prompt,
+                    generation_config=generation_config,
+                )
+            else:
+                import google.generativeai as genai
+                model = genai.GenerativeModel(model_name=candidate, system_instruction=system_prompt)
+                response = await asyncio.to_thread(
+                    model.generate_content,
+                    user_prompt,
+                    generation_config=generation_config,
+                    request_options={"retry": _NO_RETRY},
+                )
+            name = candidate
+            if idx > 0:
+                logger.warning(
+                    f"AI fallback used (structured): {primary} -> {candidate} "
+                    f"(primary exhausted, fallback step {idx})"
+                )
+            break
+        except Exception as exc:
+            if _is_quota_error(exc) and idx + 1 < len(chain):
+                logger.warning(
+                    f"AI quota exhausted on {candidate} (structured): "
+                    f"{type(exc).__name__}; falling back to {chain[idx + 1]}"
+                )
+                last_exc = exc
+                continue
+            raise
+
+    if response is None:
+        raise last_exc or RuntimeError("AI構造化生成: 応答が取得できませんでした")
 
     if not response.text:
         raise ValueError("AI構造化生成で空の応答が返されました")

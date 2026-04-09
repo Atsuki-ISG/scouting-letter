@@ -79,17 +79,19 @@ class TestStageExplicit:
         assert result.method == "explicit"
 
     def test_explicit_outside_company_categories(self, keywords):
+        # After 53c0cc8: explicit is always accepted, but emits a warning
+        # when it's not in the company's recruiting categories. Later stages
+        # (template lookup) are responsible for any hard failure.
         result = resolve_job_category(
             _profile(qualifications=""),
             company_categories=["nurse"],
             keywords=keywords,
             explicit="dietitian",
         )
-        assert result.category is None
-        assert result.method == "failed"
-        assert result.failure is not None
-        assert result.failure.stage_reached == "explicit"
-        assert "明示指定" in result.failure.human_message
+        assert result.category == "dietitian"
+        assert result.method == "explicit"
+        assert result.failure is None
+        assert any("職種強制指定" in w for w in result.warnings)
 
 
 # ===========================================================================
