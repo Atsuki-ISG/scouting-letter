@@ -348,6 +348,9 @@ def _resolve(
     company_set = set(company_categories)
 
     # ---------- Stage 1: Explicit ----------
+    # 拡張から職種が明示指定された場合は無条件で採用する。
+    # 会社の company_set に含まれなくても警告付きで通し、判定ロジックの
+    # 穴で落ちる候補者を救済する（テンプレ未設定などの後段エラーは維持）。
     if explicit:
         if explicit in company_set:
             return JobCategoryResolution(
@@ -355,11 +358,13 @@ def _resolve(
                 method="explicit",
                 debug=f"explicit: {explicit}",
             )
-        return _fail(
-            profile=profile,
-            company_categories=company_categories,
-            stage_reached="explicit",
-            ambiguous=[],
+        return JobCategoryResolution(
+            category=explicit,
+            method="explicit",
+            warnings=[
+                f"[職種強制指定] '{label_for_category(explicit)}' は会社の求人カテゴリに含まれていません"
+            ],
+            debug=f"explicit (not in company_set): {explicit}",
         )
 
     # ---------- Stage 0 sanity: company has no recruiting categories ----------
