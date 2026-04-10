@@ -35,20 +35,61 @@ _NO_RETRY = api_retry.Retry(initial=0, maximum=0, deadline=0)
 _initialized = False
 _use_vertex = False
 
+# ---------------------------------------------------------------------------
+# Circuit breaker: skip models that recently returned 429 so we don't waste
+# seconds per candidate waiting for a guaranteed failure.
+# ---------------------------------------------------------------------------
+import time as _time
+
+# model_name -> timestamp when 429 was first observed
+_tripped_models: dict[str, float] = {}
+
+# How long to keep a model tripped (seconds). RPD resets daily at midnight PT,
+# but a 5-minute window is enough to avoid hammering within a single batch run.
+_CIRCUIT_BREAKER_TTL = 300  # 5 minutes
+
+
+def _trip_model(model: str) -> None:
+    """Mark a model as quota-exhausted."""
+    _tripped_models[model] = _time.time()
+    logger.warning(f"Circuit breaker tripped for {model} (skip for {_CIRCUIT_BREAKER_TTL}s)")
+
+
+def _is_tripped(model: str) -> bool:
+    """Check if a model is currently tripped (should be skipped)."""
+    ts = _tripped_models.get(model)
+    if ts is None:
+        return False
+    if _time.time() - ts > _CIRCUIT_BREAKER_TTL:
+        del _tripped_models[model]
+        return False
+    return True
+
 
 def _model_chain(primary: str) -> list[str]:
-    """Return [primary, ...fallbacks] de-duplicated, preserving order.
+    """Return [primary, ...fallbacks] de-duplicated, skipping tripped models.
 
     The primary model comes from GEMINI_MODEL (or a per-call override);
     on 429 / ResourceExhausted we walk through GEMINI_FALLBACK_MODELS in
-    order. Empty fallback env disables the chain (primary only).
+    order. Models that recently hit 429 (circuit breaker) are moved to the
+    end of the chain so they're only tried as a last resort.
     """
-    chain = [primary]
+    raw_chain: list[str] = [primary]
     raw = (GEMINI_FALLBACK_MODELS or "").replace(",", "|")
     for m in raw.split("|"):
         m = m.strip()
-        if m and m not in chain:
-            chain.append(m)
+        if m and m not in raw_chain:
+            raw_chain.append(m)
+
+    # Partition: healthy models first, tripped models last
+    healthy = [m for m in raw_chain if not _is_tripped(m)]
+    tripped = [m for m in raw_chain if _is_tripped(m)]
+    chain = healthy + tripped
+
+    if chain[0] != primary and not _is_tripped(primary):
+        # Should not happen, but safety net
+        chain = [primary] + [m for m in chain if m != primary]
+
     return chain
 
 
@@ -149,13 +190,15 @@ async def generate_personalized_text(
                 )
             break
         except Exception as exc:
-            if _is_quota_error(exc) and idx + 1 < len(chain):
-                logger.warning(
-                    f"AI quota exhausted on {candidate}: {type(exc).__name__}; "
-                    f"falling back to {chain[idx + 1]}"
-                )
-                last_exc = exc
-                continue
+            if _is_quota_error(exc):
+                _trip_model(candidate)
+                if idx + 1 < len(chain):
+                    logger.warning(
+                        f"AI quota exhausted on {candidate}: {type(exc).__name__}; "
+                        f"falling back to {chain[idx + 1]}"
+                    )
+                    last_exc = exc
+                    continue
             raise
 
     if response is None:
