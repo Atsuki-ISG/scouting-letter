@@ -236,6 +236,8 @@ class SheetsClient:
                     return dn
         return company_id
 
+    _reload_in_progress: bool = False
+
     def get_company_config(self, company_id: str) -> dict[str, Any]:
         """Get all config for a company.
 
@@ -243,15 +245,22 @@ class SheetsClient:
         data may have been added to Sheets after the last cache load (common
         when CACHE_TTL_SECONDS=0). In that case, force ONE reload and retry
         so newly-registered companies are picked up without manual intervention.
+
+        The _reload_in_progress guard prevents infinite recursion when
+        validate_all_companies (called inside reload) calls get_company_config.
         """
         self._ensure_cache()
         templates = self._get_templates(company_id)
 
-        if not templates:
+        if not templates and not self._reload_in_progress:
             logger.info(
                 f"[{company_id}] テンプレート0件 — キャッシュをリロードしてリトライします"
             )
-            self.reload()
+            self._reload_in_progress = True
+            try:
+                self.reload()
+            finally:
+                self._reload_in_progress = False
             templates = self._get_templates(company_id)
 
         return {
