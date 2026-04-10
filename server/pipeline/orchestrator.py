@@ -630,12 +630,25 @@ async def generate_single(
 ) -> GenerateResponse:
     """Process a single candidate through the full generation pipeline."""
     config = data_client.get_company_config(request.company_id)
-    response, token_usage = await _process_candidate(
-        request.profile,
-        request.company_id,
-        request.options or GenerateOptions(),
-        config,
-    )
+    try:
+        response, token_usage = await _process_candidate(
+            request.profile,
+            request.company_id,
+            request.options or GenerateOptions(),
+            config,
+        )
+    except Exception as e:
+        logger.error(f"[{request.profile.member_id}] 生成エラー (single): {e}", exc_info=True)
+        response = GenerateResponse(
+            member_id=request.profile.member_id,
+            template_type="",
+            generation_path="filtered_out",
+            personalized_text="",
+            full_scout_text="",
+            filter_reason=f"[生成エラー] {str(e)}",
+            validation_warnings=[str(e)],
+        )
+        token_usage = {}
 
     # Record generation (including pattern & mock paths so the daily report
     # reflects actual usage volume, not just billable AI calls).
