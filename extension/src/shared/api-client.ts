@@ -74,7 +74,7 @@ export interface CompanyConfig {
 }
 
 /** Default timeout for API calls (ms) */
-const API_TIMEOUT_MS = 120_000; // 2 minutes for batch generation
+const API_TIMEOUT_MS = 180_000; // 3 minutes (Cloud Run timeout is 300s)
 const HEALTH_TIMEOUT_MS = 10_000;
 
 function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {

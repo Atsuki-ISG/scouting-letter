@@ -209,7 +209,10 @@ export class GeneratePanel {
     try {
       // バッチ一括ではなく順次リクエスト (並列度 CONCURRENCY) で進捗をリアルタイム表示。
       // サーバの /generate/batch は内部で並列処理するが 1 レスポンスなので 0/N のまま固定だった。
-      const CONCURRENCY = 10;
+      // AI生成パスは Gemini API を叩くため 1件20秒前後かかる。
+      // 並列度が高いと RPM 制限 (25/min) に引っかかり 503/429 で失敗する。
+      // 3並列なら RPM 内に収まり、型はめパスは即座に返るので体感も悪くない。
+      const CONCURRENCY = 3;
       const total = profiles.length;
       const results: GenerateResponse[] = new Array(total);
       let done = 0;
