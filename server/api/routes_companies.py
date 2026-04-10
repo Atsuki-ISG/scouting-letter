@@ -45,5 +45,9 @@ async def reload_config(
         )
     except Exception as e:
         logger.warning(f"Profile header ensure failed: {e}")
-    sheets_client.reload()
+    try:
+        sheets_client.reload()
+    except Exception as e:
+        logger.error(f"Sheets reload failed: {e}")
+        raise HTTPException(status_code=500, detail=f"リロード失敗: {str(e)}")
     return {"status": "reloaded"}

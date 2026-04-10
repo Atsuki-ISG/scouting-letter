@@ -237,9 +237,23 @@ class SheetsClient:
         return company_id
 
     def get_company_config(self, company_id: str) -> dict[str, Any]:
-        """Get all config for a company."""
+        """Get all config for a company.
+
+        If the cache returns zero templates for the requested company, the
+        data may have been added to Sheets after the last cache load (common
+        when CACHE_TTL_SECONDS=0). In that case, force ONE reload and retry
+        so newly-registered companies are picked up without manual intervention.
+        """
         self._ensure_cache()
         templates = self._get_templates(company_id)
+
+        if not templates:
+            logger.info(
+                f"[{company_id}] テンプレート0件 — キャッシュをリロードしてリトライします"
+            )
+            self.reload()
+            templates = self._get_templates(company_id)
+
         return {
             "templates": templates,
             "patterns": self._get_patterns(company_id),
