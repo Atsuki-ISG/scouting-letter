@@ -20,6 +20,52 @@ from config import (
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Safety settings: disable overly aggressive filters for legitimate
+# recruitment content (medical/care job descriptions).
+# ---------------------------------------------------------------------------
+def _safety_settings_genai():
+    """Return safety settings for google-generativeai SDK."""
+    import google.generativeai as genai
+    return {
+        genai.types.HarmCategory.HARM_CATEGORY_HARASSMENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
+        genai.types.HarmCategory.HARM_CATEGORY_HATE_SPEECH: genai.types.HarmBlockThreshold.BLOCK_NONE,
+        genai.types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: genai.types.HarmBlockThreshold.BLOCK_NONE,
+        genai.types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: genai.types.HarmBlockThreshold.BLOCK_NONE,
+    }
+
+
+def _safety_settings_vertex():
+    """Return safety settings for Vertex AI SDK."""
+    from vertexai.generative_models import HarmCategory, HarmBlockThreshold
+    return {
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    }
+
+
+def _extract_text_safe(response) -> str:
+    """Extract text from Gemini response, handling safety blocks gracefully."""
+    try:
+        return response.text or ""
+    except (ValueError, AttributeError):
+        # response.text throws when safety filters block the output
+        block_reasons = []
+        try:
+            for candidate in response.candidates:
+                if candidate.finish_reason and candidate.finish_reason.name != "STOP":
+                    block_reasons.append(candidate.finish_reason.name)
+                for rating in (candidate.safety_ratings or []):
+                    if rating.blocked:
+                        block_reasons.append(f"{rating.category.name}={rating.probability.name}")
+        except Exception:
+            pass
+        detail = ", ".join(block_reasons) if block_reasons else "不明"
+        raise ValueError(f"安全フィルタによりブロック ({detail})")
+
+
 @dataclass
 class GenerationResult:
     """AI generation result with token usage metadata."""
@@ -170,6 +216,7 @@ async def generate_personalized_text(
                 response = await model.generate_content_async(
                     user_prompt,
                     generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
+                    safety_settings=_safety_settings_vertex(),
                 )
             else:
                 import google.generativeai as genai
@@ -180,6 +227,7 @@ async def generate_personalized_text(
                     model.generate_content,
                     user_prompt,
                     generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
+                    safety_settings=_safety_settings_genai(),
                     request_options={"retry": _NO_RETRY},
                 )
             name = candidate
@@ -205,10 +253,11 @@ async def generate_personalized_text(
         # Should be unreachable: either break sets response or we raised.
         raise last_exc or RuntimeError("AI生成: 応答が取得できませんでした")
 
-    if not response.text:
+    raw_text = _extract_text_safe(response)
+    if not raw_text:
         raise ValueError("AI生成で空の応答が返されました")
 
-    text = _strip_markdown(response.text)
+    text = _strip_markdown(raw_text)
 
     if not text:
         raise ValueError("AI生成の結果が空です（マークダウン除去後）")
@@ -301,6 +350,7 @@ async def generate_structured(
                 response = await model.generate_content_async(
                     user_prompt,
                     generation_config=generation_config,
+                    safety_settings=_safety_settings_vertex(),
                 )
             else:
                 import google.generativeai as genai
@@ -309,6 +359,7 @@ async def generate_structured(
                     model.generate_content,
                     user_prompt,
                     generation_config=generation_config,
+                    safety_settings=_safety_settings_genai(),
                     request_options={"retry": _NO_RETRY},
                 )
             name = candidate
@@ -331,10 +382,11 @@ async def generate_structured(
     if response is None:
         raise last_exc or RuntimeError("AI構造化生成: 応答が取得できませんでした")
 
-    if not response.text:
+    raw_text = _extract_text_safe(response)
+    if not raw_text:
         raise ValueError("AI構造化生成で空の応答が返されました")
 
-    raw = response.text.strip()
+    raw = raw_text.strip()
     # Some SDK versions wrap JSON in markdown fences even with
     # response_mime_type=application/json — strip defensively.
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
