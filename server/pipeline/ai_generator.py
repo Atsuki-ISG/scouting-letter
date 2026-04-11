@@ -175,16 +175,23 @@ def _build_generation_config(
     temperature: float,
     max_output_tokens: int,
     model_name: str,
+    *,
+    for_vertex: bool = False,
     **extra,
 ) -> dict:
-    """Build generation_config dict, adding thinking_config for supported models."""
+    """Build generation_config dict, adding thinking_config for supported models.
+
+    google-generativeai SDK (<=0.8) does not recognize thinking_config
+    in GenerationConfig and raises a validation error. Only Vertex AI SDK
+    accepts it, so `for_vertex=True` must be set explicitly.
+    """
     config: dict = {
         "temperature": temperature,
         "max_output_tokens": max_output_tokens,
         **extra,
     }
-    # Add thinking for models that support it
-    if GEMINI_THINKING_BUDGET > 0 and ("gemini-3" in model_name or "gemini-2.5" in model_name):
+    # Add thinking only for Vertex AI path (genai SDK doesn't support it yet)
+    if for_vertex and GEMINI_THINKING_BUDGET > 0 and ("gemini-3" in model_name or "gemini-2.5" in model_name):
         config["thinking_config"] = {"thinking_budget": GEMINI_THINKING_BUDGET}
     return config
 
@@ -229,8 +236,8 @@ async def generate_personalized_text(
 
     for idx, candidate in enumerate(chain):
         try:
-            gen_config = _build_generation_config(temperature, max_output_tokens, candidate)
             if _use_vertex:
+                gen_config = _build_generation_config(temperature, max_output_tokens, candidate, for_vertex=True)
                 from vertexai.generative_models import GenerativeModel
                 model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
                 response = await model.generate_content_async(
@@ -239,6 +246,7 @@ async def generate_personalized_text(
                     safety_settings=_safety_settings_vertex(),
                 )
             else:
+                gen_config = _build_generation_config(temperature, max_output_tokens, candidate, for_vertex=False)
                 import google.generativeai as genai
                 model = genai.GenerativeModel(model_name=candidate, system_instruction=system_prompt)
                 # google-generativeai doesn't have async, run in thread
@@ -357,12 +365,12 @@ async def generate_structured(
 
     for idx, candidate in enumerate(chain):
         try:
-            gen_config = _build_generation_config(
-                temperature, max_output_tokens, candidate,
-                response_mime_type="application/json",
-                response_schema=response_schema,
-            )
             if _use_vertex:
+                gen_config = _build_generation_config(
+                    temperature, max_output_tokens, candidate, for_vertex=True,
+                    response_mime_type="application/json",
+                    response_schema=response_schema,
+                )
                 from vertexai.generative_models import GenerativeModel
                 model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
                 response = await model.generate_content_async(
@@ -371,6 +379,11 @@ async def generate_structured(
                     safety_settings=_safety_settings_vertex(),
                 )
             else:
+                gen_config = _build_generation_config(
+                    temperature, max_output_tokens, candidate, for_vertex=False,
+                    response_mime_type="application/json",
+                    response_schema=response_schema,
+                )
                 import google.generativeai as genai
                 model = genai.GenerativeModel(model_name=candidate, system_instruction=system_prompt)
                 response = await asyncio.to_thread(
