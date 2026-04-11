@@ -49,7 +49,8 @@ def build_system_prompt(
     # Add output instructions
     parts.append(
         "## 出力指示\n\n"
-        "パーソナライズ文のみを出力してください。説明・前置き・補足は不要です。"
+        "パーソナライズ文のみを出力してください。説明・前置き・補足は不要です。\n"
+        "候補者の氏名・名前は絶対に含めないこと。「〇〇様」等の呼びかけも不要です。"
     )
 
     return "\n\n---\n\n".join(parts)
