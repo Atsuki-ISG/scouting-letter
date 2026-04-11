@@ -2,14 +2,17 @@ import os
 
 PROJECT_ID: str = os.environ.get("PROJECT_ID", "")
 LOCATION: str = os.environ.get("LOCATION", "us-central1")
-GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3.1-pro-preview")
+GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
 # Fallback chain used when the primary model returns 429 (RPD/TPM exhausted).
 # Tried in order. Accepts "|" or "," as separator so it can be set via
 # `gcloud run deploy --update-env-vars` without conflicting with gcloud's own
 # comma delimiter. Empty string disables fallback.
 GEMINI_FALLBACK_MODELS: str = os.environ.get(
-    "GEMINI_FALLBACK_MODELS", "gemini-2.5-pro|gemini-2.5-flash"
+    "GEMINI_FALLBACK_MODELS", "gemini-2.5-flash"
 )
+# Thinking budget for models that support it (gemini-3-*, gemini-2.5-*).
+# 0 = disable thinking. Typical values: 1024 (low), 4096 (medium), 8192 (high).
+GEMINI_THINKING_BUDGET: int = int(os.environ.get("GEMINI_THINKING_BUDGET", "8192"))
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 MOCK_AI: bool = os.environ.get("MOCK_AI", "").lower() in ("1", "true", "yes")
 MAX_BATCH_CONCURRENCY: int = int(os.environ.get("MAX_BATCH_CONCURRENCY", "10"))
@@ -31,6 +34,7 @@ COST_ALERT_THRESHOLD_USD: float = float(os.environ.get("COST_ALERT_THRESHOLD_USD
 # Model pricing (USD per 1M tokens)
 MODEL_PRICING: dict[str, dict[str, float]] = {
     "gemini-3.1-pro-preview": {"input": 2.00, "output": 12.00},
+    "gemini-3-flash-preview": {"input": 0.15, "output": 0.60},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
     "gemini-2.5-flash": {"input": 0.30, "output": 2.50},
 }

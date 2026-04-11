@@ -12,6 +12,7 @@ from config import (
     GEMINI_MODEL,
     GEMINI_FALLBACK_MODELS,
     GEMINI_API_KEY,
+    GEMINI_THINKING_BUDGET,
     PROJECT_ID,
     LOCATION,
     MOCK_AI,
@@ -170,6 +171,24 @@ def _ensure_initialized() -> None:
     _initialized = True
 
 
+def _build_generation_config(
+    temperature: float,
+    max_output_tokens: int,
+    model_name: str,
+    **extra,
+) -> dict:
+    """Build generation_config dict, adding thinking_config for supported models."""
+    config: dict = {
+        "temperature": temperature,
+        "max_output_tokens": max_output_tokens,
+        **extra,
+    }
+    # Add thinking for models that support it
+    if GEMINI_THINKING_BUDGET > 0 and ("gemini-3" in model_name or "gemini-2.5" in model_name):
+        config["thinking_config"] = {"thinking_budget": GEMINI_THINKING_BUDGET}
+    return config
+
+
 def _strip_markdown(text: str) -> str:
     """Remove markdown formatting artifacts from generated text."""
     text = re.sub(r"```[\s\S]*?```", lambda m: m.group(0).strip("`").strip(), text)
@@ -210,12 +229,13 @@ async def generate_personalized_text(
 
     for idx, candidate in enumerate(chain):
         try:
+            gen_config = _build_generation_config(temperature, max_output_tokens, candidate)
             if _use_vertex:
                 from vertexai.generative_models import GenerativeModel
                 model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
                 response = await model.generate_content_async(
                     user_prompt,
-                    generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
+                    generation_config=gen_config,
                     safety_settings=_safety_settings_vertex(),
                 )
             else:
@@ -226,7 +246,7 @@ async def generate_personalized_text(
                 response = await asyncio.to_thread(
                     model.generate_content,
                     user_prompt,
-                    generation_config={"temperature": temperature, "max_output_tokens": max_output_tokens},
+                    generation_config=gen_config,
                     safety_settings=_safety_settings_genai(),
                     request_options={"retry": _NO_RETRY},
                 )
@@ -330,13 +350,6 @@ async def generate_structured(
 
     _ensure_initialized()
 
-    generation_config = {
-        "temperature": temperature,
-        "max_output_tokens": max_output_tokens,
-        "response_mime_type": "application/json",
-        "response_schema": response_schema,
-    }
-
     chain = _model_chain(primary)
     last_exc: BaseException | None = None
     response = None
@@ -344,12 +357,17 @@ async def generate_structured(
 
     for idx, candidate in enumerate(chain):
         try:
+            gen_config = _build_generation_config(
+                temperature, max_output_tokens, candidate,
+                response_mime_type="application/json",
+                response_schema=response_schema,
+            )
             if _use_vertex:
                 from vertexai.generative_models import GenerativeModel
                 model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
                 response = await model.generate_content_async(
                     user_prompt,
-                    generation_config=generation_config,
+                    generation_config=gen_config,
                     safety_settings=_safety_settings_vertex(),
                 )
             else:
@@ -358,7 +376,7 @@ async def generate_structured(
                 response = await asyncio.to_thread(
                     model.generate_content,
                     user_prompt,
-                    generation_config=generation_config,
+                    generation_config=gen_config,
                     safety_settings=_safety_settings_genai(),
                     request_options={"retry": _NO_RETRY},
                 )
