@@ -2233,10 +2233,12 @@ async def generate_improvement_proposals(
         raise HTTPException(400, f"Unsupported target: {target}")
 
     # 3. Gemini 呼び出し
+    from config import GEMINI_PRO_MODEL
     try:
         result = await generate_personalized_text(
             system_prompt,
             user_prompt,
+            model_name=GEMINI_PRO_MODEL,
             max_output_tokens=4096,
             temperature=0.3,
         )
@@ -2863,9 +2865,11 @@ CTAは1つだけ。複数並べると迷って行動しない。
 
     # 7. Call Gemini
     try:
+        from config import GEMINI_PRO_MODEL
         result = await generate_personalized_text(
             system_prompt,
             user_prompt,
+            model_name=GEMINI_PRO_MODEL,
             max_output_tokens=8192,
             temperature=0.5,
         )
@@ -3063,9 +3067,11 @@ async def expand_template(
         system_prompt = _build_system_prompt(tr["company"])
 
         try:
+            from config import GEMINI_PRO_MODEL
             result = await generate_personalized_text(
                 system_prompt,
                 user_prompt,
+                model_name=GEMINI_PRO_MODEL,
                 max_output_tokens=8192,
                 temperature=0.3,
             )
@@ -3154,10 +3160,12 @@ async def expand_template_to_prompt_proposals(
     system_prompt, user_prompt, dedup_keys = _build_prompt_proposal_inputs(pending_like)
 
     # 3. Gemini 呼び出し
+    from config import GEMINI_PRO_MODEL
     try:
         result = await generate_personalized_text(
             system_prompt,
             user_prompt,
+            model_name=GEMINI_PRO_MODEL,
             max_output_tokens=4096,
             temperature=0.3,
         )
@@ -3459,10 +3467,12 @@ async def analyze_cycle(
 ## 次サイクルの検証ポイント
 - 改善実施後に見るべき指標を箇条書き"""
 
+    from config import GEMINI_PRO_MODEL
     try:
         result = await generate_personalized_text(
             analysis_prompt,
             "上記のデータとテンプレートを分析してください。",
+            model_name=GEMINI_PRO_MODEL,
             max_output_tokens=8192,
         )
         analysis_text = result.text
@@ -3772,9 +3782,11 @@ async def export_report(
     narrative: dict = {}
     ai_error = None
     try:
+        from config import GEMINI_PRO_MODEL
         result = await generate_personalized_text(
             _CUSTOMER_REPORT_PROMPT,
             user_prompt,
+            model_name=GEMINI_PRO_MODEL,
             max_output_tokens=4096,
             temperature=0.5,
         )

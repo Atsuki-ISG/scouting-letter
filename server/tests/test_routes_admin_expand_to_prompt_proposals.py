@@ -46,7 +46,7 @@ def _sample_diff():
 
 
 def _gemini_ok(text: str):
-    async def fake(system, user, *, max_output_tokens=2048, temperature=0.3):
+    async def fake(system, user, *, model_name=None, max_output_tokens=2048, temperature=0.3):
         class R:
             def __init__(self):
                 self.text = text

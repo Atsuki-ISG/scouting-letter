@@ -84,7 +84,7 @@ def _proposal_row(*, prop_id="fbprop_aaa", status="pending",
 class TestGenerateProposals:
     @pytest.fixture
     def mock_gemini(self):
-        async def fake_call(system, user, *, max_output_tokens=2048, temperature=0.7):
+        async def fake_call(system, user, *, model_name=None, max_output_tokens=2048, temperature=0.7):
             class R:
                 text = json.dumps([
                     {
@@ -332,7 +332,7 @@ def _prompt_proposal_row():
 class TestGenerateProposalsPrompts:
     @pytest.fixture
     def mock_gemini_prompts(self):
-        async def fake_call(system, user, *, max_output_tokens=2048, temperature=0.7):
+        async def fake_call(system, user, *, model_name=None, max_output_tokens=2048, temperature=0.7):
             class R:
                 text = json.dumps([
                     {

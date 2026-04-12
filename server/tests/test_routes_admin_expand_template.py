@@ -44,7 +44,7 @@ def _mk_rows():
 class TestExpandTemplate:
     @pytest.fixture
     def mock_ai(self):
-        async def fake(system, user, *, max_output_tokens=2048, temperature=0.3):
+        async def fake(system, user, *, model_name=None, max_output_tokens=2048, temperature=0.3):
             class R:
                 text = "生成された適応版本文"
                 model_name = "test-model"
@@ -151,7 +151,7 @@ class TestExpandTemplate:
         rest succeed."""
         calls = {"n": 0}
 
-        async def partial_fake(system, user, *, max_output_tokens=2048, temperature=0.3):
+        async def partial_fake(system, user, *, model_name=None, max_output_tokens=2048, temperature=0.3):
             calls["n"] += 1
             if calls["n"] == 1:
                 raise RuntimeError("rate limit")

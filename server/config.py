@@ -3,6 +3,8 @@ import os
 PROJECT_ID: str = os.environ.get("PROJECT_ID", "")
 LOCATION: str = os.environ.get("LOCATION", "us-central1")
 GEMINI_MODEL: str = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+# Pro model for analysis / template improvement (low-frequency, higher quality)
+GEMINI_PRO_MODEL: str = os.environ.get("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")
 # Fallback chain used when the primary model returns 429 (RPD/TPM exhausted).
 # Tried in order. Accepts "|" or "," as separator so it can be set via
 # `gcloud run deploy --update-env-vars` without conflicting with gcloud's own
