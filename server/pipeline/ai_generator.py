@@ -50,14 +50,16 @@ def _safety_settings_vertex():
 def _extract_text_safe(response) -> str:
     """Extract text from Gemini response, filtering out thinking parts."""
     try:
-        # Vertex AI SDK returns thinking as separate parts with .thought=True
-        # We must filter them out to avoid leaking reasoning into output
+        # Vertex AI SDK returns thinking as separate parts.
+        # The high-level Part wrapper doesn't expose .thought, but the
+        # underlying proto (part._raw_part.thought) does since SDK >=1.85.
         try:
             parts = response.candidates[0].content.parts
             texts = []
             for part in parts:
-                # Skip thinking parts (Vertex AI SDK marks them with .thought)
-                if getattr(part, "thought", False):
+                # Check proto-level thought flag
+                raw = getattr(part, "_raw_part", None)
+                if raw is not None and getattr(raw, "thought", False):
                     continue
                 if hasattr(part, "text") and part.text:
                     texts.append(part.text)
