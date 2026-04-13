@@ -22,6 +22,7 @@ SHEET_MAP = {
     "logs": "生成ログ",
     "profiles": "プロフィール",
     "job_category_keywords": "職種キーワード",
+    "knowledge_pool": "ナレッジプール",
 }
 
 # Column order for each sheet (must match header row)
@@ -35,6 +36,7 @@ COLUMNS = {
     "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview", "prompt_tokens", "output_tokens", "estimated_cost", "failure_stage", "failure_missing_fields", "failure_searched_text", "failure_company_categories", "failure_human_message"],
     "profiles": ["company", "content", "detection_keywords"],
     "job_category_keywords": ["company", "job_category", "keyword", "source_fields", "weight", "enabled", "added_at", "added_by", "note"],
+    "knowledge_pool": ["id", "company", "category", "rule", "source", "status", "created_at"],
 }
 
 
@@ -3882,6 +3884,291 @@ def _safe_reload() -> dict:
             f"sheets_client.reload() failed after write (write still succeeded): {e}"
         )
         return {"cache_reloaded": False, "reload_error": str(e)[:200]}
+
+
+# ---------------------------------------------------------------------------
+# Competitor research: Gemini + Google Search grounding
+# NOTE: Must be registered BEFORE the catch-all /{sheet_slug} route.
+# ---------------------------------------------------------------------------
+
+@router.post("/research_competitors")
+async def research_competitors(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Research competitors using Gemini + Google Search grounding.
+
+    Returns competitive analysis with hidden strengths and scout hooks.
+    Optionally saves extracted hooks to the knowledge pool.
+    """
+    from datetime import datetime, timedelta, timezone
+    from pipeline.ai_generator import generate_personalized_text
+
+    company = (data.get("company") or "").strip()
+    if not company:
+        return {"status": "error", "detail": "company が指定されていません"}
+
+    job_category = data.get("job_category", "")
+    save_to_knowledge = data.get("save_to_knowledge", False)
+
+    # Load company context
+    try:
+        profile = sheets_client.get_company_profile(company) or ""
+        display_name = sheets_client.get_company_display_name(company)
+        config = sheets_client.get_company_config(company)
+        categories = [c.get("display_name", c.get("id", "")) for c in config.get("job_categories", [])]
+    except Exception:
+        profile = ""
+        display_name = company
+        categories = []
+
+    category_label = job_category or (categories[0] if categories else "看護師")
+
+    # Extract area from profile
+    area_hint = ""
+    for keyword in ["所在地", "住所", "エリア", "拠点"]:
+        for line in profile.split("\n"):
+            if keyword in line:
+                area_hint = line.strip()
+                break
+        if area_hint:
+            break
+
+    system_prompt = f"""あなたは介護・医療系の採用市場を分析する戦略コンサルタントです。
+Google検索を活用して競合情報を調査し、対象会社が「まだ気づいていない自社の強み」を発見してください。
+
+## あなたの役割
+単なる情報比較ではなく、**対象会社にとっての「隠れた強み」や「差別化の種」を見つけ出す**こと。
+プロフィールに書いてある強みを繰り返すのではなく、競合と比較して初めて見える優位性を提案する。
+
+## 対象会社
+- 会社名: {display_name}
+- 職種: {category_label}
+{f'- エリア: {area_hint}' if area_hint else ''}
+
+## 会社プロフィール
+{profile[:2000] if profile else '(未登録)'}
+
+## 調査の観点
+
+### 定量比較（同エリア・同業態・同職種）
+- 給与水準（月給/時給）
+- 勤務時間・シフト体制（夜勤、オンコール有無）
+- 福利厚生・手当
+- 施設の規模
+
+### 定性比較
+- 教育・研修体制
+- 職場の雰囲気・文化（口コミ）
+- キャリアパス
+- 特色・専門領域
+- 働き方の柔軟性
+
+### 業界動向
+- 当該エリアの求人市場状況
+- 業界トレンド
+
+## 出力形式
+
+### 競合施設一覧
+| 施設名 | 給与 | 勤務時間 | 福利厚生 | 規模 | 特色 |
+|--------|------|----------|----------|------|------|
+
+### 定性比較
+教育体制・文化・キャリアパスの比較
+
+### 🔍 隠れた強み・差別化の種（最重要）
+対象会社が**まだ気づいていない可能性がある強み**を3-5個提案。
+
+各提案:
+1. **発見**: 何が強みか（1行）
+2. **根拠**: なぜそう言えるか（競合との比較データ）
+3. **活用案**: スカウト文でどう訴求するか（具体的な表現例）
+4. **確認事項**: クライアントに裏取りすべきこと
+
+profile.mdに書いてあることをそのまま繰り返すのはNG。
+
+### 業界・エリア動向
+
+### スカウト文への活用提案
+- 推奨フック表現（5個）
+- 避けるべき訴求
+
+### 💡 ヒアリング提案
+仮説検証型: 「〇〇という仮説がありますが実態は？」形式で。
+"""
+
+    user_prompt = f"「{display_name}」（{category_label}）の競合調査を実施してください。"
+
+    from config import GEMINI_PRO_MODEL
+    try:
+        result = await generate_personalized_text(
+            system_prompt,
+            user_prompt,
+            model_name=GEMINI_PRO_MODEL,
+            max_output_tokens=8192,
+            temperature=0.3,
+        )
+        analysis = result.text
+    except Exception as e:
+        return {"status": "error", "detail": f"AI調査エラー: {e}"}
+
+    # Extract knowledge rules if requested
+    knowledge_count = 0
+    if save_to_knowledge:
+        JST = timezone(timedelta(hours=9))
+        now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+        rules = []
+        next_id = int(datetime.now(JST).timestamp())
+
+        # Extract lines from scout hook section and hidden strengths
+        in_section = False
+        for line in analysis.split("\n"):
+            stripped = line.strip()
+            if "スカウト文" in stripped or "フック" in stripped or "活用案" in stripped:
+                in_section = True
+                continue
+            if in_section and stripped.startswith("- "):
+                rule_text = stripped[2:].strip().strip("「」")
+                if rule_text and len(rule_text) > 5:
+                    rules.append([
+                        str(next_id), company, "template_tip", rule_text,
+                        f"競合調査 {now[:10]}", "pending", now,
+                    ])
+                    next_id += 1
+            if in_section and stripped.startswith("###"):
+                in_section = False
+
+        if rules:
+            sheets_writer.ensure_sheet_exists("ナレッジプール", [
+                "id", "company", "category", "rule", "source", "status", "created_at",
+            ])
+            sheets_writer.append_rows("ナレッジプール", rules)
+            knowledge_count = len(rules)
+
+    return {
+        "status": "ok",
+        "company": display_name,
+        "company_id": company,
+        "job_category": category_label,
+        "analysis": analysis,
+        "knowledge_count": knowledge_count,
+        "tokens": {
+            "prompt": result.prompt_tokens,
+            "output": result.output_tokens,
+            "model": result.model_name,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Knowledge pool: extract rules from analysis text
+# NOTE: Must be registered BEFORE the catch-all /{sheet_slug} route.
+# ---------------------------------------------------------------------------
+
+KNOWLEDGE_POOL_SHEET = "ナレッジプール"
+KNOWLEDGE_POOL_HEADERS = [
+    "id", "company", "category", "rule", "source", "status", "created_at",
+]
+
+
+@router.post("/extract_knowledge")
+async def extract_knowledge(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Extract actionable rules from analysis text using AI.
+
+    Writes extracted rules to the knowledge pool sheet with status=pending.
+    """
+    from datetime import datetime, timedelta, timezone
+    from pipeline.ai_generator import generate_personalized_text
+    from config import GEMINI_PRO_MODEL
+
+    company = data.get("company", "")
+    analysis_text = (data.get("analysis_text") or "").strip()
+    source = data.get("source", "分析")
+
+    if not analysis_text:
+        return {"status": "error", "detail": "analysis_text が空です"}
+
+    extraction_prompt = """あなたはスカウト文の品質改善アナリストです。
+以下の分析テキストから、スカウト文生成AIに適用すべき具体的なルールを抽出してください。
+
+## 出力形式
+各ルールを1行ずつ、以下の形式で出力してください:
+- [category] ルール本文
+
+category は以下のいずれか:
+- tone: トーン・文体に関するルール
+- expression: NG表現・推奨表現
+- profile_handling: 候補者タイプ別の対応方針
+- template_tip: テンプレート・構成のコツ
+- qualification: 資格・経験の言及ルール
+
+## ルール
+- 1ルール1行。具体的で短く。
+- AIが「やる」「やらない」を即判断できる粒度で書く
+- 曖昧な指針（「適切に対応する」等）は書かない
+- 最大10ルールまで
+
+## 分析テキスト
+"""
+    try:
+        result = await generate_personalized_text(
+            extraction_prompt,
+            analysis_text[:8000],
+            model_name=GEMINI_PRO_MODEL,
+            max_output_tokens=2048,
+        )
+        raw_text = result.text
+    except Exception as e:
+        return {"status": "error", "detail": f"AI抽出エラー: {e}"}
+
+    # Parse extracted rules
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+    extracted_rules = []
+    next_id = int(datetime.now(JST).timestamp())
+
+    for line in raw_text.strip().split("\n"):
+        line = line.strip()
+        if not line or not line.startswith("- "):
+            continue
+        line = line[2:].strip()
+        # Parse [category] rule_text
+        category = "tone"
+        rule_text = line
+        if line.startswith("[") and "]" in line:
+            bracket_end = line.index("]")
+            category = line[1:bracket_end].strip()
+            rule_text = line[bracket_end + 1:].strip()
+        if not rule_text:
+            continue
+        extracted_rules.append({
+            "id": str(next_id),
+            "company": company if company != "all" else "",
+            "category": category,
+            "rule": rule_text,
+            "source": source,
+            "status": "pending",
+        })
+        next_id += 1
+
+    # Write to knowledge pool sheet
+    if extracted_rules:
+        sheets_writer.ensure_sheet_exists(KNOWLEDGE_POOL_SHEET, KNOWLEDGE_POOL_HEADERS)
+        rows = [
+            [r["id"], r["company"], r["category"], r["rule"], r["source"], r["status"], now]
+            for r in extracted_rules
+        ]
+        sheets_writer.append_rows(KNOWLEDGE_POOL_SHEET, rows)
+
+    return {
+        "status": "ok",
+        "extracted_rules": extracted_rules,
+        "count": len(extracted_rules),
+    }
 
 
 @router.post("/{sheet_slug}")

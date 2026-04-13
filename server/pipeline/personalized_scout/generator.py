@@ -4,7 +4,7 @@ tests can mock just the AI call without stubbing out the whole flow.
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pipeline.ai_generator import generate_structured, GenerationResult
 from models.profile import CandidateProfile
@@ -25,8 +25,9 @@ async def generate_blocks(
     company_profile: str,
     prompt_sections_text: str,
     template_body: str,
+    knowledge_rules: Optional[list[str]] = None,
     max_output_tokens: int = 4096,
-    temperature: float = 0.7,
+    temperature: float = 0.55,
 ) -> tuple[dict[str, str], GenerationResult]:
     """Call the model once and return the named blocks + token metadata.
 
@@ -40,6 +41,7 @@ async def generate_blocks(
         company_profile=company_profile,
         prompt_sections_text=prompt_sections_text,
         template_body=template_body,
+        knowledge_rules=knowledge_rules,
     )
     user_prompt = build_user_prompt(profile, job_category)
 

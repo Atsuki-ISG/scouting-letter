@@ -149,6 +149,14 @@ async def generate_personalized_scout(
         config.get("prompt_sections", []), job_category
     )
 
+    # 4.5. Load approved knowledge rules for prompt injection.
+    knowledge_rules: list[str] = []
+    try:
+        pool = sheets_client.get_knowledge_pool(company_id)
+        knowledge_rules = [item["rule"] for item in pool if item.get("rule")]
+    except Exception as e:
+        logger.warning(f"[{profile.member_id}] knowledge pool load failed: {e}")
+
     # 5. Call structured generation.
     try:
         blocks, meta = await generate_blocks(
@@ -158,6 +166,7 @@ async def generate_personalized_scout(
             company_profile=company_profile,
             prompt_sections_text=prompt_sections_text,
             template_body=template_body,
+            knowledge_rules=knowledge_rules or None,
         )
     except Exception as e:
         logger.exception(f"[{profile.member_id}] structured generation failed")

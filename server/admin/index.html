@@ -2388,6 +2388,7 @@ window.icon = function(name, cls='icon-sm') {
           <h3>サイクル分析</h3>
           <label style="font-size:11px;color:var(--c-text-muted);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="crossCompanyCheck" style="accent-color:var(--c-primary);"> 全社横断</label>
           <button class="btn btn-primary btn-sm" onclick="runAnalysis()"><svg class="icon icon-sm"><use href="#i-play"/></svg> 分析を実行</button>
+          <button class="btn btn-secondary btn-sm" onclick="runCompetitorResearch()" style="margin-left:4px;">&#x1f50d; 競合調査</button>
           <button class="btn btn-secondary btn-sm" id="btnExportReport" onclick="openReportExport()" disabled style="margin-left:4px;"><svg class="icon icon-sm"><use href="#i-download"/></svg> 顧客向けレポート出力</button>
         </div>
         <div id="analysisResults" style="flex:1;padding:20px;overflow-y:auto;">
@@ -2396,6 +2397,7 @@ window.icon = function(name, cls='icon-sm') {
         <div id="improveInputArea" style="display:none;padding:12px 20px;border-top:1px solid var(--c-border);background:var(--c-surface-alt);">
           <textarea id="improveDirective" rows="2" placeholder="改善の方向性を入力（例: 冒頭を短くしたい、30代に響く表現にして、CTAを柔らかく）" style="width:100%;padding:8px 12px;border:1px solid var(--c-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-sans);resize:vertical;margin-bottom:8px;"></textarea>
           <button class="btn btn-primary btn-sm" id="btnImproveTemplate" onclick="generateImprovement()">&#x2728; 改善案を生成</button>
+          <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="extractKnowledge()">&#x1f4da; ナレッジに抽出</button>
         </div>
       </div>
     </div>
@@ -2586,6 +2588,7 @@ const TABS = [
   { slug: 'send_data', name: '送信履歴', custom: true },
   { slug: 'fix_feedback', name: '修正フィードバック', custom: true },
   { slug: 'job_category_failures', name: '職種解決失敗', custom: true },
+  { slug: 'knowledge_pool', name: 'ナレッジ' },
 ];
 
 // ===== Flow View =====
@@ -3357,6 +3360,24 @@ const SECTION_TYPE_LABELS = {
   education: '教育体制（AI生成の参考情報）',
   ai_guide: 'AI生成ルール（文体・表現の指示）',
   pattern_generation: 'パターン一括生成プロンプト（AIで型文章を生成する時に使用）',
+  role_definition: '役割定義（AIの役割設定）',
+  tone_and_manner: 'トーン・文体ルール',
+  common_rules: '共通ルール',
+  ng_expressions: 'NG表現リスト',
+};
+
+const KNOWLEDGE_CATEGORY_LABELS = {
+  tone: 'トーン・文体',
+  expression: 'NG/推奨表現',
+  profile_handling: '候補者対応',
+  template_tip: 'テンプレート',
+  qualification: '資格・経験',
+};
+
+const KNOWLEDGE_STATUS_COLORS = {
+  pending: { bg: '#fef9c3', fg: '#854d0e' },
+  approved: { bg: '#dcfce7', fg: '#166534' },
+  rejected: { bg: '#fee2e2', fg: '#991b1b' },
 };
 
 // --- State ---
@@ -3631,6 +3652,26 @@ function renderSectionTypeLabel(val) {
   return `<span title="${escHtml(label)}">${escHtml(val)}<br><span style="font-size:11px;color:#94a3b8">${escHtml(label)}</span></span>`;
 }
 
+function renderKnowledgeStatusBadge(status, rowIndex) {
+  const c = KNOWLEDGE_STATUS_COLORS[status] || { bg: '#f1f5f9', fg: '#475569' };
+  let badge = `<span style="font-size:11px;padding:2px 8px;border-radius:var(--radius-sm);background:${c.bg};color:${c.fg};font-weight:600">${escHtml(status)}</span>`;
+  if (status === 'pending') {
+    badge += ` <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;background:#dcfce7;color:#166534;border:1px solid #bbf7d0" onclick="updateKnowledgeStatus(${rowIndex},'approved')">承認</button>`;
+    badge += ` <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;background:#fee2e2;color:#991b1b;border:1px solid #fecaca" onclick="updateKnowledgeStatus(${rowIndex},'rejected')">却下</button>`;
+  }
+  return badge;
+}
+
+async function updateKnowledgeStatus(rowIndex, newStatus) {
+  try {
+    await api('PUT', `/api/v1/admin/knowledge_pool/${rowIndex}`, { status: newStatus });
+    toast(`ステータスを ${newStatus} に更新しました`);
+    loadTab('knowledge_pool');
+  } catch (e) {
+    toast('更新エラー: ' + e.message, true);
+  }
+}
+
 function renderLogStatusBadge(status) {
   const colors = {
     '成功': { bg: '#dcfce7', fg: '#166534' },
@@ -3761,6 +3802,11 @@ function renderTable() {
         html += `<td>${renderPatternBadge(String(val))}</td>`;
       } else if (isPrompts && h === 'section_type') {
         html += `<td>${renderSectionTypeLabel(String(val))}</td>`;
+      } else if (currentTab === 'knowledge_pool' && h === 'status') {
+        html += `<td>${renderKnowledgeStatusBadge(String(val), i)}</td>`;
+      } else if (currentTab === 'knowledge_pool' && h === 'category') {
+        const catLabel = KNOWLEDGE_CATEGORY_LABELS[val] || val;
+        html += `<td><span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#f0f9ff;color:#0369a1">${escHtml(catLabel)}</span></td>`;
       } else if (h === 'qualification_rules' || h === 'match_rules') {
         html += `<td><div class="cell-text">${formatJsonCell(String(val))}</div></td>`;
       } else {
@@ -7216,6 +7262,79 @@ async function runAnalysis() {
     lastAnalysisSummary = summaryParts.join('\n\n');
   } catch (e) {
     el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">分析エラー: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// --- Competitor research ---
+
+async function runCompetitorResearch() {
+  const isCross = document.getElementById('crossCompanyCheck')?.checked;
+  if (isCross) {
+    toast('競合調査は1会社ずつ実行してください。「全社横断」を外してください。', true);
+    return;
+  }
+  const company = document.getElementById('companySelect').value;
+  if (!company) { toast('会社を選択してください', true); return; }
+
+  const el = document.getElementById('analysisResults');
+  el.innerHTML = '<div class="analysis-loading"><div class="spinner"></div> 競合調査中（Google検索 + AI分析）...</div>';
+
+  try {
+    const data = await api('POST', '/api/v1/admin/research_competitors', {
+      company,
+      save_to_knowledge: true,
+    });
+    if (data.status === 'error') {
+      el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">${escHtml(data.detail)}</div>`;
+      return;
+    }
+
+    let html = `<div class="analysis-period">🔍 競合調査: ${escHtml(data.company)} (${escHtml(data.job_category || '')})</div>`;
+    if (data.analysis) {
+      html += '<div class="analysis-md">' + simpleMarkdown(data.analysis) + '</div>';
+    }
+    if (data.knowledge_count > 0) {
+      html += `<div style="margin-top:12px;padding:8px 12px;background:#f0fdf4;border-radius:6px;font-size:13px">📚 ${data.knowledge_count}件のフック提案をナレッジプールに追加しました（承認待ち）</div>`;
+    }
+    el.innerHTML = html;
+
+    // Store for knowledge extraction
+    lastAnalysisSummary = data.analysis || '';
+    document.getElementById('improveInputArea').style.display = '';
+  } catch (e) {
+    el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">競合調査エラー: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// --- Knowledge extraction from analysis ---
+
+async function extractKnowledge() {
+  if (!lastAnalysisSummary) {
+    toast('先に分析を実行してください', true);
+    return;
+  }
+  const isCross = document.getElementById('crossCompanyCheck')?.checked;
+  const company = isCross ? 'all' : document.getElementById('companySelect').value;
+  if (!company) return;
+
+  const btn = document.querySelector('[onclick="extractKnowledge()"]');
+  if (btn) { btn.disabled = true; btn.textContent = '抽出中...'; }
+
+  try {
+    const data = await api('POST', '/api/v1/admin/extract_knowledge', {
+      company,
+      analysis_text: lastAnalysisSummary,
+      source: `分析 ${new Date().toISOString().slice(0, 10)}`,
+    });
+    if (data.status === 'error') {
+      toast(data.detail, true);
+      return;
+    }
+    toast(`${data.count}件のルールをナレッジプールに追加しました（承認待ち）`);
+  } catch (e) {
+    toast('ナレッジ抽出エラー: ' + e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '\u{1f4da} ナレッジに抽出'; }
   }
 }
 

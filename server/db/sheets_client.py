@@ -52,6 +52,7 @@ SHEET_JOB_CATEGORY_KEYWORDS = "職種キーワード"
 SHEET_FIX_FEEDBACK = "修正フィードバック"
 SHEET_IMPROVEMENT_PROPOSALS = "改善提案"
 SHEET_CONVERSATION_LOGS = "会話ログ"
+SHEET_KNOWLEDGE_POOL = "ナレッジプール"
 
 _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "nurse": "看護師",
@@ -88,6 +89,7 @@ ALL_SHEETS = [
     SHEET_PROFILES,
     SHEET_JOB_CATEGORY_KEYWORDS,
     SHEET_FIX_FEEDBACK,
+    SHEET_KNOWLEDGE_POOL,
 ]
 
 
@@ -348,6 +350,33 @@ class SheetsClient:
             key=lambda x: self._EMPLOYMENT_TYPE_ORDER.index(x["id"])
             if x["id"] in self._EMPLOYMENT_TYPE_ORDER else 999,
         )
+
+    def get_knowledge_pool(self, company_id: str) -> list[dict]:
+        """Return approved knowledge rules for a company (global + company-specific).
+
+        Sheet columns: id, company, category, rule, source, status, created_at
+        Only status='approved' rows are returned.
+        Global rules (company='') apply to all companies.
+        """
+        self._ensure_cache()
+        rows = self._cache.get(SHEET_KNOWLEDGE_POOL, [])
+        result: list[dict] = []
+        for row in rows:
+            if (row.get("status") or "").strip().lower() != "approved":
+                continue
+            row_company = (row.get("company") or "").strip()
+            if row_company and row_company != company_id:
+                continue
+            rule = (row.get("rule") or "").strip()
+            if not rule:
+                continue
+            result.append({
+                "company": row_company,
+                "category": (row.get("category") or "").strip(),
+                "rule": rule,
+                "source": (row.get("source") or "").strip(),
+            })
+        return result
 
     def get_company_profile(self, company_id: str) -> str:
         """Return the profile markdown text for a company, or empty string if not found."""
