@@ -48,8 +48,24 @@ def _safety_settings_vertex():
 
 
 def _extract_text_safe(response) -> str:
-    """Extract text from Gemini response, handling safety blocks gracefully."""
+    """Extract text from Gemini response, filtering out thinking parts."""
     try:
+        # Vertex AI SDK returns thinking as separate parts with .thought=True
+        # We must filter them out to avoid leaking reasoning into output
+        try:
+            parts = response.candidates[0].content.parts
+            texts = []
+            for part in parts:
+                # Skip thinking parts (Vertex AI SDK marks them with .thought)
+                if getattr(part, "thought", False):
+                    continue
+                if hasattr(part, "text") and part.text:
+                    texts.append(part.text)
+            if texts:
+                return "\n".join(texts)
+        except (AttributeError, IndexError):
+            pass
+        # Fallback: use response.text (genai SDK without thinking)
         return response.text or ""
     except (ValueError, AttributeError):
         # response.text throws when safety filters block the output
