@@ -114,7 +114,6 @@ export const COMPANY_FACILITY_KEYWORDS: Record<string, string[]> = {
   'ark-visiting-nurse': ['アーク', '優希'],
   'lcc-visiting-nurse': ['LCC', 'ＬＣＣ'],
   'ichigo-visiting-nurse': ['いちご'],
-  'ichigo-care-home': ['いちごの里'],
   'chigasaki-tokushukai': ['茅ヶ崎徳洲会', '徳洲会'],
   'nomura-hospital': ['野村病院'],
   'an-visiting-nurse': ['ａｎ訪問看護', 'an訪問看護'],

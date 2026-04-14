@@ -23,8 +23,7 @@
 |--------|-------------|------|
 | ARK訪問看護 | `companies/ark-visiting-nurse/` | |
 | LCC訪問看護 | `companies/lcc-visiting-nurse/` | |
-| いちご訪問看護 | `companies/ichigo-visiting-nurse/` | 3施設（介護NS/リハビリST/富士見台サテライト） |
-| いちごの里 | `companies/ichigo-care-home/` | 有料老人ホーム。profile.mdのみ |
+| いちご訪問看護 | `companies/ichigo-visiting-nurse/` | 3施設＋いちごの里（有料老人ホーム）。同一JMアカウント |
 | 茅ヶ崎徳洲会病院 | `companies/chigasaki-tokushukai/` | 病院（病棟看護師・正職員のみ） |
 | an訪問看護 | `companies/an-visiting-nurse/` | 横浜市南区。看護師/PT/OT/相談支援専門員 |
 | ネオ・サミット湯河原 | `companies/daiwa-house-ls/` | 大和ハウスライフサポート。有料老人ホーム。入居相談員（営業） |

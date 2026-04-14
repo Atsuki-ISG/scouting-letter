@@ -19,7 +19,6 @@ COMPANIES = [
     "ark-visiting-nurse",
     "lcc-visiting-nurse",
     "ichigo-visiting-nurse",
-    "ichigo-care-home",
     "chigasaki-tokushukai",
     "nomura-hospital",
     "an-visiting-nurse",

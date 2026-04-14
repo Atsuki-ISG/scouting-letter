@@ -38,7 +38,6 @@ COMPANY_FACILITY_TYPE: dict[str, str] = {
     "ark-visiting-nurse": "visiting_nurse",
     "lcc-visiting-nurse": "visiting_nurse",
     "ichigo-visiting-nurse": "visiting_nurse",
-    "ichigo-care-home": "care_home",
     "chigasaki-tokushukai": "hospital",
     "nomura-hospital": "hospital",
 }

@@ -15,7 +15,6 @@ DISPLAY_NAMES: dict[str, str] = {
     "ark-visiting-nurse": "アーク訪問看護ステーション",
     "lcc-visiting-nurse": "LCC訪問看護ステーション",
     "ichigo-visiting-nurse": "いちご訪問看護グループ",
-    "ichigo-care-home": "いちごの里",
     "chigasaki-tokushukai": "茅ヶ崎徳洲会病院",
     "an-visiting-nurse": "an訪問看護ステーション",
     "daiwa-house-ls": "ネオ・サミット湯河原",

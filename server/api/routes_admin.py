@@ -982,6 +982,77 @@ async def list_improvement_proposals(
     return {"items": items}
 
 
+@router.post("/purge_company")
+async def purge_company(data: dict, operator=Depends(verify_api_key)):
+    """会社IDに紐づく全シートの行を一括削除する。
+
+    リクエスト body:
+        {"company_id": "ichigo-care-home", "dry_run": true|false}
+
+    対象シート:
+        - SHEET_MAP に載っているもの + logs + fix_feedback + improvement_proposals
+        - 加えて "テンプレート変更履歴" の company 列一致行
+        - "会話ログ" の company 列一致行
+        - "送信_{会社名}" は display_name 必要なので別途手動対応
+
+    返り値: {"results": [{"sheet": "...", "deleted": N, "dry_run": bool}, ...]}
+
+    NOTE: 必ず `@router.get("/{sheet_slug}")` より前に登録すること。
+    """
+    company_id = str(data.get("company_id", "")).strip()
+    if not company_id:
+        raise HTTPException(400, "company_id is required")
+    dry_run = bool(data.get("dry_run", True))
+
+    # 列名 "company" で一致判定する全シート
+    PURGE_SHEETS = [
+        "プロフィール", "テンプレート", "パターン", "プロンプト",
+        "求人", "バリデーション", "生成ログ", "職種キーワード",
+        "ナレッジプール", "修正フィードバック", "改善提案",
+        "会話ログ", "テンプレート変更履歴",
+    ]
+
+    results: list[dict] = []
+    for sheet_name in PURGE_SHEETS:
+        try:
+            all_rows = sheets_writer.get_all_rows(sheet_name)
+        except Exception as e:
+            results.append({"sheet": sheet_name, "deleted": 0, "error": str(e)[:200]})
+            continue
+        if not all_rows or len(all_rows) < 2:
+            results.append({"sheet": sheet_name, "deleted": 0})
+            continue
+        headers = [h.strip() for h in all_rows[0]]
+        if "company" not in headers:
+            results.append({"sheet": sheet_name, "deleted": 0, "skip": "no company column"})
+            continue
+        col_idx = headers.index("company")
+        row_indices: list[int] = []
+        for i, row in enumerate(all_rows[1:], start=2):
+            val = row[col_idx].strip() if col_idx < len(row) else ""
+            if val == company_id:
+                row_indices.append(i)
+        if not row_indices:
+            results.append({"sheet": sheet_name, "deleted": 0})
+            continue
+
+        if dry_run:
+            results.append({"sheet": sheet_name, "deleted": len(row_indices), "dry_run": True})
+        else:
+            try:
+                deleted = sheets_writer.delete_rows_bulk(
+                    sheet_name, row_indices, actor="purge_company"
+                )
+                results.append({"sheet": sheet_name, "deleted": deleted})
+            except Exception as e:
+                results.append({"sheet": sheet_name, "deleted": 0, "error": str(e)[:200]})
+
+    if not dry_run:
+        _safe_reload()
+
+    return {"company_id": company_id, "dry_run": dry_run, "results": results}
+
+
 @router.get("/templates/{row_index}/history")
 async def get_template_history(row_index: int, operator=Depends(verify_api_key)):
     """指定行のテンプレートの変更履歴を返す。
