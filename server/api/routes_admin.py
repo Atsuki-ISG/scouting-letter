@@ -1722,6 +1722,52 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(500, f"AI生成エラー: {str(e)}")
 
 
+@router.get("/audit_sync_replies")
+async def audit_sync_replies(limit: int = 50, operator=Depends(verify_api_key)):
+    """操作履歴から sync_replies の直近エントリを返す（診断用）。シート名を問わず。"""
+    import json as _json
+    try:
+        audit_rows = sheets_writer.get_all_rows("操作履歴")
+    except Exception as e:
+        raise HTTPException(500, f"操作履歴シートを読めません: {e}")
+    if len(audit_rows) < 2:
+        return {"entries": [], "sheets": {}}
+
+    h = audit_rows[0]
+    try:
+        c_ts = h.index("timestamp")
+        c_sheet = h.index("sheet")
+        c_row = h.index("row_index")
+        c_snap = h.index("snapshot_json")
+        c_change = h.index("changed_fields_json")
+        c_actor = h.index("actor")
+    except ValueError as e:
+        raise HTTPException(500, f"header不正: {e}")
+
+    entries = []
+    sheet_counts: dict[str, int] = {}
+    for r in audit_rows[1:]:
+        if len(r) <= max(c_sheet, c_actor): continue
+        if r[c_actor] != "sync_replies": continue
+        sheet = r[c_sheet]
+        sheet_counts[sheet] = sheet_counts.get(sheet, 0) + 1
+        try:
+            changed = _json.loads(r[c_change]) if c_change < len(r) and r[c_change] else {}
+            snap = _json.loads(r[c_snap]) if c_snap < len(r) and r[c_snap] else {}
+        except Exception:
+            changed, snap = {}, {}
+        entries.append({
+            "timestamp": r[c_ts] if c_ts < len(r) else "",
+            "sheet": sheet,
+            "row_index": r[c_row] if c_row < len(r) else "",
+            "member_id": snap.get("会員番号", ""),
+            "changed": changed,
+        })
+
+    entries.sort(key=lambda x: x["timestamp"], reverse=True)
+    return {"entries": entries[:limit], "sheets": sheet_counts, "total": len(entries)}
+
+
 @router.post("/revert_sync_replies")
 async def revert_sync_replies(
     data: dict,
@@ -1732,20 +1778,25 @@ async def revert_sync_replies(
     誤った一括同期の後始末用。取り消すだけで、再度正しい同期をかけ直せる状態になる。
 
     リクエスト:
-      - company: 対象会社ID（必須）
-      - limit: 直近何件を戻すか（デフォルト100。大きめ推奨）
+      - company: 対象会社ID（sheet_name 未指定時に必須）
+      - sheet_name: 監査ログ上のシート名を直接指定（companyより優先）
+      - limit: 直近何件を戻すか（デフォルト100）
 
     レスポンス:
       {"status": "ok", "reverted": N, "sheet": "送信_xxx", "details": [...]}
     """
     import json as _json
     company = data.get("company", "")
+    sheet_name_override = data.get("sheet_name", "")
     limit = int(data.get("limit", 100))
-    if not company:
-        raise HTTPException(400, "company is required")
+    if not company and not sheet_name_override:
+        raise HTTPException(400, "company or sheet_name is required")
 
-    from pipeline.orchestrator import _send_data_sheet_name
-    sheet_name = _send_data_sheet_name(company)
+    if sheet_name_override:
+        sheet_name = sheet_name_override
+    else:
+        from pipeline.orchestrator import _send_data_sheet_name
+        sheet_name = _send_data_sheet_name(company)
 
     # 操作履歴シートを読む
     try:
