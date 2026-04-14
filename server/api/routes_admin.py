@@ -1722,6 +1722,63 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(500, f"AI生成エラー: {str(e)}")
 
 
+@router.post("/inspect_send_sheets")
+async def inspect_send_sheets(data: dict = None, operator=Depends(verify_api_key)):
+    """全ての「送信_」プレフィックス付きシートと行数を返す（診断用）。
+
+    同時に各会社IDについて _send_data_sheet_name が返すシート名と
+    プロフィールの display_name も返し、ズレを発見しやすくする。
+    """
+    from config import SPREADSHEET_ID
+    from db.sheets_writer import sheets_writer as _w
+    from pipeline.orchestrator import _send_data_sheet_name
+    from db.sheets_client import sheets_client
+
+    service = _w._get_service()
+    meta = service.spreadsheets().get(
+        spreadsheetId=SPREADSHEET_ID,
+        fields="sheets.properties(title,gridProperties(rowCount))",
+    ).execute()
+
+    send_sheets = []
+    for s in meta.get("sheets", []):
+        title = s["properties"]["title"]
+        if not title.startswith("送信_"):
+            continue
+        row_count_in_grid = s["properties"].get("gridProperties", {}).get("rowCount", 0)
+        # 実データ行数（ヘッダー+空行除く）を取得
+        try:
+            rows = _w.get_all_rows(title)
+            data_rows = max(0, len(rows) - 1)
+        except Exception as e:
+            data_rows = f"err:{e}"
+        send_sheets.append({"title": title, "grid_rows": row_count_in_grid, "data_rows": data_rows})
+
+    # 各会社の解決結果
+    companies_info = []
+    try:
+        companies = sheets_client.get_companies_with_keywords()
+    except Exception as e:
+        companies = []
+    for c in companies:
+        cid = c.get("id", "")
+        if not cid:
+            continue
+        resolved = _send_data_sheet_name(cid)
+        display = c.get("display_name", "")
+        companies_info.append({
+            "company_id": cid,
+            "display_name": display,
+            "resolved_sheet": resolved,
+            "exists": any(s["title"] == resolved for s in send_sheets),
+        })
+
+    return {
+        "send_sheets": sorted(send_sheets, key=lambda x: x["title"]),
+        "companies": sorted(companies_info, key=lambda x: x["company_id"]),
+    }
+
+
 @router.post("/audit_sync_replies")
 async def audit_sync_replies(data: dict = None, operator=Depends(verify_api_key)):
     limit = int((data or {}).get("limit", 50))
