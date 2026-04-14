@@ -214,40 +214,84 @@ def _build_generation_config(
     return config
 
 
+# Patterns used by _strip_thinking() to identify leaked reasoning paragraphs.
+_THINKING_MARKER_RE = re.compile(
+    r"^\s*("
+    r"Draft\s*\d+\s*[:：]|"
+    r"Characters?\s*[:：]|"
+    r"Total\s*[:：]|"
+    r"Wait[,\s]|"
+    r"One more check|"
+    r"My draft|"
+    r"Let me|"
+    r"Note\s*[:：]|"
+    r"Refine\s*[:：]|"
+    r"Polish\s*[:：]|"
+    r"Check\s*[:：]|"
+    r"Final\s+version|"
+    r"Thoughtful|"
+    r"書き出し\s*[:：]"
+    r")",
+    re.IGNORECASE,
+)
+_CHAR_COUNT_ANNOTATION_RE = re.compile(r"\(\s*\d+\s*characters?\s*\)", re.IGNORECASE)
+_COUNTED_CHAR_RE = re.compile(r".\(\d+\)")
+
+
 def _strip_thinking(text: str) -> str:
     """Remove leaked thinking/reasoning blocks from Gemini output.
 
     Gemini 3 / 2.5 models with thinking enabled sometimes leak their
-    internal reasoning (predominantly English) into the output text.
-    This function detects and removes such blocks by looking for
-    paragraphs that are predominantly ASCII (English reasoning).
+    internal reasoning into the output. Observed patterns include:
 
-    The heuristic: a paragraph (separated by blank lines) that is >70%
-    ASCII letters and longer than 80 chars is almost certainly thinking
-    content, not Japanese scout text.
+    - English reasoning paragraphs (ASCII-heavy)
+    - "Draft 1:", "Draft 2:" variants with Japanese that look real
+    - "(119 characters)" length annotations
+    - "Characters:" sections with X(N)X(N)... character counting
+    - Meta markers: "Wait,", "One more check", "My draft", "Total:"
+
+    The final output is often wrapped in quotes — they are stripped too.
     """
-    # Split into paragraphs (blank-line separated)
     paragraphs = re.split(r"\n\s*\n", text)
     kept: list[str] = []
     for para in paragraphs:
         stripped = para.strip()
         if not stripped:
             continue
-        # Count ASCII alphabetic characters vs total non-space chars
+
+        # 1. ASCII-heavy reasoning (>50% alpha, >20 chars)
         ascii_alpha = sum(1 for c in stripped if c.isascii() and c.isalpha())
         total_chars = len(stripped.replace(" ", "").replace("\n", ""))
         if total_chars == 0:
             continue
-        ratio = ascii_alpha / total_chars
-        # If >50% ASCII alpha, it's thinking content (Japanese text has
-        # very few ASCII letters; even short English fragments stand out)
-        if ratio > 0.5 and total_chars > 20:
+        if total_chars > 20 and ascii_alpha / total_chars > 0.5:
             continue
-        # Also catch the "thoughtful" marker line
-        if stripped.lower().startswith("thoughtful"):
+
+        # 2. Paragraph starts with a known thinking/draft marker
+        first_line = stripped.split("\n", 1)[0].lstrip()
+        if _THINKING_MARKER_RE.match(first_line):
             continue
+
+        # 3. "(XXX characters)" length annotations anywhere
+        if _CHAR_COUNT_ANNOTATION_RE.search(stripped):
+            continue
+
+        # 4. Character-counting paragraphs: many X(N) patterns
+        if len(_COUNTED_CHAR_RE.findall(stripped)) >= 10:
+            continue
+
         kept.append(stripped)
-    return "\n\n".join(kept)
+
+    result = "\n\n".join(kept).strip()
+
+    # Strip outer quotation marks around the final output
+    pairs = [('"', '"'), ("“", "”"), ("「", "」"), ("『", "』")]
+    for open_q, close_q in pairs:
+        if result.startswith(open_q) and result.endswith(close_q) and len(result) >= 2:
+            result = result[len(open_q):-len(close_q)].strip()
+            break
+
+    return result
 
 
 def _strip_markdown(text: str) -> str:

@@ -2402,9 +2402,13 @@ window.icon = function(name, cls='icon-sm') {
         </div>
         <div id="improveInputArea" style="display:none;padding:12px 20px;border-top:1px solid var(--c-border);background:var(--c-surface-alt);">
           <textarea id="improveDirective" rows="2" placeholder="改善の方向性を入力（例: 冒頭を短くしたい、30代に響く表現にして、CTAを柔らかく）" style="width:100%;padding:8px 12px;border:1px solid var(--c-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-sans);resize:vertical;margin-bottom:8px;"></textarea>
-          <button class="btn btn-primary btn-sm" id="btnImproveTemplate" onclick="generateImprovement()">&#x2728; 改善案を生成</button>
-          <button class="btn btn-secondary btn-sm" style="margin-left:8px" onclick="extractKnowledge()">&#x1f4da; ナレッジに抽出</button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="btnDiagnoseTemplate" onclick="runDiagnosis()">&#x1f50d; 診断</button>
+            <button class="btn btn-primary btn-sm" id="btnImproveTemplate" onclick="generateImprovement()" disabled>&#x2728; 改善案を生成</button>
+            <button class="btn btn-secondary btn-sm" onclick="extractKnowledge()">&#x1f4da; ナレッジに抽出</button>
+          </div>
         </div>
+        <div id="diagnosisResults" style="display:none;padding:16px 20px;border-top:1px solid var(--c-border);"></div>
       </div>
     </div>
   </div>
@@ -6602,6 +6606,175 @@ function exitDiffMode() {
   diffChanges = [];
 }
 
+// ── Diagnosis state ──
+let lastDiagnosis = null;
+
+async function runDiagnosis() {
+  if (analysisCurrentRowIndex === null) return;
+  const company = document.getElementById('companySelect').value;
+  const t = analysisTemplates.find(t => t._row_index === analysisCurrentRowIndex);
+  if (!t) return;
+
+  const btn = document.getElementById('btnDiagnoseTemplate');
+  const origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;display:inline-block;vertical-align:middle;"></div> 診断中...';
+
+  try {
+    const data = await api('POST', '/api/v1/admin/diagnose_template', {
+      company,
+      template_type: t.type,
+      job_category: t.job_category || '',
+      row_index: t._row_index,
+    });
+
+    if (data.status === 'error') {
+      toast(data.detail, true);
+      return;
+    }
+
+    lastDiagnosis = data.diagnosis;
+    renderDiagnosisView(data);
+
+    // Enable improve button
+    const improveBtn = document.getElementById('btnImproveTemplate');
+    if (improveBtn) improveBtn.disabled = false;
+  } catch (e) {
+    toast('診断エラー: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  }
+}
+
+function renderDiagnosisView(data) {
+  const el = document.getElementById('diagnosisResults');
+  if (!el) return;
+
+  const d = data.diagnosis;
+  const ctx = data.context || {};
+
+  const gateColor = score => score === 'A' ? '#22c55e' : score === 'C' ? '#ef4444' : '#eab308';
+  const gateBg = score => score === 'A' ? '#f0fdf4' : score === 'C' ? '#fef2f2' : '#fefce8';
+  const severityBadge = s => s === 'high' ? '<span style="color:#ef4444;font-weight:600">HIGH</span>'
+    : s === 'medium' ? '<span style="color:#eab308;font-weight:600">MED</span>'
+    : '<span style="color:#6b7280">LOW</span>';
+  const impactBadge = s => severityBadge(s);
+
+  let html = '<div style="font-size:13px;line-height:1.6;">';
+
+  // Gate scores
+  html += '<div style="display:flex;gap:16px;margin-bottom:12px;">';
+  for (const [key, label] of [['gate1_open', 'Gate1: 開封'], ['gate2_read', 'Gate2: 読了'], ['gate3_reply', 'Gate3: 返信']]) {
+    const score = (d.gate_scores || {})[key] || '?';
+    html += `<div style="padding:6px 16px;border-radius:8px;background:${gateBg(score)};border:1px solid ${gateColor(score)};font-weight:600;color:${gateColor(score)};">${label}: ${score}</div>`;
+  }
+  html += '</div>';
+
+  if (ctx.stats_summary) {
+    html += `<div style="color:var(--c-text-muted);margin-bottom:8px;">${ctx.stats_summary} | サンプル数: ${ctx.sample_count || 0}</div>`;
+  }
+
+  // Priority actions
+  const actions = d.priority_actions || [];
+  if (actions.length) {
+    html += '<div style="margin-bottom:12px;"><strong>優先アクション</strong><ol style="margin:4px 0 0 20px;padding:0;">';
+    for (const pa of actions) {
+      const target = pa.target === 'template' ? '<span style="background:#dbeafe;padding:1px 6px;border-radius:4px;font-size:11px;">テンプレ</span>'
+        : pa.target === 'prompt' ? '<span style="background:#fef3c7;padding:1px 6px;border-radius:4px;font-size:11px;">プロンプト</span>'
+        : '<span style="background:#e0e7ff;padding:1px 6px;border-radius:4px;font-size:11px;">パターン</span>';
+      html += `<li>${impactBadge(pa.impact)} ${pa.action} ${target}</li>`;
+    }
+    html += '</ol></div>';
+  }
+
+  // Weak principles
+  const weak = d.weak_principles || [];
+  if (weak.length) {
+    html += '<div style="margin-bottom:12px;"><strong>弱い心理原則</strong><ul style="margin:4px 0 0 16px;padding:0;">';
+    for (const w of weak) {
+      html += `<li>${severityBadge(w.severity)} <strong>${w.principle}</strong>: ${w.issue} <button class="btn btn-sm" style="font-size:11px;padding:1px 6px;margin-left:4px;" onclick="saveDiagnosisKnowledge('profile_handling','${_escAttr(w.principle + ': ' + w.issue)}','診断',this)">蓄積</button></li>`;
+    }
+    html += '</ul></div>';
+  }
+
+  // AI smell
+  const smells = d.ai_smell || [];
+  if (smells.length) {
+    html += '<div style="margin-bottom:12px;"><strong>AI臭検出</strong><ul style="margin:4px 0 0 16px;padding:0;">';
+    for (const s of smells) {
+      html += `<li><strong>${s.fingerprint}</strong>: ${s.evidence} → <em>${s.fix_hint}</em> <button class="btn btn-sm" style="font-size:11px;padding:1px 6px;margin-left:4px;" onclick="saveDiagnosisKnowledge('expression','${_escAttr(s.fingerprint + ': ' + s.fix_hint)}','診断',this)">蓄積</button></li>`;
+    }
+    html += '</ul></div>';
+  }
+
+  // Structure issues
+  const struct = d.structure_issues || [];
+  if (struct.length) {
+    html += '<div style="margin-bottom:12px;"><strong>構成の問題</strong><ul style="margin:4px 0 0 16px;padding:0;">';
+    for (const s of struct) {
+      html += `<li>${severityBadge(s.severity)} ${s.issue}: ${s.detail} <button class="btn btn-sm" style="font-size:11px;padding:1px 6px;margin-left:4px;" onclick="saveDiagnosisKnowledge('template_tip','${_escAttr(s.issue + ': ' + s.detail)}','診断',this)">蓄積</button></li>`;
+    }
+    html += '</ul></div>';
+  }
+
+  // Personalization + Integration issues
+  const pIssues = d.personalization_issues || [];
+  const iIssues = d.integration_issues || [];
+  if (pIssues.length || iIssues.length) {
+    html += '<div style="margin-bottom:12px;"><strong>パーソナライズ・統合</strong><ul style="margin:4px 0 0 16px;padding:0;">';
+    for (const p of pIssues) html += `<li>[パーソナライズ] ${p.issue}: ${p.detail}</li>`;
+    for (const i of iIssues) html += `<li>[統合] ${i.issue}: ${i.detail}</li>`;
+    html += '</ul></div>';
+  }
+
+  // Strengths
+  const strengths = d.strengths || [];
+  if (strengths.length) {
+    html += '<div style="margin-bottom:12px;"><strong style="color:#22c55e;">強み</strong><ul style="margin:4px 0 0 16px;padding:0;">';
+    for (const s of strengths) html += `<li style="color:#166534;">${s}</li>`;
+    html += '</ul></div>';
+  }
+
+  // Improvement targets
+  const targets = d.improvement_targets || {};
+  html += '<div style="margin-bottom:8px;"><strong>改善ターゲット:</strong> ';
+  html += targets.template ? '<span style="background:#dbeafe;padding:2px 8px;border-radius:4px;margin-right:4px;">テンプレート</span>' : '';
+  html += targets.prompt ? '<span style="background:#fef3c7;padding:2px 8px;border-radius:4px;margin-right:4px;">プロンプト</span>' : '';
+  html += targets.recipes ? '<span style="background:#e0e7ff;padding:2px 8px;border-radius:4px;margin-right:4px;">パターン</span>' : '';
+  if (!targets.template && !targets.prompt && !targets.recipes) html += '<span style="color:var(--c-text-muted);">なし</span>';
+  html += '</div>';
+
+  html += '</div>';
+  el.innerHTML = html;
+  el.style.display = '';
+}
+
+function _escAttr(s) {
+  return (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+}
+
+async function saveDiagnosisKnowledge(category, rule, source, btnEl) {
+  const company = document.getElementById('companySelect').value;
+  try {
+    const data = await api('POST', '/api/v1/admin/save_diagnosis_knowledge', {
+      company,
+      category,
+      rule,
+      source,
+    });
+    if (data.status === 'ok') {
+      btnEl.textContent = '✓ 蓄積済み';
+      btnEl.disabled = true;
+      btnEl.style.color = '#22c55e';
+    } else {
+      toast(data.detail, true);
+    }
+  } catch (e) {
+    toast('蓄積エラー: ' + e.message, true);
+  }
+}
+
 async function generateImprovement() {
   if (analysisCurrentRowIndex === null) return;
   const company = document.getElementById('companySelect').value;
@@ -6615,14 +6788,18 @@ async function generateImprovement() {
 
   try {
     const directive = (document.getElementById('improveDirective')?.value || '').trim();
-    const data = await api('POST', '/api/v1/admin/improve_template', {
+    const payload = {
       company,
       template_type: t.type,
       job_category: t.job_category || '',
       row_index: t._row_index,
       directive,
       analysis_summary: lastAnalysisSummary || '',
-    });
+    };
+    if (lastDiagnosis) {
+      payload.diagnosis = lastDiagnosis;
+    }
+    const data = await api('POST', '/api/v1/admin/improve_template', payload);
 
     if (data.status === 'error') {
       editor.innerHTML = savedHTML;
@@ -6637,9 +6814,66 @@ async function generateImprovement() {
 
     renderDiffView(data.original, data.improved, data.changes || []);
     enterDiffMode();
+
+    // Show proposals if any
+    if (data.proposals && data.proposals.length > 0) {
+      renderDiagnosisProposals(data.proposals);
+    }
   } catch (e) {
     editor.innerHTML = savedHTML;
     toast('改善案生成エラー: ' + e.message, true);
+  }
+}
+
+function renderDiagnosisProposals(proposals) {
+  const container = document.getElementById('diagnosisResults');
+  if (!container) return;
+
+  let html = '<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--c-border);font-size:13px;">';
+  html += '<strong>追加改善提案（プロンプト・パターン）</strong>';
+  html += '<div style="margin-top:8px;">';
+  for (const p of proposals) {
+    const targetLabel = p.target_sheet === 'prompts' ? 'プロンプト' : 'パターン';
+    const targetBg = p.target_sheet === 'prompts' ? '#fef3c7' : '#e0e7ff';
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--c-border-light);">`;
+    html += `<span style="background:${targetBg};padding:2px 8px;border-radius:4px;font-size:11px;">${targetLabel}</span>`;
+    html += `<span style="flex:1;">${p.rationale}</span>`;
+    html += `<button class="btn btn-sm btn-primary" style="font-size:11px;" onclick="approveProposal('${p.id}',this)">承認</button>`;
+    html += `<button class="btn btn-sm" style="font-size:11px;" onclick="rejectProposal('${p.id}',this)">却下</button>`;
+    html += '</div>';
+  }
+  html += '</div></div>';
+  container.innerHTML += html;
+}
+
+async function approveProposal(proposalId, btnEl) {
+  try {
+    const data = await api('POST', `/api/v1/admin/improvement_proposals/${proposalId}/decide`, {
+      decision: 'approve',
+    });
+    if (data.status === 'ok' || data.new_status === 'approved') {
+      btnEl.textContent = '✓ 承認済み';
+      btnEl.disabled = true;
+      btnEl.style.color = '#22c55e';
+      btnEl.nextElementSibling.style.display = 'none';
+    } else {
+      toast(data.detail || '承認エラー', true);
+    }
+  } catch (e) {
+    toast('承認エラー: ' + e.message, true);
+  }
+}
+
+async function rejectProposal(proposalId, btnEl) {
+  try {
+    const data = await api('POST', `/api/v1/admin/improvement_proposals/${proposalId}/decide`, {
+      decision: 'reject',
+    });
+    btnEl.textContent = '却下済み';
+    btnEl.disabled = true;
+    btnEl.previousElementSibling.style.display = 'none';
+  } catch (e) {
+    toast('却下エラー: ' + e.message, true);
   }
 }
 
@@ -7245,6 +7479,11 @@ async function runAnalysis() {
     el.innerHTML = html;
     // Show improve button after analysis completes
     document.getElementById('improveInputArea').style.display = '';
+    // Reset diagnosis state when new analysis runs
+    lastDiagnosis = null;
+    document.getElementById('btnImproveTemplate').disabled = true;
+    document.getElementById('diagnosisResults').style.display = 'none';
+    document.getElementById('diagnosisResults').innerHTML = '';
     // Enable report export button
     const exportBtn = document.getElementById('btnExportReport');
     if (exportBtn) {
@@ -7307,6 +7546,11 @@ async function runCompetitorResearch() {
     // Store for knowledge extraction
     lastAnalysisSummary = data.analysis || '';
     document.getElementById('improveInputArea').style.display = '';
+    // Reset diagnosis state
+    lastDiagnosis = null;
+    document.getElementById('btnImproveTemplate').disabled = true;
+    document.getElementById('diagnosisResults').style.display = 'none';
+    document.getElementById('diagnosisResults').innerHTML = '';
   } catch (e) {
     el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">競合調査エラー: ${escHtml(e.message)}</div>`;
   }
