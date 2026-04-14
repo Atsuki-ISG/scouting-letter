@@ -1722,6 +1722,86 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(500, f"AI生成エラー: {str(e)}")
 
 
+@router.post("/merge_send_sheets")
+async def merge_send_sheets(data: dict, operator=Depends(verify_api_key)):
+    """source_sheet の全データ行を target_sheet に append する。
+
+    前提:
+      - 両シートのヘッダー列が同じ（列名で照合、順序違いはOK）
+      - 重複チェックは行わない（時系列で分かれてる前提）
+
+    リクエスト: {source_sheet, target_sheet, dry_run=true}
+    レスポンス: {status, appended, source, target, sample}
+
+    dry_run=true の時は実際の書き込みを行わず、追加される行のサンプルだけ返す。
+    """
+    source = data.get("source_sheet", "")
+    target = data.get("target_sheet", "")
+    dry_run = bool(data.get("dry_run", True))
+    if not source or not target:
+        raise HTTPException(400, "source_sheet and target_sheet required")
+    if source == target:
+        raise HTTPException(400, "source and target must differ")
+
+    try:
+        src_rows = sheets_writer.get_all_rows(source)
+    except Exception as e:
+        raise HTTPException(404, f"source sheet error: {e}")
+    try:
+        tgt_rows = sheets_writer.get_all_rows(target)
+    except Exception as e:
+        raise HTTPException(404, f"target sheet error: {e}")
+
+    if len(src_rows) < 2:
+        return {"status": "ok", "appended": 0, "source": source, "target": target, "note": "source is empty"}
+    if not tgt_rows:
+        raise HTTPException(400, "target has no header row")
+
+    src_headers = [h.strip() for h in src_rows[0]]
+    tgt_headers = [h.strip() for h in tgt_rows[0]]
+
+    # target 基準で src の各行を列並び替え
+    src_to_tgt: list[int | None] = []
+    for th in tgt_headers:
+        src_to_tgt.append(src_headers.index(th) if th in src_headers else None)
+
+    converted_rows: list[list[str]] = []
+    for r in src_rows[1:]:
+        # 空行はスキップ
+        if not any(c.strip() if c else "" for c in r):
+            continue
+        new_row: list[str] = []
+        for src_idx in src_to_tgt:
+            if src_idx is None or src_idx >= len(r):
+                new_row.append("")
+            else:
+                new_row.append(r[src_idx])
+        converted_rows.append(new_row)
+
+    sample = converted_rows[:3]
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "would_append": len(converted_rows),
+            "source": source,
+            "target": target,
+            "target_current_rows": max(0, len(tgt_rows) - 1),
+            "sample": sample,
+        }
+
+    # 実行
+    for row in converted_rows:
+        sheets_writer.append_row(target, row)
+
+    return {
+        "status": "ok",
+        "appended": len(converted_rows),
+        "source": source,
+        "target": target,
+        "sample": sample,
+    }
+
+
 @router.post("/inspect_send_sheets")
 async def inspect_send_sheets(data: dict = None, operator=Depends(verify_api_key)):
     """全ての「送信_」プレフィックス付きシートと行数を返す（診断用）。
