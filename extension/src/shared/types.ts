@@ -196,6 +196,8 @@ export interface ConversationMessage {
   role: 'company' | 'candidate';
   date: string;
   text: string;
+  /** ジョブメドレーDOMの.c-labelテキスト（"スカウト" "応募" "通常" "スカウト辞退" 等）。応募判定に使う */
+  label?: string;
 }
 
 /** やりとりスレッド */
@@ -246,7 +248,7 @@ export type Message =
   | { type: 'FILL_JOB_OFFER'; searchTerm: string; jobCategory: string; employmentType: string; memberId?: string }
   | { type: 'OPEN_SIDE_PANEL' }
   | { type: 'EXTRACT_CONVERSATION' }
-  | { type: 'EXTRACT_ALL_CONVERSATIONS' }
+  | { type: 'EXTRACT_ALL_CONVERSATIONS'; limit?: number }
   | { type: 'CONVERSATION_DATA'; thread: ConversationThread }
   | { type: 'CONVERSATION_PROGRESS'; current: number; total: number; thread: ConversationThread }
   | { type: 'CONVERSATION_BATCH_COMPLETE'; count: number }
@@ -284,4 +286,7 @@ export type Message =
   | { type: 'EXTRACT_FACILITY_LIST' }
   | { type: 'EXTRACT_FACILITY_INFO'; facilityIds: string[] }
   | { type: 'STOP_FACILITY_EXTRACTION' }
-  | { type: 'FACILITY_INFO_RESULT'; success: boolean; facility: FacilityInfo | null; error?: string };
+  | { type: 'FACILITY_INFO_RESULT'; success: boolean; facility: FacilityInfo | null; error?: string }
+  | { type: 'REQUEST_QUOTA_SNAPSHOT'; companyId: string }
+  | { type: 'REQUEST_QUOTA_SNAPSHOT_RESULT'; success: boolean; remaining?: number; error?: string }
+  | { type: 'QUOTA_SNAPSHOT_POSTED'; companyId: string; remaining: number };

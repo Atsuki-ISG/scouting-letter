@@ -751,11 +751,52 @@ async function setupDevMode(): Promise<void> {
   });
 }
 
+/** 「残数を取得」ボタン: Service Worker 経由で裏タブ開いて残数スクレイプ */
+function setupFetchQuotaButton(): void {
+  const btn = document.getElementById('btn-fetch-quota') as HTMLButtonElement | null;
+  const status = document.getElementById('quota-status') as HTMLDivElement | null;
+  if (!btn) return;
+
+  const setStatus = (text: string, kind: 'info' | 'success' | 'error') => {
+    if (!status) return;
+    status.textContent = text;
+    status.style.display = 'block';
+    status.dataset.kind = kind;
+  };
+
+  btn.addEventListener('click', async () => {
+    const companyId = await storage.getCompany();
+    if (!companyId) {
+      setStatus('会社が選択されていません', 'error');
+      return;
+    }
+    btn.disabled = true;
+    setStatus('ジョブメドレーから残数を取得中…', 'info');
+    try {
+      const res: { success: boolean; remaining?: number; error?: string } =
+        await chrome.runtime.sendMessage({ type: 'REQUEST_QUOTA_SNAPSHOT', companyId });
+      if (res?.success) {
+        setStatus(`残数 ${res.remaining} 通を記録しました`, 'success');
+        setTimeout(() => {
+          if (status) status.style.display = 'none';
+        }, 4000);
+      } else {
+        setStatus(res?.error || '取得に失敗しました', 'error');
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : String(err), 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 /** 初期化 */
 async function init(): Promise<void> {
   setupTabs();
   await setupCompanySelect();
   setupFixExport();
+  setupFetchQuotaButton();
 
   // 各パネルのインスタンス生成
   new ExtractionPanel();

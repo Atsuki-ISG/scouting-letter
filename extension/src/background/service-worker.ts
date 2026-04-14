@@ -30,23 +30,37 @@ async function getActiveTab(): Promise<chrome.tabs.Tab | null> {
   return tabs[0] || null;
 }
 
+/** content script が注入されるジョブメドレーのURLか判定 */
+function isJobMedleyUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  return /^https:\/\/([^/]+\.)?job-medley\.com\//.test(url);
+}
+
+const NOT_JOBMEDLEY_ERROR = 'ジョブメドレーのタブで操作してください';
+
 /** アクティブタブのContent Scriptにメッセージを転送（レスポンスなし） */
 async function forwardToContentScript(message: Message): Promise<void> {
   const tab = await getActiveTab();
-  if (tab?.id) {
-    await chrome.tabs.sendMessage(tab.id, message).catch((err) => {
-      console.error('[SW] sendMessage failed:', err);
-    });
+  if (!tab?.id || !isJobMedleyUrl(tab.url)) {
+    console.warn('[SW] Skip forward (not a job-medley tab):', message.type, tab?.url);
+    return;
   }
+  await chrome.tabs.sendMessage(tab.id, message).catch((err) => {
+    console.error('[SW] sendMessage failed:', err);
+  });
 }
 
 /** アクティブタブのContent Scriptにメッセージを転送（レスポンスあり） */
 async function forwardWithResponse(message: Message, fallbackResponse: unknown): Promise<unknown> {
   const tab = await getActiveTab();
-  if (tab?.id) {
-    return chrome.tabs.sendMessage(tab.id, message);
+  if (!tab?.id || !isJobMedleyUrl(tab.url)) {
+    console.warn('[SW] Skip forward (not a job-medley tab):', message.type, tab?.url);
+    if (fallbackResponse && typeof fallbackResponse === 'object') {
+      return { ...(fallbackResponse as object), error: NOT_JOBMEDLEY_ERROR };
+    }
+    return fallbackResponse;
   }
-  return fallbackResponse;
+  return chrome.tabs.sendMessage(tab.id, message);
 }
 
 /** メッセージルーティング: Side Panel → Content Script */
@@ -127,6 +141,72 @@ chrome.runtime.onMessage.addListener(
       case 'COMPANY_MISMATCH':
       case 'COMPANY_DETECTED':
       case 'CONTINUOUS_SEND_COMPLETE': {
+        sendResponse({ ok: true });
+        return false;
+      }
+
+      // 残数取得ワンクリック: 裏でジョブメドレーの検索画面を開き、
+      // content script (scout-quota-scraper) が `今月のスカウト残数 X 通` を読んで
+      // `QUOTA_SNAPSHOT_POSTED` を発行したらそのタブを閉じる。
+      //
+      // URL は `/customers/searches` を直接指定する。ルート `/` は残数表示がなく、
+      // 検索画面のみに「今月のスカウト残数 XX 通」が出るため。
+      //
+      // タイムアウトは30秒。裏タブは Chrome が描画/JS実行を throttling するので
+      // 15秒だと残数要素の出現 + API POST が間に合わないケースがある。
+      // また API POST 中にタブが閉じられると fetch が abort され DOMException になる
+      // ので、QUOTA_SNAPSHOT_POSTED を受けてからタブを閉じる順序は維持しつつ
+      // 余裕を持たせる。
+      case 'REQUEST_QUOTA_SNAPSHOT': {
+        (async () => {
+          try {
+            const tab = await chrome.tabs.create({
+              url: 'https://customers.job-medley.com/customers/searches',
+              active: false,
+            });
+            if (!tab?.id) {
+              sendResponse({ type: 'REQUEST_QUOTA_SNAPSHOT_RESULT', success: false, error: 'タブ作成に失敗' });
+              return;
+            }
+            const tabId = tab.id;
+
+            const result = await new Promise<{ success: boolean; remaining?: number; error?: string }>((resolve) => {
+              const timer = setTimeout(() => {
+                chrome.runtime.onMessage.removeListener(listener);
+                resolve({ success: false, error: '30秒以内に残数を取得できませんでした。customers.job-medley.com にログインしているか確認してください。' });
+              }, 30000);
+
+              const listener = (msg: Message, _s: chrome.runtime.MessageSender) => {
+                if (msg.type === 'QUOTA_SNAPSHOT_POSTED') {
+                  clearTimeout(timer);
+                  chrome.runtime.onMessage.removeListener(listener);
+                  resolve({ success: true, remaining: msg.remaining });
+                }
+              };
+              chrome.runtime.onMessage.addListener(listener);
+            });
+
+            // 後片付け: 裏タブを閉じる
+            try {
+              await chrome.tabs.remove(tabId);
+            } catch {
+              /* 既に閉じられていても無視 */
+            }
+
+            sendResponse({ type: 'REQUEST_QUOTA_SNAPSHOT_RESULT', ...result });
+          } catch (err) {
+            sendResponse({
+              type: 'REQUEST_QUOTA_SNAPSHOT_RESULT',
+              success: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })();
+        return true;
+      }
+
+      // Content Script からの通知。サイドパネル等がリッスンして UI 更新に使う
+      case 'QUOTA_SNAPSHOT_POSTED': {
         sendResponse({ ok: true });
         return false;
       }

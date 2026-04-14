@@ -68,9 +68,10 @@ chrome.runtime.onMessage.addListener(
           return false;
         }
         sendResponse({ ok: true });
+        const limit = typeof message.limit === 'number' ? message.limit : 0;
         extractAllConversations((msg) => {
           safeSendMessage(msg);
-        });
+        }, limit);
         return false;
       }
 

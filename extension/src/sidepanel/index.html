@@ -21,7 +21,14 @@
       <div class="company-select">
         <label for="company">会社</label>
         <select id="company"></select>
+        <button id="btn-fetch-quota" class="btn-icon" title="ジョブメドレーの今月の残数を取得して管理画面に反映">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M23 4v6h-6"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+        </button>
       </div>
+      <div id="quota-status" class="quota-status" style="display:none"></div>
     </header>
 
     <nav class="tabs">
@@ -278,6 +285,10 @@
       <div class="conversation-controls">
         <button id="btn-extract-conversation" class="btn btn-primary">やりとりを取得</button>
         <button id="btn-batch-extract" class="btn btn-primary">一括取得</button>
+        <label class="extract-limit-label">最新
+          <input type="number" id="extract-limit" min="0" step="1" value="50" class="extract-limit-input" title="0=全件">
+          件
+        </label>
         <button id="btn-toggle-manual" class="btn btn-secondary">手動入力</button>
       </div>
 

@@ -282,7 +282,17 @@ export const apiClient = {
     return res.json();
   },
 
-  async syncReplies(company: string, replies: Array<{ member_id: string; replied_at: string; category: string }>): Promise<{ status: string; updated: number }> {
+  async syncReplies(company: string, replies: Array<{
+    member_id: string;
+    replied_at: string;
+    applied_at?: string;
+    category: string;
+    status?: 'scout_reply' | 'scout_application' | 'direct_application';
+    candidate_name?: string;
+    candidate_age?: string;
+    candidate_gender?: string;
+    job_title?: string;
+  }>): Promise<any> {
     const endpoint = await this.getEndpoint();
     const headers = await this.getHeaders();
     const res = await fetchWithTimeout(`${endpoint}/api/v1/admin/sync_replies`, {

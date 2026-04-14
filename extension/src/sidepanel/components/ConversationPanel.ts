@@ -25,6 +25,7 @@ export class ConversationPanel {
 
     this.setupExtractButton();
     this.setupBatchExtractButton();
+    this.setupExtractLimitInput();
     this.setupManualInput();
     this.setupSyncButton();
     this.setupExportButtons();
@@ -103,7 +104,8 @@ export class ConversationPanel {
       this.showStatus('一括取得を開始しています...', false);
 
       try {
-        const response = await chrome.runtime.sendMessage({ type: 'EXTRACT_ALL_CONVERSATIONS' });
+        const limit = await this.getExtractLimit();
+        const response = await chrome.runtime.sendMessage({ type: 'EXTRACT_ALL_CONVERSATIONS', limit });
         if (response?.type === 'CONVERSATION_ERROR') {
           this.showStatus(response.error, true);
           this.resetBatchButton(btn);
@@ -114,6 +116,35 @@ export class ConversationPanel {
         this.resetBatchButton(btn);
       }
     });
+  }
+
+  /** 抽出件数上限 inputの初期化と永続化 */
+  private setupExtractLimitInput(): void {
+    const input = document.getElementById('extract-limit') as HTMLInputElement | null;
+    if (!input) return;
+    // 保存済みの値を復元
+    chrome.storage.local.get('scout_extract_limit', (r) => {
+      const saved = r['scout_extract_limit'];
+      if (typeof saved === 'number' && saved >= 0) input.value = String(saved);
+    });
+    input.addEventListener('change', () => {
+      const n = parseInt(input.value, 10);
+      const value = Number.isFinite(n) && n >= 0 ? n : 50;
+      input.value = String(value);
+      chrome.storage.local.set({ scout_extract_limit: value });
+    });
+  }
+
+  /** 抽出件数上限を取得（0=全件、未設定時はデフォルト50） */
+  private async getExtractLimit(): Promise<number> {
+    const input = document.getElementById('extract-limit') as HTMLInputElement | null;
+    if (input) {
+      const n = parseInt(input.value, 10);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+    const r = await chrome.storage.local.get('scout_extract_limit');
+    const saved = r['scout_extract_limit'];
+    return typeof saved === 'number' && saved >= 0 ? saved : 50;
   }
 
   /** 一括取得の進捗処理 */
@@ -362,42 +393,123 @@ export class ConversationPanel {
         const conversations = await storage.getConversations();
         const company = await storage.getCompany();
 
-        // スカウト起点で返信があるやりとりだけ抽出（応募経由は除外）
-        const replies: Array<{ member_id: string; replied_at: string; category: string }> = [];
+        // 各スレッドを status で分類
+        const replies: Array<{
+          member_id: string;
+          replied_at: string;
+          applied_at?: string;
+          category: string;
+          status: 'scout_reply' | 'scout_application' | 'direct_application';
+          candidate_name?: string;
+          candidate_age?: string;
+          candidate_gender?: string;
+          job_title?: string;
+        }> = [];
+
         for (const thread of conversations) {
-          const firstRole = thread.messages[0]?.role;
-          if (firstRole !== 'company') continue; // 応募経由は除外
+          const classification = this.classifyThread(thread);
+          if (!classification) continue;
 
           const candidateMsgs = thread.messages.filter(m => m.role === 'candidate');
-          if (candidateMsgs.length === 0) continue;
-
-          const firstReply = candidateMsgs[0];
+          const firstCandidateMsg = candidateMsgs[0];
+          const appliedMsg = candidateMsgs.find(m => m.label === '応募');
           const category = this.classifyReply(candidateMsgs);
+
           replies.push({
             member_id: thread.member_id,
-            replied_at: firstReply.date || thread.started,
+            replied_at: firstCandidateMsg?.date || thread.started,
+            applied_at: appliedMsg?.date,
             category,
+            status: classification,
+            candidate_name: thread.candidate_name,
+            candidate_age: thread.candidate_age,
+            candidate_gender: thread.candidate_gender,
+            job_title: thread.job_title,
           });
         }
 
         if (replies.length === 0) {
-          statusEl.textContent = '返信のあるやりとりがありません';
+          statusEl.textContent = '同期対象のやりとりがありません';
           statusEl.style.color = '#b45309';
           return;
         }
 
         const result = await apiClient.syncReplies(company, replies);
-        statusEl.textContent = `同期完了: ${result.updated}件更新`;
-        statusEl.style.color = '#059669';
+        await this.handleSyncResult(result, replies, statusEl);
       } catch (err) {
         statusEl.textContent = `同期失敗: ${err instanceof Error ? err.message : String(err)}`;
         statusEl.style.color = '#dc2626';
       } finally {
         btn.removeAttribute('disabled');
         btn.textContent = 'サーバーに返信データを同期';
-        setTimeout(() => statusEl.classList.add('hidden'), 5000);
       }
     });
+  }
+
+  /**
+   * スレッドの種類を判定
+   * - スカウト応募: firstRole=company かつ 候補者msgに応募ラベルあり
+   * - 直接応募: firstRole=candidate（候補者が先に来てる）
+   * - スカウト返信: firstRole=company かつ 候補者msgあり かつ 応募ラベルなし
+   * - 該当なし: 未反応など
+   */
+  private classifyThread(thread: ConversationThread):
+    | 'scout_reply' | 'scout_application' | 'direct_application' | null {
+    const firstRole = thread.messages[0]?.role;
+    const candidateMsgs = thread.messages.filter(m => m.role === 'candidate');
+    if (candidateMsgs.length === 0) return null;
+    const hasApplication = candidateMsgs.some(m => m.label === '応募');
+
+    if (firstRole === 'candidate') return 'direct_application';
+    if (firstRole === 'company') {
+      return hasApplication ? 'scout_application' : 'scout_reply';
+    }
+    return null;
+  }
+
+  /** 同期結果を表示 + マッチしたスレッドをローカルから削除 */
+  private async handleSyncResult(
+    result: any,
+    sentReplies: Array<{ member_id: string; status: string }>,
+    statusEl: HTMLElement,
+  ): Promise<void> {
+    const parts: string[] = [];
+    const matchedIds: string[] = [];
+    const scoutReply = result?.scout_reply;
+    const scoutApp = result?.scout_application;
+    const directApp = result?.direct_application;
+
+    if (scoutReply) {
+      parts.push(`スカウト返信: ${scoutReply.matched?.length ?? 0}件更新 / ${scoutReply.unmatched?.length ?? 0}件未紐付け`);
+      matchedIds.push(...(scoutReply.matched ?? []).map((r: any) => r.member_id));
+    }
+    if (scoutApp) {
+      parts.push(`スカウト応募: ${scoutApp.matched?.length ?? 0}件更新 / ${scoutApp.unmatched?.length ?? 0}件未紐付け`);
+      matchedIds.push(...(scoutApp.matched ?? []).map((r: any) => r.member_id));
+    }
+    if (directApp) {
+      parts.push(`直接応募: ${directApp.appended ?? 0}件追加`);
+      // 直接応募は送信履歴に無いのが正常なので、送信した全員を削除対象に
+      const directSent = sentReplies.filter(r => r.status === 'direct_application').map(r => r.member_id);
+      matchedIds.push(...directSent);
+    }
+
+    // 旧レスポンス形式（updated のみ）との後方互換
+    if (!scoutReply && !scoutApp && !directApp && typeof result?.updated === 'number') {
+      parts.push(`同期完了: ${result.updated}件更新`);
+      // 旧形式では matched情報がないので削除しない
+    }
+
+    statusEl.innerHTML = parts.join('<br>');
+    statusEl.style.color = '#059669';
+
+    // 同期できたスレッドをローカルから削除
+    for (const memberId of matchedIds) {
+      await storage.removeConversation(memberId);
+    }
+    if (matchedIds.length > 0) {
+      await this.loadConversations();
+    }
   }
 
   /** 返信内容を簡易分類 */

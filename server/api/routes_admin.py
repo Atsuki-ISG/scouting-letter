@@ -1727,56 +1727,156 @@ async def sync_replies(
     data: dict,
     operator=Depends(verify_api_key),
 ):
-    """Chrome拡張から返信データを受け取り、送信データシートを更新する。"""
+    """Chrome拡張から返信/応募データを受け取り、送信データ/直接応募シートに反映する。
+
+    リクエスト各 reply は以下のフィールドを持つ:
+      member_id, replied_at, applied_at, category, status,
+      candidate_name, candidate_age, candidate_gender, job_title
+
+    status:
+      - "scout_reply": 送信データシートの「返信」列を更新
+      - "scout_application": 送信データシートの「返信」「応募」列を更新
+      - "direct_application": 直接応募シートに append
+
+    レスポンス:
+      {
+        "status": "ok",
+        "scout_reply":       {"matched": [...], "unmatched": [...]},
+        "scout_application": {"matched": [...], "unmatched": [...]},
+        "direct_application": {"appended": N}
+      }
+    """
     company = data.get("company", "")
     replies = data.get("replies", [])
     if not replies:
-        return {"status": "ok", "updated": 0}
+        return {
+            "status": "ok",
+            "scout_reply": {"matched": [], "unmatched": []},
+            "scout_application": {"matched": [], "unmatched": []},
+            "direct_application": {"appended": 0},
+        }
 
-    from pipeline.orchestrator import _send_data_sheet_name
-    sheet_name = _send_data_sheet_name(company)
+    from pipeline.orchestrator import (
+        _send_data_sheet_name,
+        _direct_application_sheet_name,
+        SEND_DATA_HEADERS,
+        DIRECT_APPLICATION_HEADERS,
+    )
 
-    try:
-        all_rows = sheets_writer.get_all_rows(sheet_name)
-    except Exception:
-        return {"status": "error", "detail": f"送信データシート '{sheet_name}' が存在しません"}
-    if len(all_rows) < 2:
-        return {"status": "ok", "updated": 0}
+    # Split by status
+    scout_replies = [r for r in replies if r.get("status") == "scout_reply"]
+    scout_apps = [r for r in replies if r.get("status") == "scout_application"]
+    direct_apps = [r for r in replies if r.get("status") == "direct_application"]
+    # 旧クライアント（status未指定）は scout_reply 扱い
+    legacy = [r for r in replies if not r.get("status")]
+    scout_replies.extend(legacy)
 
-    headers = all_rows[0]
-    try:
-        col_member = headers.index("会員番号")
-        col_reply = headers.index("返信")
-        col_reply_date = headers.index("返信日")
-        col_reply_cat = headers.index("返信カテゴリ")
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=f"シートヘッダー不正: {e}")
+    result: dict = {
+        "status": "ok",
+        "scout_reply": {"matched": [], "unmatched": []},
+        "scout_application": {"matched": [], "unmatched": []},
+        "direct_application": {"appended": 0},
+    }
 
-    reply_map = {r["member_id"]: r for r in replies}
+    # --- スカウト返信 / スカウト応募: 送信データシートを更新 ---
+    if scout_replies or scout_apps:
+        sheet_name = _send_data_sheet_name(company)
+        # 応募/応募日列が無い旧シートに対応するため自動拡張
+        sheets_writer.ensure_sheet_exists(sheet_name, SEND_DATA_HEADERS)
 
-    updated = 0
-    for row_idx, row in enumerate(all_rows[1:], start=2):
-        if len(row) <= col_member:
-            continue
-        member_id = row[col_member]
-        if member_id not in reply_map:
-            continue
+        try:
+            all_rows = sheets_writer.get_all_rows(sheet_name)
+        except Exception:
+            all_rows = []
 
-        reply = reply_map[member_id]
-        # Write only the 3 reply cells by name — never touches other columns
-        sheets_writer.update_cells_by_name(
-            sheet_name,
-            row_idx,
-            {
-                "返信": "有",
-                "返信日": reply.get("replied_at", ""),
-                "返信カテゴリ": reply.get("category", ""),
-            },
-            actor="sync_replies",
-        )
-        updated += 1
+        existing_members: set[str] = set()
+        member_to_rowidx: dict[str, int] = {}
+        if len(all_rows) >= 1:
+            headers_row = all_rows[0]
+            try:
+                col_member = headers_row.index("会員番号")
+                for row_idx, row in enumerate(all_rows[1:], start=2):
+                    if len(row) > col_member and row[col_member]:
+                        existing_members.add(row[col_member])
+                        member_to_rowidx[row[col_member]] = row_idx
+            except ValueError:
+                pass
 
-    return {"status": "ok", "updated": updated}
+        # scout_reply 処理
+        for reply in scout_replies:
+            mid = reply.get("member_id", "")
+            if mid in existing_members:
+                sheets_writer.update_cells_by_name(
+                    sheet_name,
+                    member_to_rowidx[mid],
+                    {
+                        "返信": "有",
+                        "返信日": reply.get("replied_at", ""),
+                        "返信カテゴリ": reply.get("category", ""),
+                    },
+                    actor="sync_replies",
+                )
+                result["scout_reply"]["matched"].append({"member_id": mid})
+            else:
+                result["scout_reply"]["unmatched"].append({"member_id": mid})
+
+        # scout_application 処理（返信列と応募列を同時更新）
+        for reply in scout_apps:
+            mid = reply.get("member_id", "")
+            if mid in existing_members:
+                sheets_writer.update_cells_by_name(
+                    sheet_name,
+                    member_to_rowidx[mid],
+                    {
+                        "返信": "有",
+                        "返信日": reply.get("replied_at", ""),
+                        "返信カテゴリ": reply.get("category", ""),
+                        "応募": "有",
+                        "応募日": reply.get("applied_at") or reply.get("replied_at", ""),
+                    },
+                    actor="sync_replies",
+                )
+                result["scout_application"]["matched"].append({"member_id": mid})
+            else:
+                result["scout_application"]["unmatched"].append({"member_id": mid})
+
+    # --- 直接応募: 別シートに append ---
+    if direct_apps:
+        direct_sheet = _direct_application_sheet_name(company)
+        sheets_writer.ensure_sheet_exists(direct_sheet, DIRECT_APPLICATION_HEADERS)
+        # 既存シートから重複防止用の member_id セットを作る
+        try:
+            direct_rows = sheets_writer.get_all_rows(direct_sheet)
+        except Exception:
+            direct_rows = []
+        existing_direct: set[str] = set()
+        if len(direct_rows) >= 1:
+            try:
+                col_mid = direct_rows[0].index("会員番号")
+                for r in direct_rows[1:]:
+                    if len(r) > col_mid and r[col_mid]:
+                        existing_direct.add(r[col_mid])
+            except ValueError:
+                pass
+
+        appended = 0
+        for reply in direct_apps:
+            mid = reply.get("member_id", "")
+            if mid in existing_direct:
+                continue  # 重複スキップ
+            sheets_writer.append_row(direct_sheet, [
+                reply.get("applied_at") or reply.get("replied_at", ""),
+                mid,
+                reply.get("candidate_name", ""),
+                reply.get("candidate_age", ""),
+                reply.get("candidate_gender", ""),
+                reply.get("job_title", ""),
+                reply.get("category", ""),
+            ])
+            appended += 1
+        result["direct_application"]["appended"] = appended
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -3880,8 +3980,14 @@ async def analyze_cycle(
         return row[idx]
 
     total = len(filtered)
-    replied = sum(1 for r in filtered if _safe_get(r, "返信") == "有")
+    # 返信率 ⊇ 応募率: 返信か応募のどちらかが「有」なら反応ありとカウント
+    replied = sum(
+        1 for r in filtered
+        if _safe_get(r, "返信") == "有" or _safe_get(r, "応募") == "有"
+    )
+    applied = sum(1 for r in filtered if _safe_get(r, "応募") == "有")
     reply_rate = replied / total if total > 0 else 0
+    application_rate = applied / total if total > 0 else 0
 
     # Pattern display name mapping
     PATTERN_LABELS = {
@@ -3909,8 +4015,11 @@ async def analyze_cycle(
             if val not in buckets:
                 buckets[val] = {"total": 0, "replied": 0}
             buckets[val]["total"] += 1
-            if _safe_get(row, "返信") == "有":
+            if _safe_get(row, "返信") == "有" or _safe_get(row, "応募") == "有":
                 buckets[val]["replied"] += 1
+            if _safe_get(row, "応募") == "有":
+                buckets[val].setdefault("applied", 0)
+                buckets[val]["applied"] += 1
         if len(buckets) > 1:
             cross_tabs[dim] = {
                 k: {**v, "rate": f"{v['replied']/v['total']*100:.1f}%"}
@@ -3931,8 +4040,10 @@ async def analyze_cycle(
     summary_text = f"""## スカウト送信データ分析（{company}）
 期間: {date_from} 〜 {date_to}
 総送信数: {total}
-返信数: {replied}
+返信数（応募含む）: {replied}
 返信率: {reply_rate*100:.1f}%
+応募数: {applied}
+応募率: {application_rate*100:.1f}%
 
 ### クロス集計
 """
@@ -3981,7 +4092,7 @@ async def analyze_cycle(
             "status": "ok",
             "company": company,
             "period": f"{date_from}〜{date_to}",
-            "summary": {"total": total, "replied": replied, "reply_rate": f"{reply_rate*100:.1f}%"},
+            "summary": {"total": total, "replied": replied, "reply_rate": f"{reply_rate*100:.1f}%", "applied": applied, "application_rate": f"{application_rate*100:.1f}%"},
             "cross_tabs": cross_tabs,
             "analysis": f"AI分析エラー: {e}",
         }
@@ -3990,7 +4101,7 @@ async def analyze_cycle(
         "status": "ok",
         "company": company,
         "period": f"{date_from}〜{date_to}",
-        "summary": {"total": total, "replied": replied, "reply_rate": f"{reply_rate*100:.1f}%"},
+        "summary": {"total": total, "replied": replied, "reply_rate": f"{reply_rate*100:.1f}%", "applied": applied, "application_rate": f"{application_rate*100:.1f}%"},
         "cross_tabs": cross_tabs,
         "analysis": analysis_text,
     }
@@ -4036,6 +4147,7 @@ def _collect_send_data_single(company: str, date_from: str, date_to: str):
     col_map = {h: i for i, h in enumerate(headers)}
     date_col = col_map.get("日時")
     reply_col = col_map.get("返信")
+    apply_col = col_map.get("応募")
 
     filtered = []
     for row in all_rows[1:]:
@@ -4048,18 +4160,19 @@ def _collect_send_data_single(company: str, date_from: str, date_to: str):
     if not filtered:
         return headers, col_map, [], None
 
+    def _has(row, col):
+        return col is not None and len(row) > col and row[col] == "有"
+
     total = len(filtered)
-    replied = 0
-    if reply_col is not None:
-        replied = sum(
-            1
-            for r in filtered
-            if len(r) > reply_col and r[reply_col] == "有"
-        )
+    # 返信率 ⊇ 応募率: 返信か応募のどちらかが「有」なら反応ありとカウント
+    replied = sum(1 for r in filtered if _has(r, reply_col) or _has(r, apply_col))
+    applied = sum(1 for r in filtered if _has(r, apply_col))
     kpi = {
         "total": total,
         "replied": replied,
+        "applied": applied,
         "reply_rate_pct": (replied / total * 100) if total > 0 else 0.0,
+        "application_rate_pct": (applied / total * 100) if total > 0 else 0.0,
     }
     return headers, col_map, filtered, kpi
 
@@ -4144,8 +4257,11 @@ def _format_report_markdown(
     lines.append("## サマリー")
     lines.append("")
     lines.append(f"- 送信数: {kpi['total']}通")
-    lines.append(f"- 返信数: {kpi['replied']}件")
+    lines.append(f"- 返信数: {kpi['replied']}件（応募含む）")
     lines.append(f"- 返信率: {kpi['reply_rate_pct']:.1f}%")
+    if kpi.get('applied') is not None:
+        lines.append(f"- 応募数: {kpi['applied']}件")
+        lines.append(f"- 応募率: {kpi.get('application_rate_pct', 0):.1f}%")
     lines.append("")
 
     if cross_tabs:
@@ -4260,10 +4376,15 @@ async def export_report(
         "",
         f"## KPI",
         f"- 送信数: {kpi['total']}通",
-        f"- 返信数: {kpi['replied']}件",
+        f"- 返信数: {kpi['replied']}件（応募含む）",
         f"- 返信率: {kpi['reply_rate_pct']:.1f}%",
-        "",
     ]
+    if kpi.get('applied') is not None:
+        user_lines.extend([
+            f"- 応募数: {kpi['applied']}件",
+            f"- 応募率: {kpi.get('application_rate_pct', 0):.1f}%",
+        ])
+    user_lines.append("")
     if cross_tabs:
         user_lines.append("## セグメント別の集計（顧客向けに絞り込み済）")
         for dim, buckets in cross_tabs.items():
@@ -4313,6 +4434,8 @@ async def export_report(
             "total": kpi["total"],
             "replied": kpi["replied"],
             "reply_rate": f"{kpi['reply_rate_pct']:.1f}%",
+            "applied": kpi.get("applied", 0),
+            "application_rate": f"{kpi.get('application_rate_pct', 0):.1f}%",
         },
         "cross_tabs": cross_tabs,
         "narrative": narrative,

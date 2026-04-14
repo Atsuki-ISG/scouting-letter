@@ -132,11 +132,13 @@ function extractMessages(): ConversationMessage[] {
     const text = extractMessageText(bodyEl);
     if (!text) return;
 
+    const label = extractMessageLabel(bodyEl);
+
     // 日付の取得
     const dateInfo = dateInfos[index];
     const date = dateInfo?.date || '';
 
-    messages.push({ role, date, text });
+    messages.push({ role, date, text, ...(label ? { label } : {}) });
   });
 
   return messages;
@@ -168,6 +170,18 @@ function extractMessageText(bodyEl: Element): string {
   }
 
   return textContent.trim();
+}
+
+/**
+ * メッセージ本文から .c-label のテキストを抽出
+ * 例: "スカウト" "応募" "通常" "スカウト辞退"
+ * 複数ラベルがあっても先頭1つだけ返す（基本1メッセージ1ラベル想定）
+ */
+function extractMessageLabel(bodyEl: Element): string | null {
+  const labelEl = bodyEl.querySelector(MESSAGE_SELECTORS.messageLabel);
+  if (!labelEl) return null;
+  const text = labelEl.textContent?.trim() || '';
+  return text || null;
 }
 
 /**
@@ -220,8 +234,9 @@ export function abortBatchExtraction(): void {
 /**
  * サイドバーをスクロールして全会話を読み込む
  * 無限スクロールで逐次読み込まれるため、末尾までスクロールを繰り返す
+ * limit>0 の場合、読み込み済み件数が limit 以上になった時点で打ち切る
  */
-async function loadAllConversations(): Promise<void> {
+async function loadAllConversations(limit = 0): Promise<void> {
   const scrollContainer = document.querySelector(MESSAGE_SELECTORS.infinityScroll);
   if (!scrollContainer) {
     console.log('[Scout Assistant] スクロールコンテナが見つかりません');
@@ -233,6 +248,10 @@ async function loadAllConversations(): Promise<void> {
   const maxStableRounds = 3;
 
   while (stableRounds < maxStableRounds) {
+    if (limit > 0 && prevCount >= limit) {
+      console.log(`[Scout Assistant] limit(${limit})件に到達。スクロール打ち切り`);
+      break;
+    }
     scrollContainer.scrollTop = scrollContainer.scrollHeight;
     scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
     await sleep(1500);
@@ -254,14 +273,16 @@ async function loadAllConversations(): Promise<void> {
  * 進捗はchrome.runtime.sendMessageで都度サイドパネルに通知
  */
 export async function extractAllConversations(
-  sendProgress: (message: Message) => void
+  sendProgress: (message: Message) => void,
+  limit = 0
 ): Promise<void> {
   batchAborted = false;
 
-  // まずサイドバーを全件読み込む
-  await loadAllConversations();
+  // サイドバーを読み込む（limit件に達したら打ち切り、0は全件）
+  await loadAllConversations(limit);
 
-  const links = document.querySelectorAll(MESSAGE_SELECTORS.conversationLink);
+  const allLinks = document.querySelectorAll(MESSAGE_SELECTORS.conversationLink);
+  const links = limit > 0 ? Array.from(allLinks).slice(0, limit) : Array.from(allLinks);
   const total = links.length;
 
   if (total === 0) {

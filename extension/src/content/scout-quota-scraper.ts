@@ -69,6 +69,17 @@ async function reportOnce(): Promise<void> {
     await apiClient.postScoutQuotaSnapshot(companyId, remaining);
     lastReported = remaining;
     console.log(`[scout-quota] reported ${companyId} remaining=${remaining}`);
+    // Service Worker 側で「残数取得ワンクリック」のタブ close シグナルに使う
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'QUOTA_SNAPSHOT_POSTED',
+        companyId,
+        remaining,
+      });
+    } catch (err) {
+      // サイドパネルが開いていない等で受け手が居なくても致命的ではない
+      console.debug('[scout-quota] broadcast failed (no receiver?)', err);
+    }
   } catch (err) {
     console.warn('[scout-quota] post failed', err);
   } finally {

@@ -56,7 +56,15 @@ SEND_DATA_HEADERS = [
     "全文",
     # 自動（返信同期で書き込み）
     "返信", "返信日", "返信カテゴリ",
+    # 自動（応募同期で書き込み、スカウト応募のみ更新。直接応募は別シート）
+    "応募", "応募日",
 ]
+
+# 直接応募データ（スカウト送信していないのにエントリーされた候補者）
+DIRECT_APPLICATION_HEADERS = [
+    "応募日", "会員番号", "候補者名", "年齢", "性別", "求人タイトル", "返信カテゴリ",
+]
+
 
 COMPANY_DISPLAY_NAMES = {
     "ark-visiting-nurse": "アーク訪看",
@@ -86,6 +94,15 @@ def _send_data_sheet_name(company_id: str) -> str:
     if not display:
         display = COMPANY_DISPLAY_NAMES.get(company_id, company_id)
     return f"送信_{display}"
+
+
+def _direct_application_sheet_name(company_id: str) -> str:
+    """直接応募シート名。送信データと同じdisplay_nameを使う。"""
+    send_name = _send_data_sheet_name(company_id)
+    # "送信_{display}" → "直接応募_{display}"
+    if send_name.startswith("送信_"):
+        return "直接応募_" + send_name[len("送信_"):]
+    return f"直接応募_{send_name}"
 
 
 def _write_generation_logs(
