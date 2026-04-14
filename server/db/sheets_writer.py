@@ -427,25 +427,35 @@ class SheetsWriter:
 
         service = self._get_service()
 
-        # Snapshot each row before delete (best-effort, skipped for audit prune)
+        # Snapshot each row before delete (best-effort, skipped for audit prune).
+        # Batch all audit entries into one append_rows call — doing N sequential
+        # appends for large deletes causes Cloud Run request timeouts.
         if audit:
             try:
+                import json as _json
+                from datetime import datetime as _dt
                 all_rows = self.get_all_rows(sheet_name)
                 if all_rows:
                     headers = [h.strip() for h in all_rows[0]]
+                    audit_rows_to_append: list[list[str]] = []
+                    now = _dt.now(JST).strftime("%Y-%m-%d %H:%M:%S")
                     for ri in unique_sorted:
                         if 2 <= ri <= len(all_rows):
                             row = all_rows[ri - 1]
                             row += [""] * (len(headers) - len(row))
                             snapshot = {headers[i]: row[i] for i in range(len(headers))}
-                            self._append_audit(
-                                operation="delete",
-                                sheet=sheet_name,
-                                row_index=ri,
-                                snapshot=snapshot,
-                                changed={},
-                                actor=actor,
-                            )
+                            audit_rows_to_append.append([
+                                now,
+                                "delete",
+                                sheet_name,
+                                str(ri),
+                                _json.dumps(snapshot, ensure_ascii=False),
+                                _json.dumps({}, ensure_ascii=False),
+                                actor or "",
+                            ])
+                    if audit_rows_to_append:
+                        self.ensure_sheet_exists(AUDIT_SHEET, AUDIT_HEADERS)
+                        self.append_rows(AUDIT_SHEET, audit_rows_to_append)
             except Exception as e:
                 logger.warning(
                     f"Failed to snapshot rows of '{sheet_name}' before bulk delete: {e}"
