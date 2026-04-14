@@ -1738,6 +1738,7 @@ async def merge_send_sheets(data: dict, operator=Depends(verify_api_key)):
     source = data.get("source_sheet", "")
     target = data.get("target_sheet", "")
     dry_run = bool(data.get("dry_run", True))
+    skip_rows = int(data.get("skip_rows", 0))
     if not source or not target:
         raise HTTPException(400, "source_sheet and target_sheet required")
     if source == target:
@@ -1778,6 +1779,10 @@ async def merge_send_sheets(data: dict, operator=Depends(verify_api_key)):
                 new_row.append(r[src_idx])
         converted_rows.append(new_row)
 
+    # skip_rows で先頭N行をスキップ（partial write からの再開用）
+    if skip_rows > 0:
+        converted_rows = converted_rows[skip_rows:]
+
     sample = converted_rows[:3]
     if dry_run:
         return {
@@ -1789,9 +1794,9 @@ async def merge_send_sheets(data: dict, operator=Depends(verify_api_key)):
             "sample": sample,
         }
 
-    # 実行
-    for row in converted_rows:
-        sheets_writer.append_row(target, row)
+    # batch appendで一発API呼び出し（append_rowの複数呼びはタイムアウトしやすい）
+    if converted_rows:
+        sheets_writer.append_rows(target, converted_rows)
 
     return {
         "status": "ok",
