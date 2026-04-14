@@ -1722,6 +1722,116 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(500, f"AI生成エラー: {str(e)}")
 
 
+@router.post("/revert_sync_replies")
+async def revert_sync_replies(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """操作履歴シートから sync_replies の最近のN件を読み、スナップショット値に復元する。
+
+    誤った一括同期の後始末用。取り消すだけで、再度正しい同期をかけ直せる状態になる。
+
+    リクエスト:
+      - company: 対象会社ID（必須）
+      - limit: 直近何件を戻すか（デフォルト100。大きめ推奨）
+
+    レスポンス:
+      {"status": "ok", "reverted": N, "sheet": "送信_xxx", "details": [...]}
+    """
+    import json as _json
+    company = data.get("company", "")
+    limit = int(data.get("limit", 100))
+    if not company:
+        raise HTTPException(400, "company is required")
+
+    from pipeline.orchestrator import _send_data_sheet_name
+    sheet_name = _send_data_sheet_name(company)
+
+    # 操作履歴シートを読む
+    try:
+        audit_rows = sheets_writer.get_all_rows("操作履歴")
+    except Exception as e:
+        raise HTTPException(500, f"操作履歴シートを読めません: {e}")
+    if len(audit_rows) < 2:
+        return {"status": "ok", "reverted": 0, "sheet": sheet_name, "details": []}
+
+    audit_headers = audit_rows[0]
+    try:
+        c_ts = audit_headers.index("timestamp")
+        c_sheet = audit_headers.index("sheet")
+        c_row = audit_headers.index("row_index")
+        c_snap = audit_headers.index("snapshot_json")
+        c_change = audit_headers.index("changed_fields_json")
+        c_actor = audit_headers.index("actor")
+    except ValueError as e:
+        raise HTTPException(500, f"操作履歴ヘッダー不正: {e}")
+
+    # sync_replies 由来で target sheet の行だけ抽出
+    candidates = []
+    for r in audit_rows[1:]:
+        if len(r) <= max(c_sheet, c_actor, c_snap, c_change, c_row, c_ts):
+            continue
+        if r[c_actor] != "sync_replies":
+            continue
+        if r[c_sheet] != sheet_name:
+            continue
+        try:
+            row_idx = int(r[c_row])
+        except ValueError:
+            continue
+        try:
+            snapshot = _json.loads(r[c_snap]) if r[c_snap] else {}
+            changed = _json.loads(r[c_change]) if r[c_change] else {}
+        except _json.JSONDecodeError:
+            continue
+        candidates.append({
+            "timestamp": r[c_ts],
+            "row_index": row_idx,
+            "snapshot": snapshot,
+            "changed": changed,
+        })
+
+    # 新しい順にソートして直近limit件だけ対象
+    candidates.sort(key=lambda x: x["timestamp"], reverse=True)
+    targets = candidates[:limit]
+
+    # 各エントリについて、変更された列だけをsnapshotの値に戻す
+    reverted = 0
+    details = []
+    # 同じ行に対して複数エントリがある場合、一番古いsnapshotに戻すのが正解なので、
+    # 行番号で最古のスナップショットを選ぶ
+    per_row_oldest: dict[int, dict] = {}
+    for entry in targets:
+        ri = entry["row_index"]
+        prev = per_row_oldest.get(ri)
+        if prev is None or entry["timestamp"] < prev["timestamp"]:
+            per_row_oldest[ri] = entry
+
+    for ri, entry in per_row_oldest.items():
+        snap = entry["snapshot"]
+        changed = entry["changed"]
+        # changed が書き換えた列だけを、snapshotの元値に戻す
+        revert_cells = {col: snap.get(col, "") for col in changed.keys()}
+        if not revert_cells:
+            continue
+        try:
+            sheets_writer.update_cells_by_name(
+                sheet_name, ri, revert_cells, actor="revert_sync_replies"
+            )
+            reverted += 1
+            details.append({"row_index": ri, "reverted_fields": list(revert_cells.keys()), "member_id": snap.get("会員番号", "")})
+        except Exception as e:
+            details.append({"row_index": ri, "error": str(e)})
+
+    return {
+        "status": "ok",
+        "reverted": reverted,
+        "sheet": sheet_name,
+        "audit_entries_considered": len(targets),
+        "details": details,
+    }
+
+
 @router.post("/sync_replies")
 async def sync_replies(
     data: dict,
