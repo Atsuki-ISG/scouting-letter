@@ -391,10 +391,9 @@ export class ConversationPanel {
 
       try {
         const conversations = await storage.getConversations();
-        const company = await storage.getCompany();
+        const fallbackCompany = await storage.getCompany();
 
-        // 各スレッドを status で分類
-        const replies: Array<{
+        type ReplyPayload = {
           member_id: string;
           replied_at: string;
           applied_at?: string;
@@ -404,7 +403,10 @@ export class ConversationPanel {
           candidate_age?: string;
           candidate_gender?: string;
           job_title?: string;
-        }> = [];
+        };
+
+        // 会社ごとにグループ化（thread.company が未設定なら選択中の会社にフォールバック）
+        const repliesByCompany = new Map<string, ReplyPayload[]>();
 
         for (const thread of conversations) {
           const classification = this.classifyThread(thread);
@@ -415,7 +417,11 @@ export class ConversationPanel {
           const appliedMsg = candidateMsgs.find(m => m.label === '応募');
           const category = this.classifyReply(candidateMsgs);
 
-          replies.push({
+          const company = thread.company || fallbackCompany;
+          if (!company) continue;
+
+          if (!repliesByCompany.has(company)) repliesByCompany.set(company, []);
+          repliesByCompany.get(company)!.push({
             member_id: thread.member_id,
             replied_at: firstCandidateMsg?.date || thread.started,
             applied_at: appliedMsg?.date,
@@ -428,14 +434,27 @@ export class ConversationPanel {
           });
         }
 
-        if (replies.length === 0) {
+        if (repliesByCompany.size === 0) {
           statusEl.textContent = '同期対象のやりとりがありません';
           statusEl.style.color = '#b45309';
           return;
         }
 
-        const result = await apiClient.syncReplies(company, replies);
-        await this.handleSyncResult(result, replies, statusEl);
+        // 会社ごとに順次同期（並列にすると Sheets API のレート制限に引っかかるため直列）
+        const perCompanyResults: Array<{ company: string; result: any; replies: ReplyPayload[] }> = [];
+        for (const [company, replies] of repliesByCompany.entries()) {
+          try {
+            const result = await apiClient.syncReplies(company, replies);
+            perCompanyResults.push({ company, result, replies });
+          } catch (err) {
+            perCompanyResults.push({
+              company,
+              result: { error: err instanceof Error ? err.message : String(err) },
+              replies,
+            });
+          }
+        }
+        await this.handleMultiCompanySyncResult(perCompanyResults, statusEl);
       } catch (err) {
         statusEl.textContent = `同期失敗: ${err instanceof Error ? err.message : String(err)}`;
         statusEl.style.color = '#dc2626';
@@ -467,49 +486,61 @@ export class ConversationPanel {
     return null;
   }
 
-  /** 同期結果を表示 + マッチしたスレッドをローカルから削除 */
-  private async handleSyncResult(
-    result: any,
-    sentReplies: Array<{ member_id: string; status: string }>,
+  /** 複数会社の同期結果を会社別に集計表示し、成功分をローカルから削除 */
+  private async handleMultiCompanySyncResult(
+    perCompanyResults: Array<{
+      company: string;
+      result: any;
+      replies: Array<{ member_id: string; status: string }>;
+    }>,
     statusEl: HTMLElement,
   ): Promise<void> {
-    const parts: string[] = [];
+    const lines: string[] = [];
     const matchedIds: string[] = [];
-    const scoutReply = result?.scout_reply;
-    const scoutApp = result?.scout_application;
-    const directApp = result?.direct_application;
+    let anyError = false;
 
-    if (scoutReply) {
-      parts.push(`スカウト返信: ${scoutReply.matched?.length ?? 0}件更新 / ${scoutReply.unmatched?.length ?? 0}件未紐付け`);
-      matchedIds.push(...(scoutReply.matched ?? []).map((r: any) => r.member_id));
-    }
-    if (scoutApp) {
-      parts.push(`スカウト応募: ${scoutApp.matched?.length ?? 0}件更新 / ${scoutApp.unmatched?.length ?? 0}件未紐付け`);
-      matchedIds.push(...(scoutApp.matched ?? []).map((r: any) => r.member_id));
-    }
-    if (directApp) {
-      parts.push(`直接応募: ${directApp.appended ?? 0}件追加`);
-      // 直接応募は送信履歴に無いのが正常なので、送信した全員を削除対象に
-      const directSent = sentReplies.filter(r => r.status === 'direct_application').map(r => r.member_id);
-      matchedIds.push(...directSent);
+    for (const { company, result, replies } of perCompanyResults) {
+      if (result?.error) {
+        lines.push(`<b>${company}</b>: エラー — ${result.error}`);
+        anyError = true;
+        continue;
+      }
+
+      const scoutReply = result?.scout_reply;
+      const scoutApp = result?.scout_application;
+      const directApp = result?.direct_application;
+      const parts: string[] = [];
+
+      if (scoutReply) {
+        parts.push(`スカウト返信 ${scoutReply.matched?.length ?? 0}件更新 / ${scoutReply.unmatched?.length ?? 0}件未紐付け`);
+        matchedIds.push(...(scoutReply.matched ?? []).map((r: any) => r.member_id));
+      }
+      if (scoutApp) {
+        parts.push(`スカウト応募 ${scoutApp.matched?.length ?? 0}件更新 / ${scoutApp.unmatched?.length ?? 0}件未紐付け`);
+        matchedIds.push(...(scoutApp.matched ?? []).map((r: any) => r.member_id));
+      }
+      if (directApp) {
+        parts.push(`直接応募 ${directApp.appended ?? 0}件追加`);
+        // 直接応募は送信履歴に無いのが正常なので、送信した全員を削除対象に
+        const directSent = replies.filter(r => r.status === 'direct_application').map(r => r.member_id);
+        matchedIds.push(...directSent);
+      }
+
+      // 旧レスポンス形式（updated のみ）との後方互換
+      if (!scoutReply && !scoutApp && !directApp && typeof result?.updated === 'number') {
+        parts.push(`${result.updated}件更新`);
+      }
+
+      lines.push(`<b>${company}</b> (${replies.length}件送信): ${parts.join(' / ')}`);
     }
 
-    // 旧レスポンス形式（updated のみ）との後方互換
-    if (!scoutReply && !scoutApp && !directApp && typeof result?.updated === 'number') {
-      parts.push(`同期完了: ${result.updated}件更新`);
-      // 旧形式では matched情報がないので削除しない
-    }
+    statusEl.innerHTML = lines.join('<br>');
+    statusEl.style.color = anyError ? '#dc2626' : '#059669';
 
-    statusEl.innerHTML = parts.join('<br>');
-    statusEl.style.color = '#059669';
-
-    // 同期できたスレッドをローカルから削除
-    for (const memberId of matchedIds) {
-      await storage.removeConversation(memberId);
-    }
-    if (matchedIds.length > 0) {
-      await this.loadConversations();
-    }
+    // 同期が走ったら（エラーがあっても）ローカルの会話は全部クリア。
+    // unmatched を毎回持ち越さない設計。次回抽出時にジョブメドレーから取り直せばいい。
+    await storage.clearConversations();
+    await this.loadConversations();
   }
 
   /** 返信内容を簡易分類 */
