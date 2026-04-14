@@ -97,6 +97,33 @@ class _Stub:
         for v in values:
             rows.append(list(v))
 
+    def values_clear(self, sheet_name: str, range_spec: str):
+        """Clear cells in the given range. Supports 'A1:ZZ1' style row-1 ranges
+        used by ensure_sheet_exists to wipe trailing header junk."""
+        self.calls.append(("clear", {"sheet": sheet_name, "range": range_spec}))
+        # Parse "A1:ZZ1" -> start col idx, row, end col idx, row
+        start, _, end = range_spec.partition(":")
+
+        def _parse(ref: str) -> tuple[int, int]:
+            col_letter = "".join(c for c in ref if c.isalpha())
+            digits = "".join(c for c in ref if c.isdigit())
+            col_idx = 0
+            for c in col_letter:
+                col_idx = col_idx * 26 + (ord(c) - ord("A") + 1)
+            col_idx -= 1
+            return col_idx, int(digits) - 1
+
+        start_col, start_row = _parse(start)
+        end_col, end_row = _parse(end) if end else (start_col, start_row)
+        rows = self.sheets.get(sheet_name, [])
+        for r in range(start_row, min(end_row + 1, len(rows))):
+            row = rows[r]
+            for c in range(start_col, min(end_col + 1, len(row))):
+                row[c] = ""
+            # Trim trailing empties so downstream length checks stay sane
+            while row and row[-1] == "":
+                row.pop()
+
     def add_sheet(self, sheet_name: str):
         self.calls.append(("addSheet", {"sheet": sheet_name}))
         self.sheets[sheet_name] = []
@@ -151,6 +178,16 @@ def _make_stub_service(stub: _Stub):
         def append(self, spreadsheetId, range, valueInputOption, insertDataOption, body):
             sheet = range.split("!")[0].strip("'")
             return _ValuesAppend(sheet, body)
+
+        def clear(self, spreadsheetId, range):
+            sheet = range.split("!")[0].strip("'")
+            spec = range.split("!")[1]
+
+            class _Clear:
+                def execute(_self):
+                    stub.values_clear(sheet, spec)
+
+            return _Clear()
 
         def batchUpdate(self, spreadsheetId, body):
             return _ValuesBatchUpdate(body)
@@ -349,6 +386,48 @@ class TestEnsureSheetExistsNonDestructive:
         # type stays at index 0; only "version" is appended
         assert stub.sheets["テンプレート"][0] == ["type", "company", "body", "version"]
         assert stub.sheets["テンプレート"][1] == ["パート_初回", "ark", "本文"]
+
+    def test_clears_trailing_junk_when_initializing_empty_header(self, writer_with_stub):
+        """Sheet exists but row 1 is completely blank. ensure_sheet_exists
+        must wipe row 1 before writing so no stray cells outlive the write.
+        """
+        writer, stub = writer_with_stub
+        # Row 1 exists but is all-empty (e.g. manually cleared via Select All + Delete).
+        stub.sheets["テスト"] = [
+            ["", "", "", "", ""],
+        ]
+        writer.ensure_sheet_exists("テスト", ["a", "b", "c"])
+        assert stub.sheets["テスト"][0] == ["a", "b", "c"]
+        # Verify a clear-range call was made for row 1 before the write.
+        assert any(
+            kind == "clear" and "テスト" in call["sheet"] and call["range"].endswith("1:ZZ1")
+            for kind, call in stub.calls
+        )
+
+    def test_skips_write_when_header_has_duplicate_columns(self, writer_with_stub, caplog):
+        """If the existing header is already corrupted with duplicate column
+        names, auto-extending it would compound the problem. ensure_sheet_exists
+        must log a warning and skip.
+        """
+        import logging
+        writer, stub = writer_with_stub
+        # Pre-corrupted: 'company' appears twice
+        stub.sheets["テンプレート"] = [
+            ["company", "job_category", "type", "company", "version"],
+            ["ark", "nurse", "パート_初回", "", ""],
+        ]
+        before = [row[:] for row in stub.sheets["テンプレート"]]
+        with caplog.at_level(logging.WARNING):
+            writer.ensure_sheet_exists(
+                "テンプレート", ["company", "job_category", "type", "body", "version"]
+            )
+        # No modification: body was NOT appended
+        assert stub.sheets["テンプレート"] == before
+        # Warning surfaced to operator
+        assert any(
+            "duplicate columns" in rec.message and "テンプレート" in rec.message
+            for rec in caplog.records
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -414,9 +414,11 @@ def load_quota_snapshots(year_month: str) -> dict[str, dict[str, Any]]:
 
 
 def upsert_quota_snapshot(company_id: str, remaining: int) -> dict[str, Any]:
-    """Upsert (company, current_year_month) with new remaining value.
+    """Upsert (company, current_year_month) with a new remaining value.
 
-    On the first snapshot of a month, also store quota_hint = remaining (= the plan quota at month start).
+    契約枠（monthly_quota）は `プロフィール` シートで会社属性として管理するので、
+    ここでは残数（remaining）と取得時刻だけを記録する。
+    `quota_hint` カラムは後方互換のため空文字で埋める（読み出し側は参照しない）。
     """
     _ensure_quota_sheet()
     year_month = current_year_month()
@@ -431,23 +433,16 @@ def upsert_quota_snapshot(company_id: str, remaining: int) -> dict[str, Any]:
     col = {h.strip(): i for i, h in enumerate(headers)}
     c_idx = col.get("company", 0)
     ym_idx = col.get("year_month", 1)
-    qh_idx = col.get("quota_hint", 4)
 
     existing_row_idx = None
-    existing_quota_hint = ""
     for i, row in enumerate(rows[1:], start=2):
         if len(row) <= max(c_idx, ym_idx):
             continue
         if row[c_idx].strip() == company_id and row[ym_idx].strip() == year_month:
             existing_row_idx = i
-            if qh_idx < len(row):
-                existing_quota_hint = row[qh_idx].strip()
             break
 
-    # Quota hint policy: keep existing if set; otherwise initialise from this remaining
-    quota_hint_value = existing_quota_hint or str(remaining)
-
-    new_row = [company_id, year_month, snapshot_at, str(remaining), quota_hint_value]
+    new_row = [company_id, year_month, snapshot_at, str(remaining), ""]
     if existing_row_idx is not None:
         sheets_writer.update_cells_by_name(
             QUOTA_SHEET,
@@ -457,23 +452,21 @@ def upsert_quota_snapshot(company_id: str, remaining: int) -> dict[str, Any]:
                 "year_month": year_month,
                 "snapshot_at": snapshot_at,
                 "remaining": str(remaining),
-                "quota_hint": quota_hint_value,
+                "quota_hint": "",
             },
             actor="upsert_quota_snapshot",
         )
     else:
         sheets_writer.append_row(QUOTA_SHEET, new_row)
 
-    # Always append to the immutable history sheet so we can chart the
-    # remaining-count trajectory later. Failures are non-fatal — if the
-    # history append breaks, the upsert above is still authoritative.
+    # Append-only 履歴シートにも残す（残数推移を後から追えるように）
     try:
         append_quota_history(
             company_id=company_id,
             year_month=year_month,
             snapshot_at=snapshot_at,
             remaining=remaining,
-            quota_hint=int(quota_hint_value) if quota_hint_value else None,
+            quota_hint=None,
             source="extension",
         )
     except Exception as e:
@@ -484,7 +477,6 @@ def upsert_quota_snapshot(company_id: str, remaining: int) -> dict[str, Any]:
         "year_month": year_month,
         "snapshot_at": snapshot_at,
         "remaining": remaining,
-        "quota_hint": int(quota_hint_value) if quota_hint_value else None,
     }
 
 

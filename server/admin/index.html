@@ -2300,7 +2300,6 @@ window.icon = function(name, cls='icon-sm') {
       <button class="btn btn-secondary btn-sm" id="dashNextMonth">翌月 <svg class="icon icon-sm"><use href="#i-chevron-right"/></svg></button>
       <span style="flex:1"></span>
       <button class="btn btn-secondary btn-sm" id="dashRefresh"><svg class="icon icon-sm"><use href="#i-refresh"/></svg> 再読込</button>
-      <button class="btn btn-primary btn-sm" id="dashEditTargets"><svg class="icon icon-sm"><use href="#i-target"/></svg> 目標を編集</button>
     </div>
     <div id="dashboardBody">
       <div class="loading"><div class="spinner"></div></div>
@@ -2326,8 +2325,10 @@ window.icon = function(name, cls='icon-sm') {
       <div class="analysis-panel" style="position:relative;">
         <div class="analysis-panel-header">
           <h3>テンプレート編集</h3>
+          <span id="templateVersionBadge" style="font-size:11px;color:var(--c-text-muted);font-weight:500;"></span>
           <span style="font-size:11px;color:var(--c-text-muted);font-weight:500;">テキスト選択 → ツール表示</span>
-          <button class="btn btn-secondary btn-sm" style="margin-left:auto;font-size:11px;" onclick="openExpandFromCurrentTemplate()" title="このテンプレートを他のテンプレートに展開"><svg class="icon icon-sm"><use href="#i-share"/></svg> 展開</button>
+          <button class="btn btn-secondary btn-sm" style="margin-left:auto;font-size:11px;" onclick="openTemplateHistory()" title="このテンプレートの変更履歴を表示・復元"><svg class="icon icon-sm"><use href="#i-file-text"/></svg> 履歴</button>
+          <button class="btn btn-secondary btn-sm" style="font-size:11px;" onclick="openExpandFromCurrentTemplate()" title="このテンプレートを他のテンプレートに展開"><svg class="icon icon-sm"><use href="#i-share"/></svg> 展開</button>
         </div>
         <div class="ann-toolbar hidden" id="annToolbar">
           <button class="ann-btn" onclick="applyStrikethrough()" title="取り消し線"><svg class="icon icon-sm"><use href="#i-x"/></svg> 削除</button>
@@ -3321,6 +3322,8 @@ const FIELD_LABELS = {
   status: 'ステータス',
   detail: '詳細',
   personalized_text_preview: 'パーソナライズ文',
+  detection_keywords: '検出キーワード',
+  monthly_quota: '月次契約枠',
 };
 
 // Pattern type color map (by base type)
@@ -4756,33 +4759,18 @@ function renderDashboardTable() {
     const remaining = c.remaining;
     const used = c.used;
     const target = c.target;
-    const quota = c.quota_hint;
 
-    // Progress: prefer target as denominator, fall back to quota_hint
+    // Progress: 残数 / 目標（契約枠）。月初100% → 使うほど減る
     let progressPct = null;
     let denomLabel = '';
-    if (target && used != null) {
-      progressPct = Math.min(100, Math.round((used / target) * 100));
-      denomLabel = `${used} / ${target}`;
-    } else if (quota != null && used != null) {
-      progressPct = Math.min(100, Math.round((used / quota) * 100));
-      denomLabel = `${used} / ${quota}`;
-    } else if (target && c.tool_sent_total != null) {
-      progressPct = Math.min(100, Math.round((c.tool_sent_total / target) * 100));
-      denomLabel = `${c.tool_sent_total} / ${target}（ツール）`;
+    if (target != null && target > 0 && remaining != null) {
+      progressPct = Math.min(100, Math.round((remaining / target) * 100));
+      denomLabel = `${remaining} / ${target}`;
     }
 
     const progressHtml = progressPct != null
-      ? `<div class="dash-progress"><div class="dash-progress-bar${progressPct >= 100 ? ' over' : ''}" style="width:${progressPct}%"></div></div><div class="dash-progress-label">${denomLabel}（${progressPct}%）</div>`
+      ? `<div class="dash-progress"><div class="dash-progress-bar" style="width:${progressPct}%"></div></div><div class="dash-progress-label">${denomLabel}（${progressPct}%）</div>`
       : `<div class="dash-progress-label">—</div>`;
-
-    const trendMax = Math.max(1, ...c.trend.map(t => t.tool_sent || 0));
-    const trendHtml = `<div class="dash-trend" title="${c.trend.map(t => `${t.year_month}: ${t.tool_sent}`).join(' / ')}">${
-      c.trend.map(t => {
-        const h = Math.max(2, Math.round((t.tool_sent / trendMax) * 22));
-        return `<div class="dash-trend-bar" style="height:${h}px"></div>`;
-      }).join('')
-    }</div>`;
 
     // Never fetched = neutral (gray), 24-48h = yellow warning, 48h+ = red critical
     const neverFetched = !c.snapshot_at;
@@ -4800,14 +4788,12 @@ function renderDashboardTable() {
       <tr class="${expanded ? 'expanded ' : ''}${rowStaleClass}" data-company="${escHtml(c.company_id)}" onclick="toggleDashRow('${escHtml(c.company_id)}')">
         <td><strong>${escHtml(c.company_name)}</strong><div style="font-size:11px;color:var(--c-text-muted)">${escHtml(c.company_id)}</div></td>
         <td class="dashboard-num">${remaining != null ? remaining : '—'}</td>
-        <td class="dashboard-num ${used == null ? 'muted' : ''}">${used != null ? used : '—'}</td>
         <td class="dashboard-num ${target == null ? 'muted' : ''}">${target != null ? target : '—'}</td>
+        <td class="dashboard-num ${used == null ? 'muted' : ''}">${used != null ? used : '—'}</td>
         <td class="dash-progress-cell">${progressHtml}</td>
-        <td>${trendHtml}</td>
-        <td class="dashboard-num ${c.tool_sent_total ? '' : 'muted'}">${c.tool_sent_total || 0}</td>
         <td>${stalenessLabel}</td>
       </tr>
-      ${expanded ? `<tr class="dash-detail-row"><td colspan="8"><div class="dash-detail-inner" id="dash-detail-${escHtml(c.company_id)}"><div class="loading"><div class="spinner"></div></div></div></td></tr>` : ''}
+      ${expanded ? `<tr class="dash-detail-row"><td colspan="6"><div class="dash-detail-inner" id="dash-detail-${escHtml(c.company_id)}"><div class="loading"><div class="spinner"></div></div></div></td></tr>` : ''}
     `;
   }).join('');
 
@@ -4838,11 +4824,9 @@ function renderDashboardTable() {
         <tr>
           <th>会社</th>
           <th style="text-align:right">残数</th>
-          <th style="text-align:right">使用</th>
           <th style="text-align:right">目標</th>
+          <th style="text-align:right">使用</th>
           <th>進捗</th>
-          <th>推移（直近6ヶ月）</th>
-          <th style="text-align:right">ツール送信</th>
           <th>最終更新</th>
         </tr>
       </thead>
@@ -4850,10 +4834,11 @@ function renderDashboardTable() {
     </table>
     <p style="font-size:11px;color:var(--c-text-muted);margin-top:12px;">
       ・<strong>残数</strong>: ジョブメドレー画面の「今月のスカウト残数」を Chrome 拡張がスクレイプして送信した値。<br>
-      ・<strong>使用</strong>: 月初残数 − 現在残数（手動送信込み）。<br>
-      ・<strong>ツール送信</strong>: 拡張経由で送信した数（参考値）。<br>
+      ・<strong>目標</strong>: 会社ごとの月次契約枠。管理画面のプロフィール編集から設定します。<br>
+      ・<strong>使用</strong>: 目標 − 残数（手動送信含む当月送信数）。<br>
+      ・<strong>進捗</strong>: 残数 / 目標。月初100% → 使うほど減ります。<br>
       ・行をクリックすると求人別・テンプレート別の内訳を表示します。<br>
-      ・行の黄色 = 24時間以上未更新、赤 = 48時間以上未更新。残数が古いと「使用」「進捗」も実態とズレます。
+      ・行の黄色 = 24時間以上未更新、赤 = 48時間以上未更新。
     </p>
     <style>
       /* Row states: unfetched (neutral) / stale (24-48h) / very-stale (48h+) */
@@ -5764,12 +5749,6 @@ async function loadDashCompanyDetail(companyId) {
       api('GET', `/api/v1/admin/quota_history?company=${encodeURIComponent(companyId)}&year_month=${_dashYearMonth}`).catch(() => ({items: []})),
     ]);
     _dashCompanyDetails[companyId] = data;
-    const company = _dashData.companies.find(c => c.company_id === companyId);
-    const byCategory = company ? company.by_category || {} : {};
-
-    const catItems = Object.entries(byCategory).map(([k, v]) =>
-      `<li><span class="label">${escHtml(k)}</span><span class="count">${v}</span></li>`
-    ).join('') || '<div class="dash-detail-empty">データなし</div>';
 
     const offerItems = (data.by_job_offer || []).map(o =>
       `<li><span class="label">${escHtml(o.label || `${o.job_category_display || o.job_category} ${o.template_type}`)}</span><span class="count">${o.count}</span></li>`
@@ -5785,10 +5764,6 @@ async function loadDashCompanyDetail(companyId) {
       <div class="dash-detail-block" style="grid-column:1/-1;">
         <h4>残数の推移</h4>
         ${historySvg}
-      </div>
-      <div class="dash-detail-block">
-        <h4>職種カテゴリ別</h4>
-        <ul class="dash-detail-list">${catItems}</ul>
       </div>
       <div class="dash-detail-block">
         <h4>求人別</h4>
@@ -5839,56 +5814,13 @@ function renderQuotaHistorySvg(items) {
   `;
 }
 
-async function openTargetEditor() {
-  if (!_dashData) return;
-  const ym = _dashYearMonth;
-  const rows = _dashData.companies.map(c => `
-    <tr>
-      <td>${escHtml(c.company_name)}<div style="font-size:11px;color:var(--c-text-muted)">${escHtml(c.company_id)}</div></td>
-      <td><input type="number" min="0" step="10" value="${c.target != null ? c.target : ''}" data-company="${escHtml(c.company_id)}" placeholder="未設定"></td>
-    </tr>
-  `).join('');
-  document.getElementById('modalTitle').textContent = `${ym} の月次目標を編集`;
-  document.getElementById('modalBody').innerHTML = `
-    <p style="font-size:12px;color:var(--c-text-muted);margin:0 0 12px;">空欄にすると未設定として扱われます（ただし保存はされません）。</p>
-    <table class="dash-target-table">
-      <thead><tr><th>会社</th><th style="text-align:right">目標通数</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
-  const saveBtn = document.getElementById('modalSave');
-  saveBtn.textContent = '保存';
-  saveBtn.onclick = async () => {
-    const inputs = document.querySelectorAll('#modalBody input[type=number]');
-    const targets = [];
-    for (const inp of inputs) {
-      const v = inp.value.trim();
-      if (!v) continue;
-      targets.push({ company_id: inp.dataset.company, target_count: parseInt(v, 10) });
-    }
-    saveBtn.disabled = true;
-    try {
-      await api('POST', '/api/v1/admin/send_targets', { year_month: ym, targets });
-      closeModal();
-      await loadDashboardView();
-    } catch (e) {
-      alert('保存に失敗: ' + (e.message || String(e)));
-    } finally {
-      saveBtn.disabled = false;
-    }
-  };
-  document.getElementById('modalOverlay').classList.add('open');
-}
-
 document.addEventListener('DOMContentLoaded', () => {
   const prevBtn = document.getElementById('dashPrevMonth');
   const nextBtn = document.getElementById('dashNextMonth');
   const refreshBtn = document.getElementById('dashRefresh');
-  const editBtn = document.getElementById('dashEditTargets');
   if (prevBtn) prevBtn.addEventListener('click', () => { _dashYearMonth = _shiftYm(_dashYearMonth || _ymNow(), -1); _dashExpanded.clear(); loadDashboardView(); });
   if (nextBtn) nextBtn.addEventListener('click', () => { _dashYearMonth = _shiftYm(_dashYearMonth || _ymNow(), 1); _dashExpanded.clear(); loadDashboardView(); });
   if (refreshBtn) refreshBtn.addEventListener('click', () => loadDashboardView());
-  if (editBtn) editBtn.addEventListener('click', () => openTargetEditor());
 });
 
 function renderHelpView() {
@@ -6032,6 +5964,8 @@ ${helpSection('table-profiles', 'プロフィール', `
 <tr><td>会社</td><td>会社ID</td></tr>
 <tr><td>プロフィール内容</td><td>会社の特色・教育体制・福利厚生などの情報</td></tr>
 <tr><td>検出キーワード</td><td>Chrome拡張の会社自動検出に使うキーワード（カンマ区切り）</td></tr>
+<tr><td>表示名</td><td>管理画面・拡張のドロップダウンに出す会社名</td></tr>
+<tr><td>月次契約枠</td><td>ジョブメドレー契約の月次スカウト上限通数。通数タブの「目標」として使用</td></tr>
 </table>
 `)}
 
@@ -6164,6 +6098,142 @@ function loadTemplateIntoEditor(index) {
     .replace(/\\n/g, '\n')
     .replace(/\n/g, '<br>');
   editor.innerHTML = escaped;
+  const badge = document.getElementById('templateVersionBadge');
+  if (badge) {
+    badge.textContent = t.version ? `v${t.version}（最新）` : '';
+  }
+}
+
+// ===== テンプレート変更履歴モーダル =====
+async function openTemplateHistory() {
+  if (analysisCurrentRowIndex === null) {
+    toast('テンプレートを選択してください', true);
+    return;
+  }
+  let data;
+  try {
+    data = await api('GET', `/api/v1/admin/templates/${analysisCurrentRowIndex}/history`);
+  } catch (e) {
+    toast('履歴取得エラー: ' + e.message, true);
+    return;
+  }
+  renderTemplateHistoryModal(data);
+}
+
+function renderTemplateHistoryModal(data) {
+  const current = data.current || {};
+  const history = data.history || [];
+  const curLabel = `${labelForCategory(current.job_category || '') || current.job_category || '共通'} / ${current.type || ''}`;
+
+  const rows = [];
+  // 現在版
+  rows.push(`
+    <tr style="background:#ecfdf5;">
+      <td style="padding:8px 10px;font-weight:600;">v${escHtml(current.version || '1')} <span style="background:#10b981;color:#fff;padding:1px 6px;border-radius:10px;font-size:10px;">最新</span></td>
+      <td style="padding:8px 10px;color:var(--c-text-muted);">—</td>
+      <td style="padding:8px 10px;color:var(--c-text-muted);">現在のテンプレート</td>
+      <td style="padding:8px 10px;"><button class="btn btn-sm btn-secondary" onclick="previewHistoryBody('current')">プレビュー</button></td>
+    </tr>
+  `);
+  // 履歴（新しい順）
+  history.forEach((h, i) => {
+    const ts = (h.timestamp || '').replace('T', ' ').slice(0, 16);
+    const reason = h.reason || '';
+    rows.push(`
+      <tr data-hist-idx="${i}">
+        <td style="padding:8px 10px;font-weight:600;">v${escHtml(h.old_version || '')}</td>
+        <td style="padding:8px 10px;font-size:11px;color:var(--c-text-muted);">${escHtml(ts)}</td>
+        <td style="padding:8px 10px;font-size:12px;">${escHtml(reason)}</td>
+        <td style="padding:8px 10px;white-space:nowrap;">
+          <button class="btn btn-sm btn-secondary" onclick="previewHistoryBody(${i})">プレビュー</button>
+          <button class="btn btn-sm btn-primary" onclick="revertTemplate('${escHtml(h.old_version || '')}', ${analysisCurrentRowIndex})">このバージョンに戻す</button>
+        </td>
+      </tr>
+    `);
+  });
+  const emptyMsg = history.length === 0 ? '<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--c-text-muted);">変更履歴はありません</td></tr>' : '';
+
+  // 履歴データをwindowに退避（プレビュー用）
+  window._templateHistoryData = data;
+
+  const modalHtml = `
+    <div id="templateHistoryModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;" onclick="if(event.target===this)closeTemplateHistory()">
+      <div style="background:#fff;border-radius:8px;width:min(900px,95vw);max-height:90vh;display:flex;flex-direction:column;">
+        <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:12px;">
+          <h3 style="margin:0;font-size:16px;">📜 テンプレート変更履歴</h3>
+          <span style="color:var(--c-text-muted);font-size:12px;">${escHtml(current.company || '')} / ${escHtml(curLabel)}</span>
+          <button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="closeTemplateHistory()">閉じる</button>
+        </div>
+        <div style="padding:16px 20px;overflow:auto;flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div style="overflow:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead>
+                <tr style="background:#f9fafb;border-bottom:2px solid #e5e7eb;">
+                  <th style="padding:8px 10px;text-align:left;">バージョン</th>
+                  <th style="padding:8px 10px;text-align:left;">日時</th>
+                  <th style="padding:8px 10px;text-align:left;">理由</th>
+                  <th style="padding:8px 10px;text-align:left;">操作</th>
+                </tr>
+              </thead>
+              <tbody>${rows.join('')}${emptyMsg}</tbody>
+            </table>
+          </div>
+          <div style="border-left:1px solid #e5e7eb;padding-left:16px;overflow:auto;">
+            <div style="font-size:12px;font-weight:600;color:var(--c-text-muted);margin-bottom:8px;" id="historyPreviewTitle">プレビュー（クリックで表示）</div>
+            <pre id="historyPreviewBody" style="white-space:pre-wrap;font-family:inherit;font-size:12px;color:#374151;background:#f9fafb;padding:12px;border-radius:4px;margin:0;min-height:200px;"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  const existing = document.getElementById('templateHistoryModal');
+  if (existing) existing.remove();
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+function closeTemplateHistory() {
+  const m = document.getElementById('templateHistoryModal');
+  if (m) m.remove();
+}
+
+function previewHistoryBody(idx) {
+  const data = window._templateHistoryData;
+  if (!data) return;
+  const title = document.getElementById('historyPreviewTitle');
+  const body = document.getElementById('historyPreviewBody');
+  if (idx === 'current') {
+    title.textContent = `v${data.current.version || '?'}（最新）プレビュー`;
+    body.textContent = data.current.body || '';
+  } else {
+    const h = data.history[idx];
+    if (!h) return;
+    title.textContent = `v${h.old_version || '?'} プレビュー（${(h.timestamp || '').replace('T', ' ').slice(0, 16)}）`;
+    body.textContent = h.old_body || '';
+  }
+}
+
+async function revertTemplate(targetVersion, rowIndex) {
+  if (!targetVersion || !rowIndex) return;
+  const userReason = prompt(`v${targetVersion} に戻します。変更理由（任意）:`, '');
+  if (userReason === null) return; // キャンセル
+  try {
+    const res = await api('POST', `/api/v1/admin/templates/${rowIndex}/revert`, {
+      target_version: targetVersion,
+      reason: userReason || '',
+    });
+    toast(`v${res.old_version} → v${res.new_version} に復元しました`);
+    closeTemplateHistory();
+    // エディタ再読込
+    const t = analysisTemplates.find(x => x._row_index === rowIndex);
+    if (t) {
+      t.body = res.body;
+      t.version = res.new_version;
+      const idx = analysisTemplates.indexOf(t);
+      loadTemplateIntoEditor(idx);
+    }
+  } catch (e) {
+    toast('復元エラー: ' + e.message, true);
+  }
 }
 
 function initAnnotationToolbar() {

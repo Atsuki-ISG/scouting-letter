@@ -91,18 +91,45 @@ class SheetsWriter:
             return []
         return [h.strip() for h in rows[0]]
 
+    # Width of the header-row clear range used when writing headers.
+    # Wider than any current schema to guarantee no trailing-cell junk survives.
+    _HEADER_CLEAR_RANGE = "A1:ZZ1"
+
+    def _clear_header_tail(self, sheet_name: str, start_col_idx: int) -> None:
+        """Clear row 1 cells from `start_col_idx` out to column ZZ.
+
+        Used before any header write to guarantee no stale cells remain to
+        the right of the new header. Bug history: an early destructive
+        version of ensure_sheet_exists wrote new headers via
+        `values.update(range='A1', ...)` which does NOT clear cells beyond
+        the written range — so when the schema shrunk or was rewritten,
+        trailing junk accumulated silently until noticed via the admin UI.
+        """
+        service = self._get_service()
+        start_letter = _column_letter(start_col_idx)
+        service.spreadsheets().values().clear(
+            spreadsheetId=SPREADSHEET_ID,
+            range=f"'{sheet_name}'!{start_letter}1:ZZ1",
+        ).execute()
+
     def ensure_sheet_exists(self, sheet_name: str, headers: list[str] | None = None) -> None:
         """Create a sheet if it doesn't exist. ADD any missing columns to the
         header row, but never reorder or remove existing columns.
 
         Safety guarantees:
         - If the sheet doesn't exist, it's created with `headers` exactly.
-        - If the sheet exists with no header row, `headers` is written as-is.
+        - If the sheet exists with no header row, `headers` is written as-is
+          (after a wide clear of row 1 to remove any trailing junk).
         - If the sheet exists with a header row that already contains all of
           `headers`, nothing is changed.
         - If `headers` contains columns the sheet is missing, those new
-          columns are APPENDED to the right of the existing header row.
+          columns are APPENDED to the right of the existing header row
+          (after clearing stale cells to the right).
         - Existing columns are NEVER renamed, reordered, or removed.
+        - If the existing header contains duplicate column names (a sign of
+          prior corruption), the method logs a warning and skips any write.
+          Auto-extending a corrupted header would only compound the issue;
+          a human needs to clean it up first.
         """
         service = self._get_service()
         meta = service.spreadsheets().get(
@@ -135,8 +162,28 @@ class SheetsWriter:
             logger.warning(f"Failed to read headers for '{sheet_name}': {e}")
             return
 
-        if not current:
-            # Empty sheet — write headers as-is
+        # Defensive: if the existing header is already corrupted (duplicate
+        # column names), don't write anything. Auto-append would silently
+        # make it worse. Surface it loudly so a human can fix it.
+        # Empty cells are ignored — they're just trailing gaps, not duplicates.
+        non_empty = [h for h in current if h]
+        if len(non_empty) != len(set(non_empty)):
+            from collections import Counter
+            dupes = sorted(h for h, n in Counter(non_empty).items() if n > 1)
+            logger.warning(
+                f"Header of '{sheet_name}' contains duplicate columns {dupes}; "
+                f"skipping ensure_sheet_exists to avoid compounding corruption. "
+                f"Fix the header manually, then retry."
+            )
+            return
+
+        if not non_empty:
+            # Header row is effectively empty (may still have stray cells or
+            # whitespace-only cells). Wipe row 1 first, then write headers
+            # cleanly. This defends against sheets whose header was cleared
+            # via keyboard Delete (which blanks cells but leaves them allocated)
+            # rather than via a clear-range operation.
+            self._clear_header_tail(sheet_name, 0)
             service.spreadsheets().values().update(
                 spreadsheetId=SPREADSHEET_ID,
                 range=f"'{sheet_name}'!A1",
@@ -152,7 +199,9 @@ class SheetsWriter:
             return  # nothing to do, sheet already has everything
 
         # Append missing columns to the right of the existing header.
-        new_header = current + missing
+        # Clear any stale cells beyond the current header first so the
+        # resulting header is exactly `current + missing` with no junk.
+        self._clear_header_tail(sheet_name, len(current))
         start_letter = _column_letter(len(current))
         service.spreadsheets().values().update(
             spreadsheetId=SPREADSHEET_ID,

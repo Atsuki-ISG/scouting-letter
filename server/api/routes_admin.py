@@ -34,7 +34,7 @@ COLUMNS = {
     "job_offers": ["company", "job_category", "id", "name", "label", "employment_type", "active"],
     "validation": ["company", "age_min", "age_max", "qualification_rules", "category_exclusions", "category_config"],
     "logs": ["timestamp", "company", "member_id", "job_category", "template_type", "generation_path", "pattern_type", "status", "detail", "personalized_text_preview", "prompt_tokens", "output_tokens", "estimated_cost", "failure_stage", "failure_missing_fields", "failure_searched_text", "failure_company_categories", "failure_human_message"],
-    "profiles": ["company", "content", "detection_keywords"],
+    "profiles": ["company", "content", "detection_keywords", "display_name", "monthly_quota"],
     "job_category_keywords": ["company", "job_category", "keyword", "source_fields", "weight", "enabled", "added_at", "added_by", "note"],
     "knowledge_pool": ["id", "company", "category", "rule", "source", "status", "created_at"],
 }
@@ -385,27 +385,23 @@ async def send_dashboard(
     from api import _dashboard_helpers as dh
 
     ym = year_month or dh.current_year_month()
-    targets = dh.load_targets(ym)
     snapshots = dh.load_quota_snapshots(ym)
+    quotas = sheets_client.get_monthly_quotas()
 
     companies = []
     for cid, name in dh.list_companies():
-        summary = dh.summarize_company_month(cid, ym)
         snap = snapshots.get(cid, {}) or {}
         remaining = snap.get("remaining")
-        quota_hint = snap.get("quota_hint")
-        used = (quota_hint - remaining) if (remaining is not None and quota_hint is not None) else None
+        target = quotas.get(cid)  # 契約枠 = 目標
+        # 使用 = 契約枠 - 残数。契約枠未設定 or 残数未取得なら None
+        used = (target - remaining) if (remaining is not None and target is not None) else None
         companies.append({
             "company_id": cid,
             "company_name": name,
             "remaining": remaining,
-            "quota_hint": quota_hint,
+            "target": target,
             "used": used,
             "snapshot_at": snap.get("snapshot_at", ""),
-            "target": targets.get(cid),
-            "tool_sent_total": summary["total"],
-            "by_category": summary["by_category"],
-            "trend": dh.trend_company(cid, ym, months=6),
         })
 
     return {
@@ -457,30 +453,6 @@ async def post_scout_quota_snapshot(
     return dh.upsert_quota_snapshot(company_id, remaining)
 
 
-
-
-@router.get("/send_targets")
-async def get_send_targets(
-    year_month: Optional[str] = None,
-    operator: dict = Depends(verify_api_key),
-):
-    from api import _dashboard_helpers as dh
-    ym = year_month or dh.current_year_month()
-    return {"year_month": ym, "targets": dh.load_targets(ym)}
-
-
-@router.post("/send_targets")
-async def post_send_targets(
-    data: dict,
-    operator: dict = Depends(verify_api_key),
-):
-    from api import _dashboard_helpers as dh
-    ym = str(data.get("year_month", "")).strip() or dh.current_year_month()
-    targets = data.get("targets") or []
-    if not isinstance(targets, list):
-        raise HTTPException(400, "targets must be a list")
-    dh.upsert_targets(ym, targets)
-    return {"year_month": ym, "targets": dh.load_targets(ym)}
 
 
 # Specific routes — must be defined BEFORE the /{sheet_slug} catch-all
@@ -1010,6 +982,153 @@ async def list_improvement_proposals(
     return {"items": items}
 
 
+@router.get("/templates/{row_index}/history")
+async def get_template_history(row_index: int, operator=Depends(verify_api_key)):
+    """指定行のテンプレートの変更履歴を返す。
+
+    - current: 現在の {version, body, company, job_category, type}
+    - history: 新しい順の変更履歴 [{timestamp, old_version, new_version, reason, old_body}, ...]
+
+    履歴は "テンプレート変更履歴" シートから company + job_category + type
+    で絞り込んで返す（row_index が変わっても追跡できるよう key ベースで突合）。
+
+    NOTE: 必ず `@router.get("/{sheet_slug}")` より前に登録すること。
+    """
+    all_rows = sheets_writer.get_all_rows("テンプレート")
+    if not all_rows:
+        raise HTTPException(404, "テンプレートシートが空です")
+    if row_index < 2 or row_index > len(all_rows):
+        raise HTTPException(404, f"Row {row_index} not found")
+
+    headers = [h.strip() for h in all_rows[0]]
+    row = list(all_rows[row_index - 1])
+    row += [""] * (len(headers) - len(row))
+    current = {headers[i]: row[i] for i in range(len(headers))}
+    # Decode escaped newlines for UI display
+    current_body = (current.get("body", "") or "").replace("\\n", "\n")
+
+    company = (current.get("company", "") or "").strip()
+    job_category = (current.get("job_category", "") or "").strip()
+    template_type = (current.get("type", "") or "").strip()
+
+    history: list[dict] = []
+    try:
+        hist_rows = sheets_writer.get_all_rows("テンプレート変更履歴")
+    except Exception:
+        hist_rows = []
+
+    if hist_rows and len(hist_rows) >= 2:
+        h_headers = [h.strip() for h in hist_rows[0]]
+        for hr in hist_rows[1:]:
+            hr = list(hr) + [""] * (len(h_headers) - len(hr))
+            item = {h_headers[i]: hr[i] for i in range(len(h_headers))}
+            if (item.get("company", "") or "").strip() != company:
+                continue
+            if (item.get("job_category", "") or "").strip() != job_category:
+                continue
+            if (item.get("type", "") or "").strip() != template_type:
+                continue
+            item["old_body"] = (item.get("old_body", "") or "").replace("\\n", "\n")
+            history.append(item)
+    # Newest first
+    history.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+
+    return {
+        "current": {
+            "row_index": row_index,
+            "company": company,
+            "job_category": job_category,
+            "type": template_type,
+            "version": current.get("version", ""),
+            "body": current_body,
+        },
+        "history": history,
+    }
+
+
+@router.post("/templates/{row_index}/revert")
+async def revert_template(row_index: int, data: dict, operator=Depends(verify_api_key)):
+    """テンプレートを過去の版に戻す。
+
+    リクエスト body: {"target_version": "2", "reason": "任意"}
+
+    指定バージョンの old_body を履歴から取得し、`_bump_template_body` で
+    新しいバージョンとして保存する（履歴は破壊せず追記方式）。
+
+    NOTE: 必ず `@router.get("/{sheet_slug}")` より前に登録すること。
+    """
+    target_version = str(data.get("target_version", "") or "").strip()
+    if not target_version:
+        raise HTTPException(400, "target_version is required")
+    user_reason = (data.get("reason", "") or "").strip()
+
+    # Look up current template metadata to filter history
+    all_rows = sheets_writer.get_all_rows("テンプレート")
+    if not all_rows or row_index < 2 or row_index > len(all_rows):
+        raise HTTPException(404, f"Row {row_index} not found")
+    headers = [h.strip() for h in all_rows[0]]
+    row = list(all_rows[row_index - 1]) + [""] * (len(headers) - len(all_rows[row_index - 1]))
+    current = {headers[i]: row[i] for i in range(len(headers))}
+    company = (current.get("company", "") or "").strip()
+    job_category = (current.get("job_category", "") or "").strip()
+    template_type = (current.get("type", "") or "").strip()
+
+    # Find the history entry for the target version
+    hist_rows = sheets_writer.get_all_rows("テンプレート変更履歴")
+    if not hist_rows or len(hist_rows) < 2:
+        raise HTTPException(404, "履歴がありません")
+
+    h_headers = [h.strip() for h in hist_rows[0]]
+    matched: Optional[dict] = None
+    # Prefer the most recent history entry with old_version == target_version
+    # (so repeated reverts still find the correct snapshot)
+    candidates: list[dict] = []
+    for hr in hist_rows[1:]:
+        hr = list(hr) + [""] * (len(h_headers) - len(hr))
+        item = {h_headers[i]: hr[i] for i in range(len(h_headers))}
+        if (item.get("company", "") or "").strip() != company:
+            continue
+        if (item.get("job_category", "") or "").strip() != job_category:
+            continue
+        if (item.get("type", "") or "").strip() != template_type:
+            continue
+        if (item.get("old_version", "") or "").strip() != target_version:
+            continue
+        candidates.append(item)
+    if not candidates:
+        raise HTTPException(404, f"v{target_version} の履歴が見つかりません")
+    candidates.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    matched = candidates[0]
+
+    old_body = (matched.get("old_body", "") or "").replace("\\n", "\n")
+    if not old_body:
+        raise HTTPException(400, f"v{target_version} の本文が空です")
+
+    reason = f"v{target_version}に復元"
+    if user_reason:
+        reason = f"{reason}: {user_reason}"
+
+    try:
+        bump_result = _bump_template_body(
+            row_index=row_index,
+            new_body=old_body,
+            reason=reason,
+            actor="admin_ui_revert",
+        )
+    except ValueError as e:
+        raise HTTPException(500, f"復元エラー: {e}")
+
+    reload_status = _safe_reload()
+    return {
+        "status": bump_result["status"],
+        "old_version": bump_result["old_version"],
+        "new_version": bump_result["new_version"],
+        "restored_from": target_version,
+        "body": old_body,
+        **reload_status,
+    }
+
+
 @router.get("/{sheet_slug}")
 async def list_rows(sheet_slug: str, company: Optional[str] = None, operator=Depends(verify_api_key)):
     sheet_name = SHEET_MAP.get(sheet_slug)
@@ -1117,8 +1236,8 @@ async def init_company(data: dict, operator=Depends(verify_api_key)):
     total += 1
 
     # Profile: 1 empty row
-    # columns: company, content
-    sheets_writer.append_row("プロフィール", [company_id, ""])
+    # columns: company, content, detection_keywords, display_name, monthly_quota
+    sheets_writer.append_row("プロフィール", [company_id, "", "", "", ""])
     total += 1
 
     sheets_client.reload()
