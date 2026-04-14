@@ -214,6 +214,42 @@ def _build_generation_config(
     return config
 
 
+def _strip_thinking(text: str) -> str:
+    """Remove leaked thinking/reasoning blocks from Gemini output.
+
+    Gemini 3 / 2.5 models with thinking enabled sometimes leak their
+    internal reasoning (predominantly English) into the output text.
+    This function detects and removes such blocks by looking for
+    paragraphs that are predominantly ASCII (English reasoning).
+
+    The heuristic: a paragraph (separated by blank lines) that is >70%
+    ASCII letters and longer than 80 chars is almost certainly thinking
+    content, not Japanese scout text.
+    """
+    # Split into paragraphs (blank-line separated)
+    paragraphs = re.split(r"\n\s*\n", text)
+    kept: list[str] = []
+    for para in paragraphs:
+        stripped = para.strip()
+        if not stripped:
+            continue
+        # Count ASCII alphabetic characters vs total non-space chars
+        ascii_alpha = sum(1 for c in stripped if c.isascii() and c.isalpha())
+        total_chars = len(stripped.replace(" ", "").replace("\n", ""))
+        if total_chars == 0:
+            continue
+        ratio = ascii_alpha / total_chars
+        # If >50% ASCII alpha, it's thinking content (Japanese text has
+        # very few ASCII letters; even short English fragments stand out)
+        if ratio > 0.5 and total_chars > 20:
+            continue
+        # Also catch the "thoughtful" marker line
+        if stripped.lower().startswith("thoughtful"):
+            continue
+        kept.append(stripped)
+    return "\n\n".join(kept)
+
+
 def _strip_markdown(text: str) -> str:
     """Remove markdown formatting artifacts from generated text."""
     text = re.sub(r"```[\s\S]*?```", lambda m: m.group(0).strip("`").strip(), text)
@@ -303,7 +339,8 @@ async def generate_personalized_text(
     if not raw_text:
         raise ValueError("AI生成で空の応答が返されました")
 
-    text = _strip_markdown(raw_text)
+    text = _strip_thinking(raw_text)
+    text = _strip_markdown(text)
 
     if not text:
         raise ValueError("AI生成の結果が空です（マークダウン除去後）")
