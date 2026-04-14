@@ -324,29 +324,32 @@ tbody td {
 }
 
 tbody td .cell-text {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  display: block;
+  max-height: calc(1.6em * 2 + 2px); /* 2行分 */
   overflow: hidden;
+  white-space: pre-wrap;
   cursor: pointer;
   position: relative;
   word-break: break-word;
-  transition: -webkit-line-clamp 0.15s ease;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  transition: max-height 0.15s ease;
 }
 
 tbody td .cell-text.expanded {
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
-  display: block;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  padding-right: 4px;
+}
+
+tbody td .cell-text.clipped {
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
 }
 
 tbody td .cell-text.clipped::after {
   content: '';
-}
-
-tbody td .cell-text.clipped {
-  position: relative;
 }
 
 /* Show expand indicator on hover for clipped cells */
@@ -786,6 +789,9 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   color: var(--c-text-secondary);
   margin-bottom: 6px;
   line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .ai-pattern-card .features {
