@@ -1793,6 +1793,80 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(500, f"AI生成エラー: {str(e)}")
 
 
+@router.post("/purge_old_send_rows")
+async def purge_old_send_rows(data: dict, operator=Depends(verify_api_key)):
+    """指定日付より前の送信データ行を一括削除する（データクレンジング用）。
+
+    リクエスト: {sheet_name, before_date="YYYY-MM-DD", dry_run=true}
+    レスポンス: {status, deleted, sheet, sample_deleted}
+
+    日時列の先頭10文字を `before_date` と比較し、**before_date未満**の行を削除する。
+    before_date="2026-04-01" なら 2026-04-01 の行は残し、2026-03-31以前を削除。
+    """
+    sheet_name = data.get("sheet_name", "")
+    before_date = data.get("before_date", "")
+    dry_run = bool(data.get("dry_run", True))
+    if not sheet_name or not before_date:
+        raise HTTPException(400, "sheet_name and before_date required")
+    if len(before_date) != 10:
+        raise HTTPException(400, "before_date must be YYYY-MM-DD")
+
+    try:
+        rows = sheets_writer.get_all_rows(sheet_name)
+    except Exception as e:
+        raise HTTPException(404, f"sheet error: {e}")
+    if len(rows) < 2:
+        return {"status": "ok", "deleted": 0, "sheet": sheet_name}
+
+    headers = [h.strip() for h in rows[0]]
+    try:
+        c_date = headers.index("日時")
+    except ValueError:
+        raise HTTPException(400, "日時列が見つかりません")
+    try:
+        c_member = headers.index("会員番号")
+    except ValueError:
+        c_member = -1
+
+    # 1-based row_index を集める（ヘッダーは 1行目なので data は 2行目から）
+    targets: list[int] = []
+    sample: list[dict] = []
+    for i, row in enumerate(rows[1:], start=2):
+        if len(row) <= c_date:
+            continue
+        date = row[c_date][:10] if row[c_date] else ""
+        if not date:
+            continue  # 日付が無い行は安全のためスキップ
+        if date < before_date:
+            targets.append(i)
+            if len(sample) < 5:
+                sample.append({
+                    "row_index": i,
+                    "日時": row[c_date],
+                    "会員番号": row[c_member] if c_member >= 0 and len(row) > c_member else "",
+                })
+
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "would_delete": len(targets),
+            "sheet": sheet_name,
+            "before_date": before_date,
+            "sample": sample,
+        }
+
+    if not targets:
+        return {"status": "ok", "deleted": 0, "sheet": sheet_name}
+
+    sheets_writer.delete_rows_bulk(sheet_name, targets, actor="purge_old_send_rows")
+    return {
+        "status": "ok",
+        "deleted": len(targets),
+        "sheet": sheet_name,
+        "before_date": before_date,
+    }
+
+
 @router.post("/merge_send_sheets")
 async def merge_send_sheets(data: dict, operator=Depends(verify_api_key)):
     """source_sheet の全データ行を target_sheet に append する。
