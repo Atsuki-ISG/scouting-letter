@@ -1722,8 +1722,9 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(500, f"AI生成エラー: {str(e)}")
 
 
-@router.get("/audit_sync_replies")
-async def audit_sync_replies(limit: int = 50, operator=Depends(verify_api_key)):
+@router.post("/audit_sync_replies")
+async def audit_sync_replies(data: dict = None, operator=Depends(verify_api_key)):
+    limit = int((data or {}).get("limit", 50))
     """操作履歴から sync_replies の直近エントリを返す（診断用）。シート名を問わず。"""
     import json as _json
     try:
