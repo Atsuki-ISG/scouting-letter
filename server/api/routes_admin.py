@@ -61,6 +61,16 @@ def _normalize_body(value: str) -> str:
     return (value or "").replace("\r\n", "\n").replace("\\n", "\n")
 
 
+def _escape_body_for_sheets(value: str) -> str:
+    """Escape real newlines to literal \\n for Sheets storage.
+
+    The convention is that template body cells in Google Sheets use
+    literal two-character ``\\n`` sequences instead of real newlines.
+    The reader (sheets_client) converts them back on load.
+    """
+    return (value or "").replace("\r\n", "\\n").replace("\n", "\\n")
+
+
 def _bump_template_body(
     row_index: int,
     new_body: str,
@@ -168,10 +178,11 @@ def _bump_template_body(
 
     # Strict column mode: body and version MUST be present. Missing
     # columns raise so we never bump silently without a version record.
+    # Always escape real newlines to literal \n for Sheets storage.
     sheets_writer.update_cells_by_name(
         "テンプレート",
         row_index,
-        {"body": new_body, "version": new_version},
+        {"body": _escape_body_for_sheets(new_body), "version": new_version},
         actor=actor,
         strict_columns=["body", "version"],
     )
@@ -1034,6 +1045,12 @@ async def list_rows(sheet_slug: str, company: Optional[str] = None, operator=Dep
             continue
         if sheet_slug == "patterns" and pt_value == "QUAL":
             continue
+        # Normalize body/template_text: ensure real newlines are stored as
+        # literal \n so the admin UI's formatCellText() renders them as <br>.
+        for col in ("body", "template_text"):
+            if col in item and "\n" in item[col]:
+                item[col] = item[col].replace("\r\n", "\\n").replace("\n", "\\n")
+
         item["_row_index"] = i  # actual sheet row number
         data_rows.append(item)
 
@@ -2602,6 +2619,262 @@ async def decide_improvement_proposal(
     }
 
 
+# ---------------------------------------------------------------------------
+# Diagnosis system constants
+# ---------------------------------------------------------------------------
+
+DIAGNOSIS_HISTORY_SHEET = "診断履歴"
+DIAGNOSIS_HISTORY_HEADERS = [
+    "id", "created_at", "company", "template_type", "job_category",
+    "row_index", "gate1_score", "gate2_score", "gate3_score",
+    "weak_principles", "ai_smell_count", "priority_actions",
+    "improvement_targets_json", "actor",
+]
+
+VALID_KNOWLEDGE_CATEGORIES = {"tone", "expression", "profile_handling", "template_tip", "qualification"}
+
+
+@router.post("/diagnose_template")
+async def diagnose_template(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """スカウト文全体を good-scout-pro.md の知見で診断し、構造化された結果を返す。"""
+    import json as _json
+    import os
+    from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
+    from pipeline.ai_generator import generate_personalized_text
+    from config import GEMINI_PRO_MODEL
+
+    company = data.get("company", "")
+    template_type = data.get("template_type", "")
+    job_category = data.get("job_category", "")
+    requested_row_index = data.get("row_index")
+
+    if not company:
+        return {"status": "error", "detail": "company は必須です"}
+
+    # 1. Get template body
+    all_template_rows = sheets_writer.get_all_rows("テンプレート")
+    row_index = None
+    original_body = ""
+
+    if requested_row_index:
+        row_index = int(requested_row_index)
+        if 2 <= row_index <= len(all_template_rows):
+            row = all_template_rows[row_index - 1]
+            original_body = row[3].replace("\\n", "\n") if len(row) > 3 else ""
+            if not template_type and len(row) > 2:
+                template_type = row[2]
+            if not job_category and len(row) > 1:
+                job_category = row[1]
+        else:
+            return {"status": "error", "detail": f"Row {row_index} not found"}
+    else:
+        for idx, row in enumerate(all_template_rows[1:], start=2):
+            if len(row) >= 4 and row[0] == company and row[2] == template_type:
+                if not job_category or row[1] == job_category:
+                    row_index = idx
+                    original_body = row[3].replace("\\n", "\n") if len(row) > 3 else ""
+                    break
+
+    if row_index is None or not original_body:
+        return {"status": "error", "detail": "テンプレートが見つかりません"}
+
+    # 2. Load company profile
+    company_profile = sheets_client.get_company_profile(company)
+
+    # 3. Get send data stats + full_text samples
+    from datetime import datetime, timedelta, timezone
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST)
+    date_from = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+
+    stats_text = ""
+    full_text_samples = []
+    sheet_name = _send_data_sheet_name(company)
+    try:
+        all_rows = sheets_writer.get_all_rows(sheet_name)
+        if len(all_rows) >= 2:
+            headers = all_rows[0]
+            col_map = {h: i for i, h in enumerate(headers)}
+            total = 0
+            replied = 0
+            full_text_col = col_map.get("全文")
+            type_col = col_map.get("テンプレート種別")
+
+            for row in all_rows[1:]:
+                row_date = row[col_map.get("日時", 0)][:10] if col_map.get("日時") is not None and len(row) > col_map["日時"] and row[col_map["日時"]] else ""
+                if row_date >= date_from:
+                    total += 1
+                    if col_map.get("返信") is not None and len(row) > col_map["返信"] and row[col_map["返信"]] == "有":
+                        replied += 1
+                    # Collect full_text samples for matching template type
+                    if (full_text_col is not None
+                            and len(row) > full_text_col
+                            and row[full_text_col]
+                            and (not type_col or len(row) <= type_col or row[type_col] == template_type)):
+                        full_text_samples.append(row[full_text_col])
+
+            if total > 0:
+                stats_text = f"直近30日: 送信{total}通, 返信{replied}件, 返信率{replied/total*100:.1f}%"
+    except Exception:
+        pass
+
+    # Keep newest 3 samples
+    full_text_samples = full_text_samples[-3:]
+
+    # 4. Load diagnosis prompt
+    prompt_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts", "diagnose_scout.md")
+    try:
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            system_prompt = f.read()
+    except FileNotFoundError:
+        return {"status": "error", "detail": "diagnose_scout.md が見つかりません"}
+
+    # 5. Build user prompt
+    display_name = COMPANY_DISPLAY_NAMES.get(company, company)
+    profile_text = company_profile if company_profile else f"(会社プロフィール未登録: {display_name})"
+
+    user_parts = [
+        f"## 診断対象テンプレート\n\n会社: {display_name}\nテンプレート種別: {template_type}\n職種カテゴリ: {job_category or '(未指定)'}\n\n```\n{original_body}\n```",
+    ]
+
+    if full_text_samples:
+        user_parts.append(f"\n\n## 送信済みスカウト文サンプル（完成形: テンプレート+パーソナライズ文）\n\n以下は実際に送信されたスカウト文の完成形です。テンプレートとパーソナライズ文の統合品質を評価してください。\n")
+        for i, sample in enumerate(full_text_samples, 1):
+            user_parts.append(f"### サンプル{i}\n```\n{sample}\n```\n")
+    else:
+        user_parts.append("\n\n（送信済みスカウト文のサンプルはありません。テンプレートのみで診断してください。personalization_issues と integration_issues は空配列にしてください。）")
+
+    user_parts.append(f"\n\n## 会社プロフィール\n\n{profile_text}")
+
+    if stats_text:
+        user_parts.append(f"\n\n## 送信実績\n\n{stats_text}")
+
+    user_prompt = "\n".join(user_parts)
+
+    # 6. Call AI
+    try:
+        result = await generate_personalized_text(
+            system_prompt,
+            user_prompt,
+            model_name=GEMINI_PRO_MODEL,
+            max_output_tokens=4096,
+            temperature=0.3,
+        )
+        raw_text = result.text
+    except Exception as e:
+        return {"status": "error", "detail": f"AI呼び出しエラー: {str(e)}"}
+
+    # 7. Parse JSON response
+    # Strip markdown fences if present
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.split("\n")
+        lines = lines[1:]  # remove opening fence
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        cleaned = "\n".join(lines)
+
+    try:
+        diagnosis = _json.loads(cleaned)
+    except _json.JSONDecodeError:
+        return {"status": "error", "detail": f"AIの出力をJSON解析できませんでした。出力の先頭: {raw_text[:200]}"}
+
+    # 8. Validate/normalize required fields
+    gate_scores = diagnosis.get("gate_scores", {})
+    for gate_key in ("gate1_open", "gate2_read", "gate3_reply"):
+        if gate_key not in gate_scores or gate_scores[gate_key] not in ("A", "B", "C"):
+            gate_scores[gate_key] = "B"  # default
+    diagnosis["gate_scores"] = gate_scores
+    diagnosis.setdefault("weak_principles", [])
+    diagnosis.setdefault("ai_smell", [])
+    diagnosis.setdefault("structure_issues", [])
+    diagnosis.setdefault("personalization_issues", [])
+    diagnosis.setdefault("integration_issues", [])
+    diagnosis.setdefault("strengths", [])
+    diagnosis.setdefault("priority_actions", [])
+    diagnosis.setdefault("improvement_targets", {"template": False, "prompt": False, "recipes": False})
+
+    # 9. Generate diagnosis ID and write history
+    diagnosis_id = f"diag_{uuid.uuid4().hex[:8]}"
+
+    try:
+        sheets_writer.ensure_sheet_exists(DIAGNOSIS_HISTORY_SHEET, DIAGNOSIS_HISTORY_HEADERS)
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        history_row = [
+            diagnosis_id,
+            now_str,
+            company,
+            template_type,
+            job_category or "",
+            str(row_index),
+            gate_scores.get("gate1_open", ""),
+            gate_scores.get("gate2_read", ""),
+            gate_scores.get("gate3_reply", ""),
+            "; ".join(wp.get("principle", "") for wp in diagnosis.get("weak_principles", [])),
+            str(len(diagnosis.get("ai_smell", []))),
+            "; ".join(pa.get("action", "") for pa in diagnosis.get("priority_actions", [])),
+            _json.dumps(diagnosis.get("improvement_targets", {}), ensure_ascii=False),
+            operator.get("name", "") if isinstance(operator, dict) else "",
+        ]
+        sheets_writer.append_rows(DIAGNOSIS_HISTORY_SHEET, [history_row])
+    except Exception:
+        pass  # History write failure should not block diagnosis
+
+    # 10. Return response
+    return {
+        "status": "ok",
+        "diagnosis": diagnosis,
+        "context": {
+            "company": company,
+            "template_type": template_type,
+            "job_category": job_category or "",
+            "row_index": row_index,
+            "sample_count": len(full_text_samples),
+            "stats_summary": stats_text,
+        },
+        "diagnosis_id": diagnosis_id,
+        "model": result.model_name,
+    }
+
+
+@router.post("/save_diagnosis_knowledge")
+async def save_diagnosis_knowledge(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """診断で見つかった知見をナレッジプールに直接保存する（AI呼び出しなし）。"""
+    company = data.get("company", "")  # 空文字 = 全社共通ルール
+    category = data.get("category", "")
+    rule = data.get("rule", "").strip()
+    source = data.get("source", "診断")
+    diagnosis_id = data.get("diagnosis_id", "")
+
+    if category not in VALID_KNOWLEDGE_CATEGORIES:
+        return {"status": "error", "detail": f"category は {', '.join(sorted(VALID_KNOWLEDGE_CATEGORIES))} のいずれかを指定してください"}
+
+    if not rule:
+        return {"status": "error", "detail": "rule は空にできません"}
+
+    from datetime import datetime, timedelta, timezone
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST)
+
+    rule_id = str(int(now.timestamp()))
+    source_with_id = f"{source} ({diagnosis_id})" if diagnosis_id else source
+
+    sheet_name = SHEET_MAP["knowledge_pool"]
+    columns = COLUMNS["knowledge_pool"]
+    sheets_writer.ensure_sheet_exists(sheet_name, columns)
+
+    row = [rule_id, company, category, rule, source_with_id, "pending", now.strftime("%Y-%m-%d %H:%M:%S")]
+    sheets_writer.append_rows(sheet_name, [row])
+
+    return {"status": "ok", "id": rule_id}
+
+
 @router.post("/improve_template")
 async def improve_template(
     data: dict,
@@ -2618,6 +2891,7 @@ async def improve_template(
     directive = data.get("directive", "")  # ユーザーの改善指示
     analysis_summary = data.get("analysis_summary", "")  # 分析タブからの連携データ
     requested_row_index = data.get("row_index")  # 管理画面から直接渡されるrow_index
+    diagnosis = data.get("diagnosis")  # Stage 1 診断結果（任意）
 
     if not company or not template_type:
         raise HTTPException(400, "company and template_type are required")
@@ -2697,6 +2971,45 @@ async def improve_template(
 ## 送信実績
 
 {stats_text}"""
+
+    # 4b. Build diagnosis section (if diagnosis provided)
+    diagnosis_section = ""
+    if diagnosis and isinstance(diagnosis, dict):
+        diag_parts = []
+        diag_parts.append("\n\n---\n\n## 診断結果に基づく優先改善事項\n")
+        diag_parts.append("以下はスカウト文診断システムが特定した問題点です。**これらを最優先で改善してください。**\n")
+
+        # Gate scores
+        gate_scores = diagnosis.get("gate_scores", {})
+        c_gates = [k for k, v in gate_scores.items() if v == "C"]
+        if c_gates:
+            gate_names = {"gate1_open": "開封判断", "gate2_read": "読了判断", "gate3_reply": "返信判断"}
+            diag_parts.append(f"\n**C判定のゲート:** {', '.join(gate_names.get(g, g) for g in c_gates)}\n")
+
+        # Priority actions for template target
+        template_actions = [pa for pa in diagnosis.get("priority_actions", [])
+                          if pa.get("target") == "template"]
+        if template_actions:
+            diag_parts.append("\n**テンプレートの改善アクション:**\n")
+            for pa in template_actions:
+                diag_parts.append(f"- [{pa.get('impact', 'medium')}] {pa.get('action', '')}\n")
+
+        # AI smell fixes
+        ai_smells = diagnosis.get("ai_smell", [])
+        if ai_smells:
+            diag_parts.append("\n**AI臭の修正:**\n")
+            for smell in ai_smells:
+                diag_parts.append(f"- {smell.get('fingerprint', '')}: {smell.get('fix_hint', '')}\n")
+
+        # Weak principles
+        weak = diagnosis.get("weak_principles", [])
+        high_weak = [w for w in weak if w.get("severity") == "high"]
+        if high_weak:
+            diag_parts.append("\n**弱い心理原則（severity: high）:**\n")
+            for w in high_weak:
+                diag_parts.append(f"- {w.get('principle', '')}: {w.get('issue', '')}\n")
+
+        diagnosis_section = "".join(diag_parts)
 
     # 5. Build company profile section
     profile_section = ""
@@ -2827,6 +3140,7 @@ async def improve_template(
 CTAは1つだけ。複数並べると迷って行動しない。
 {profile_section}
 {analysis_section}
+{diagnosis_section}
 
 ---
 
@@ -2904,13 +3218,78 @@ CTAは1つだけ。複数並べると迷って行動しない。
                 "detail": "AIがプレースホルダー{personalized_text}を削除してしまいました。再度お試しください。",
             }
 
-    return {
+    # Generate improvement proposals from diagnosis (if applicable)
+    proposals = []
+    if diagnosis and isinstance(diagnosis, dict):
+        import json as _json
+        targets = diagnosis.get("improvement_targets", {})
+        priority_actions = diagnosis.get("priority_actions", [])
+
+        for target_key, sheet_target in [("prompt", "prompts"), ("recipes", "patterns")]:
+            if not targets.get(target_key):
+                continue
+            target_actions = [pa for pa in priority_actions if pa.get("target") == target_key]
+            if not target_actions:
+                continue
+
+            for pa in target_actions:
+                proposal_id = f"fbprop_{uuid.uuid4().hex[:8]}"
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                if sheet_target == "prompts":
+                    payload = {
+                        "section_type": "ai_guide",
+                        "job_category": job_category or "",
+                        "content": pa.get("action", ""),
+                        "order": "8",
+                    }
+                else:  # patterns
+                    payload = {
+                        "action": pa.get("action", ""),
+                    }
+
+                proposal_row = [
+                    proposal_id,
+                    now_str,
+                    "",  # source_fix_ids (none - from diagnosis)
+                    sheet_target,
+                    "append" if sheet_target == "prompts" else "update",
+                    company,
+                    _json.dumps(payload, ensure_ascii=False),
+                    f"診断: {pa.get('action', '')}",
+                    "pending",
+                    "",  # actor
+                    "",  # decided_at
+                ]
+
+                try:
+                    sheets_writer.ensure_sheet_exists("改善提案", COLUMNS.get("improvement_proposals", [
+                        "id", "created_at", "source_fix_ids", "target_sheet", "operation",
+                        "scope_company", "payload_json", "rationale", "status", "actor", "decided_at",
+                    ]))
+                    sheets_writer.append_rows("改善提案", [proposal_row])
+                except Exception:
+                    pass
+
+                proposals.append({
+                    "id": proposal_id,
+                    "target_sheet": sheet_target,
+                    "operation": "append" if sheet_target == "prompts" else "update",
+                    "scope_company": company,
+                    "payload_json": _json.dumps(payload, ensure_ascii=False),
+                    "rationale": f"診断: {pa.get('action', '')}",
+                })
+
+    result = {
         "status": "ok",
         "original": original_body,
         "improved": improved_clean,
         "changes": changes,
         "row_index": row_index,
     }
+    if proposals:
+        result["proposals"] = proposals
+    return result
 
 
 @router.post("/expand_template")
@@ -3279,7 +3658,7 @@ async def batch_update_templates(
             ttype = upd.get("template_type", "")
             if company_id and ttype:
                 sheets_writer.append_row("テンプレート", [
-                    company_id, job_cat, ttype, new_body, "1",
+                    company_id, job_cat, ttype, _escape_body_for_sheets(new_body), "1",
                 ])
                 updated += 1
             continue
