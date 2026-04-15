@@ -189,3 +189,46 @@ class TestPatchSendDataRow:
             json={"cells": {}},
         )
         assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Regression: companies registered via プロフィール sheet but absent from the
+# legacy COMPANY_DISPLAY_NAMES map must not be rejected as 404.
+# See: daiwa-house-ls (ネオ・サミット湯河原) bug — send_data accessible via
+# inspect_send_sheets but list/delete/patch returned 404.
+# ---------------------------------------------------------------------------
+
+class TestProfileOnlyCompanyAccepted:
+    def test_list_accepts_company_from_profile_sheet(self, client):
+        """GET /send_data/{cid} should accept a company that exists only in the profile sheet."""
+        rows = [SEND_DATA_HEADERS, _row("M001")]
+        with patch("api.routes_admin.sheets_client") as mc, \
+             patch("api.routes_admin.sheets_writer") as mw:
+            mc.get_companies_with_keywords.return_value = [
+                {"id": "daiwa-house-ls", "display_name": "ネオ・サミット湯河原"},
+            ]
+            mw.get_all_rows.return_value = rows
+            res = client.get("/api/v1/admin/send_data/daiwa-house-ls")
+        assert res.status_code == 200, res.text
+        assert len(res.json()["items"]) == 1
+
+    def test_delete_accepts_company_from_profile_sheet(self, client):
+        rows = [SEND_DATA_HEADERS, _row("M001")]
+        with patch("api.routes_admin.sheets_client") as mc, \
+             patch("api.routes_admin.sheets_writer") as mw:
+            mc.get_companies_with_keywords.return_value = [
+                {"id": "daiwa-house-ls", "display_name": "ネオ・サミット湯河原"},
+            ]
+            mw.get_all_rows.return_value = rows
+            res = client.delete("/api/v1/admin/send_data/daiwa-house-ls/2")
+        assert res.status_code == 200
+        assert res.json()["status"] == "deleted"
+
+    def test_unknown_company_still_rejected(self, client):
+        """Companies absent from both sources must still 404."""
+        with patch("api.routes_admin.sheets_client") as mc:
+            mc.get_companies_with_keywords.return_value = [
+                {"id": "daiwa-house-ls", "display_name": "ネオ・サミット湯河原"},
+            ]
+            res = client.delete("/api/v1/admin/send_data/totally-fake-company/2")
+        assert res.status_code == 404

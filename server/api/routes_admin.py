@@ -20,6 +20,28 @@ from monitoring.notifier import notify_google_chat
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+
+def _known_company_ids() -> set[str]:
+    """Return the union of hardcoded display-name keys and profile-sheet company IDs.
+
+    The legacy ``COMPANY_DISPLAY_NAMES`` map only covers the original six
+    companies. Newly added companies (e.g. ``daiwa-house-ls``) are registered
+    via the プロフィール sheet only, so validating purely against the hardcoded
+    map rejects them with a false 404. Union the two sources so any company
+    that either has a display-name fallback OR a profile row is accepted.
+    """
+    from pipeline.orchestrator import COMPANY_DISPLAY_NAMES
+    known: set[str] = set(COMPANY_DISPLAY_NAMES)
+    try:
+        for c in sheets_client.get_companies_with_keywords():
+            cid = (c or {}).get("id", "")
+            if cid:
+                known.add(cid)
+    except Exception:
+        # Profile sheet unreachable — fall back to hardcoded map only.
+        pass
+    return known
+
 # Slug to Japanese sheet name mapping
 SHEET_MAP = {
     "templates": "テンプレート",
@@ -487,7 +509,7 @@ async def list_send_data(
     """
     from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
     from api._dashboard_helpers import EXPECTED_HEADERS, row_field
-    if company_id not in COMPANY_DISPLAY_NAMES:
+    if company_id not in _known_company_ids():
         raise HTTPException(404, f"Unknown company: {company_id}")
     sheet_name = _send_data_sheet_name(company_id)
     try:
@@ -548,7 +570,7 @@ async def record_manual_send(
     sent_at = (data.get("sent_at") or "").strip()
     if not member_id:
         raise HTTPException(400, "member_id is required")
-    if company_id not in COMPANY_DISPLAY_NAMES:
+    if company_id not in _known_company_ids():
         raise HTTPException(404, f"Unknown company: {company_id}")
 
     sheet_name = _send_data_sheet_name(company_id)
@@ -619,7 +641,7 @@ async def delete_send_data_row(
     Row index 1 is the header row and is never deletable.
     """
     from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
-    if company_id not in COMPANY_DISPLAY_NAMES:
+    if company_id not in _known_company_ids():
         raise HTTPException(404, f"Unknown company: {company_id}")
     if row_index < 2:
         raise HTTPException(400, f"row_index must be >= 2 (header is row 1)")
@@ -663,7 +685,7 @@ async def patch_send_data_row(
     from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
     from api._dashboard_helpers import EXPECTED_HEADERS
 
-    if company_id not in COMPANY_DISPLAY_NAMES:
+    if company_id not in _known_company_ids():
         raise HTTPException(404, f"Unknown company: {company_id}")
     if row_index < 2:
         raise HTTPException(400, "row_index must be >= 2 (header is row 1)")
