@@ -8,7 +8,14 @@ from typing import Optional
 from db.sheets_writer import sheets_writer
 from db.sheets_client import sheets_client, SHEET_FIX_FEEDBACK, SHEET_CONVERSATION_LOGS
 from auth.api_key import verify_api_key
-from api._dashboard_helpers import find_stale_quota_companies
+from api._dashboard_helpers import (
+    find_stale_quota_companies,
+    list_companies as dh_list_companies,
+    load_quota_snapshots as dh_load_quota_snapshots,
+    current_year_month as dh_current_year_month,
+    now_jst as dh_now_jst,
+    JST as DH_JST,
+)
 from monitoring.notifier import notify_google_chat
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -5634,13 +5641,59 @@ async def cron_prune_audit_log(
     return {"status": "ok", **result}
 
 
-def _format_stale_quota_message(items: list) -> str:
-    """Google Chat 用のメッセージ。件数のみ通知（詳細は管理画面で確認）。"""
-    return (
-        f"⚠️ *残数スナップショット未更新*\n"
-        f"24時間以上、送信残数が更新されていない会社が {len(items)} 件あります。\n"
-        f"管理画面のダッシュボードで確認してください。"
-    )
+def _build_quota_status_lines(max_hours: float = 24) -> tuple[list[str], int]:
+    """全会社の現在残数を1行ずつ整形。stale な会社は ⚠️ プレフィックスを付ける。
+
+    Returns:
+        (lines, stale_count)
+    """
+    companies = dh_list_companies()
+    snapshots = dh_load_quota_snapshots(dh_current_year_month())
+    now = dh_now_jst()
+    lines: list[str] = []
+    stale_count = 0
+    for cid, name in companies:
+        snap = snapshots.get(cid)
+        is_stale = False
+        remaining_str = "未取得"
+        snap_str = ""
+        if snap:
+            remaining = snap.get("remaining")
+            remaining_str = f"残 {remaining}" if remaining is not None else "残 -"
+            snap_at = snap.get("snapshot_at", "")
+            try:
+                ts = datetime.fromisoformat(snap_at)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=DH_JST)
+                hours = (now - ts).total_seconds() / 3600
+                if hours >= max_hours:
+                    is_stale = True
+                snap_str = snap_at.replace("T", " ")[:16]
+            except (ValueError, TypeError):
+                is_stale = True
+        else:
+            is_stale = True
+
+        prefix = "⚠️ " if is_stale else "・"
+        if snap_str:
+            lines.append(f"{prefix}{name}: {remaining_str}（{snap_str}）")
+        else:
+            lines.append(f"{prefix}{name}: {remaining_str}")
+        if is_stale:
+            stale_count += 1
+    return lines, stale_count
+
+
+def _format_stale_quota_message(max_hours: float = 24) -> str:
+    """Google Chat 通知。全社の残数を列挙し、stale な会社には ⚠️ を付ける。"""
+    lines, stale_count = _build_quota_status_lines(max_hours)
+    header = "📊 *残数スナップショット*"
+    if stale_count > 0:
+        footer = f"\n\n⚠️ のついたものは {int(max_hours)} 時間以上前の情報です。Chrome拡張で残数の同期を走らせてください。"
+    else:
+        footer = "\n\n✅ 全社最新です。"
+    body = "\n".join(lines) if lines else "（会社が登録されていません）"
+    return f"{header}\n\n{body}{footer}"
 
 
 @router.post("/cron/stale-quota")
@@ -5661,10 +5714,9 @@ async def cron_stale_quota(
             --headers="X-API-Key=<secret>"
     """
     items = find_stale_quota_companies(max_hours=max_hours)
-    sent = False
-    if items:
-        message = _format_stale_quota_message(items)
-        sent = await notify_google_chat(message)
+    # 全社残数 + stale 会社に⚠️ 付きの一覧を毎日送る（運用上の朝の状況確認も兼ねる）
+    message = _format_stale_quota_message(max_hours=max_hours)
+    sent = await notify_google_chat(message)
     return {
         "status": "ok",
         "stale_count": len(items),
