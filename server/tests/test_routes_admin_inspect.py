@@ -253,8 +253,15 @@ class TestNormalizeSendSheet:
         clear_calls = service.spreadsheets().values().clear.call_args_list
         assert clear_calls, "expected at least one clear call"
         assert any("ZZ" in str(c) for c in clear_calls)
-        # header update hit A1
+        # header+data written at A1 in a single update (not via append_rows —
+        # using append with INSERT_ROWS after a clear leaves a large gap
+        # between the header and the first data row because clear preserves
+        # the sheet's rowCount).
         update_calls = service.spreadsheets().values().update.call_args_list
-        assert update_calls, "expected at least one header update"
-        # data appended exactly once
-        mw.append_rows.assert_called_once()
+        assert update_calls, "expected at least one A1 update"
+        # payload first row must be the EXPECTED header
+        payload = update_calls[-1].kwargs["body"]["values"]
+        assert payload[0][0] == "日時"
+        assert len(payload) == 2  # 1 header + 1 data row
+        # append_rows must NOT be called — would re-introduce the gap bug
+        mw.append_rows.assert_not_called()

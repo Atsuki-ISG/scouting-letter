@@ -2450,17 +2450,21 @@ async def normalize_send_sheet(data: dict, operator=Depends(verify_api_key)):
         range=f"'{sheet}'!A1:ZZ",
     ).execute()
 
-    # 3. Write fresh header row.
+    # 3. Write header + all data in a single update call starting at A1.
+    #    Rationale: after clear, the sheet's gridProperties.rowCount is
+    #    preserved (cells are value-cleared but the row count on the sheet
+    #    stays the same). Using `append` with INSERT_ROWS would then treat
+    #    rows 2..rowCount as "empty structural rows" and insert new data
+    #    AFTER that gap, leaving 60+ empty rows between the header and the
+    #    first real data row. A positional update at A1 avoids the gap
+    #    entirely.
+    payload = [list(EXPECTED_HEADERS)] + converted_rows
     service.spreadsheets().values().update(
         spreadsheetId=SPREADSHEET_ID,
         range=f"'{sheet}'!A1",
         valueInputOption="RAW",
-        body={"values": [list(EXPECTED_HEADERS)]},
+        body={"values": payload},
     ).execute()
-
-    # 4. Append converted data rows in one batch call.
-    if converted_rows:
-        sheets_writer.append_rows(sheet, converted_rows)
 
     summary["status"] = "ok"
     summary["written_rows"] = len(converted_rows)
