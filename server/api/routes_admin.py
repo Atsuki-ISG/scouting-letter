@@ -2244,6 +2244,12 @@ async def inspect_send_sheets(data: dict = None, operator=Depends(verify_api_key
         fields="sheets.properties(title,gridProperties(rowCount))",
     ).execute()
 
+    # Optional knob: when `include_headers=True` is passed, include the raw
+    # header row and one sample data row per sheet. Used to diagnose column
+    # drift (ヘッダー名とデータ位置のズレ) across per-company sheets.
+    include_headers = bool((data or {}).get("include_headers"))
+    from api._dashboard_helpers import EXPECTED_HEADERS as _EXP
+
     send_sheets = []
     for s in meta.get("sheets", []):
         title = s["properties"]["title"]
@@ -2251,12 +2257,41 @@ async def inspect_send_sheets(data: dict = None, operator=Depends(verify_api_key
             continue
         row_count_in_grid = s["properties"].get("gridProperties", {}).get("rowCount", 0)
         # 実データ行数（ヘッダー+空行除く）を取得
+        header_row: list[str] = []
+        sample_row: list[str] = []
         try:
             rows = _w.get_all_rows(title)
             data_rows = max(0, len(rows) - 1)
+            if rows:
+                header_row = [str(c) for c in rows[0]]
+            if len(rows) > 1:
+                sample_row = [str(c) for c in rows[1]]
         except Exception as e:
             data_rows = f"err:{e}"
-        send_sheets.append({"title": title, "grid_rows": row_count_in_grid, "data_rows": data_rows})
+        entry: dict = {
+            "title": title,
+            "grid_rows": row_count_in_grid,
+            "data_rows": data_rows,
+        }
+        if include_headers:
+            # Summarise the shape so a quick glance reveals drift without having
+            # to eyeball each header.
+            expected_set = set(_EXP)
+            actual_set = {h.strip() for h in header_row if h.strip()}
+            missing = sorted(expected_set - actual_set)
+            extra = sorted(actual_set - expected_set)
+            matches_expected = (
+                [h.strip() for h in header_row[: len(_EXP)]] == list(_EXP)
+            )
+            entry.update({
+                "header_count": len(header_row),
+                "headers": header_row,
+                "sample_row": sample_row,
+                "missing_expected": missing,
+                "extra_headers": extra,
+                "matches_expected": matches_expected,
+            })
+        send_sheets.append(entry)
 
     # 各会社の解決結果
     companies_info = []
@@ -2281,6 +2316,54 @@ async def inspect_send_sheets(data: dict = None, operator=Depends(verify_api_key
         "send_sheets": sorted(send_sheets, key=lambda x: x["title"]),
         "companies": sorted(companies_info, key=lambda x: x["company_id"]),
     }
+
+
+@router.post("/inspect_sheet_shape")
+async def inspect_sheet_shape(data: dict, operator=Depends(verify_api_key)):
+    """Return raw header + one sample row for a specific sheet (by title).
+
+    General-purpose diagnostic for any sheet — use when a tab shows columns
+    misaligned with their headers. Unlike inspect_send_sheets, this accepts
+    any sheet title (not only 送信_*).
+
+    Body: ``{"sheet": "<title>", "expected": ["col1", "col2", ...]}``
+
+    ``expected`` is optional; when provided the response also flags
+    ``missing_expected``, ``extra_headers``, and whether the first N headers
+    match ``expected`` positionally.
+    """
+    sheet = (data.get("sheet") or "").strip()
+    if not sheet:
+        raise HTTPException(400, "sheet is required")
+    expected = list(data.get("expected") or [])
+
+    try:
+        rows = sheets_writer.get_all_rows(sheet)
+    except Exception as e:
+        raise HTTPException(404, f"Sheet unreadable: {e}")
+
+    header_row = [str(c) for c in (rows[0] if rows else [])]
+    sample_row = [str(c) for c in (rows[1] if len(rows) > 1 else [])]
+    actual_set = {h.strip() for h in header_row if h.strip()}
+
+    out: dict = {
+        "sheet": sheet,
+        "header_count": len(header_row),
+        "headers": header_row,
+        "sample_row": sample_row,
+        "data_rows": max(0, len(rows) - 1),
+    }
+    if expected:
+        expected_set = set(expected)
+        out.update({
+            "expected": expected,
+            "missing_expected": sorted(expected_set - actual_set),
+            "extra_headers": sorted(actual_set - expected_set),
+            "matches_expected": (
+                [h.strip() for h in header_row[: len(expected)]] == list(expected)
+            ),
+        })
+    return out
 
 
 @router.post("/audit_sync_replies")
