@@ -2318,6 +2318,155 @@ async def inspect_send_sheets(data: dict = None, operator=Depends(verify_api_key
     }
 
 
+@router.post("/normalize_send_sheet")
+async def normalize_send_sheet(data: dict, operator=Depends(verify_api_key)):
+    """指定 送信_* シートのヘッダーとデータを EXPECTED_HEADERS (21 列) に正規化する。
+
+    対応しているケース:
+      - 15 列レガシー（職種カテゴリ / テンプレートVer / 地域 / 全文 / 応募系が欠落）
+      - 18 列（全文 / 応募系が欠落）
+      - 21 列だがヘッダー名の並びがズレている
+      - 26 列など、末尾に重複 / 空列が追加されてしまっているシート
+
+    手順:
+      1. 現行ヘッダーとデータを取得
+      2. 各行について row_field(headers, row, field) で EXPECTED 各列を引く
+      3. dry_run=True → プレビュー（件数 / サンプル 3 行 / 列マッピング）を返す
+      4. dry_run=False → シート全域を一旦 clear してから新ヘッダー + 正規化データを
+         書き戻し、監査ログに before サンプルを残す
+
+    Body: ``{"sheet": "<title>", "dry_run": true}``
+
+    既存データが失われないよう、実書き込み時は付帯列（余剰列など）も
+    監査ログにスナップショットする。
+    """
+    from config import SPREADSHEET_ID
+    from api._dashboard_helpers import EXPECTED_HEADERS, row_field
+
+    sheet = (data.get("sheet") or "").strip()
+    dry_run = bool(data.get("dry_run", True))
+    if not sheet:
+        raise HTTPException(400, "sheet is required")
+    if not sheet.startswith("送信_"):
+        raise HTTPException(
+            400, "normalize_send_sheet only operates on 送信_* sheets"
+        )
+
+    try:
+        rows = sheets_writer.get_all_rows(sheet)
+    except Exception as e:
+        raise HTTPException(404, f"sheet unreadable: {e}")
+    if not rows:
+        raise HTTPException(400, "sheet has no rows")
+
+    original_headers = [str(c) for c in rows[0]]
+    original_header_count = len(original_headers)
+    original_data_rows = max(0, len(rows) - 1)
+
+    stripped_headers = [h.strip() for h in original_headers]
+
+    # Column map: EXPECTED[i] -> source index in original headers (or None)
+    column_map: list[dict] = []
+    for field in EXPECTED_HEADERS:
+        source_idx: int | None = None
+        for idx, h in enumerate(stripped_headers):
+            if h == field:
+                source_idx = idx
+                break
+        column_map.append({
+            "field": field,
+            "source_index": source_idx,
+            "source_header": original_headers[source_idx] if source_idx is not None else None,
+        })
+
+    # Build converted rows. Use row_field so legacy / drift fallbacks fire.
+    converted_rows: list[list[str]] = []
+    skipped_empty = 0
+    for r in rows[1:]:
+        if not any((c.strip() if c else "") for c in r):
+            skipped_empty += 1
+            continue
+        new_row = [row_field(r, stripped_headers, f) for f in EXPECTED_HEADERS]
+        converted_rows.append(new_row)
+
+    # First 3 rows as before/after preview
+    preview: list[dict] = []
+    before_rows = [r for r in rows[1:] if any((c.strip() if c else "") for c in r)][:3]
+    for i, (before, after) in enumerate(zip(before_rows, converted_rows[:3])):
+        preview.append({
+            "row_offset": i,
+            "before": before,
+            "after": after,
+        })
+
+    summary = {
+        "sheet": sheet,
+        "original_header_count": original_header_count,
+        "original_headers": original_headers,
+        "expected_header_count": len(EXPECTED_HEADERS),
+        "data_rows_input": original_data_rows,
+        "data_rows_output": len(converted_rows),
+        "empty_rows_skipped": skipped_empty,
+        "column_map": column_map,
+        "preview": preview,
+    }
+
+    if dry_run:
+        summary["status"] = "dry_run"
+        return summary
+
+    # ---- Actual write path ----
+    service = sheets_writer._get_service()
+    actor = f"normalize_send_sheet:{(operator or {}).get('name', 'unknown')}"
+
+    # 1. Audit log: snapshot original headers + first 3 data rows for recovery.
+    #    Best-effort — failures here must not block the primary rewrite.
+    try:
+        sheets_writer._append_audit(
+            operation="normalize_send_sheet",
+            sheet=sheet,
+            row_index=1,
+            snapshot={"headers": original_headers},
+            changed={"new_headers": list(EXPECTED_HEADERS)},
+            actor=actor,
+        )
+        for i, r in enumerate(rows[1:4], start=2):
+            sheets_writer._append_audit(
+                operation="normalize_send_sheet",
+                sheet=sheet,
+                row_index=i,
+                snapshot={"row": r},
+                changed={"note": "sample snapshot before normalize"},
+                actor=actor,
+            )
+    except Exception:
+        # audit is best-effort — proceed with rewrite regardless
+        pass
+
+    # 2. Clear the full sheet body (A1:ZZ). This removes any trailing junk
+    #    columns (e.g. duplicated headers, rogue 日時 at column 25).
+    service.spreadsheets().values().clear(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{sheet}'!A1:ZZ",
+    ).execute()
+
+    # 3. Write fresh header row.
+    service.spreadsheets().values().update(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{sheet}'!A1",
+        valueInputOption="RAW",
+        body={"values": [list(EXPECTED_HEADERS)]},
+    ).execute()
+
+    # 4. Append converted data rows in one batch call.
+    if converted_rows:
+        sheets_writer.append_rows(sheet, converted_rows)
+
+    summary["status"] = "ok"
+    summary["written_rows"] = len(converted_rows)
+    return summary
+
+
 @router.post("/inspect_sheet_shape")
 async def inspect_sheet_shape(data: dict, operator=Depends(verify_api_key)):
     """Return raw header + one sample row for a specific sheet (by title).

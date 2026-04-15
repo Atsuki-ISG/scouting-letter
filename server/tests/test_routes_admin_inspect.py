@@ -136,3 +136,125 @@ class TestInspectSheetShape:
                 json={"sheet": "no-such-sheet"},
             )
         assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/normalize_send_sheet
+# ---------------------------------------------------------------------------
+
+class TestNormalizeSendSheet:
+    def test_rejects_non_send_sheet(self, client):
+        res = client.post(
+            "/api/v1/admin/normalize_send_sheet",
+            json={"sheet": "テンプレート", "dry_run": True},
+        )
+        assert res.status_code == 400
+
+    def test_rejects_missing_sheet(self, client):
+        res = client.post(
+            "/api/v1/admin/normalize_send_sheet", json={"dry_run": True}
+        )
+        assert res.status_code == 400
+
+    def test_dry_run_preview_15col_legacy(self, client):
+        """15 列レガシーでは欠落列は空文字に埋められる。"""
+        legacy_headers = [
+            "日時", "会員番号", "テンプレート種別", "生成パス", "パターン",
+            "年齢層", "資格", "経験区分", "希望雇用形態", "就業状況",
+            "曜日", "時間帯",
+            "返信", "返信日", "返信カテゴリ",
+        ]
+        row = [
+            "2026-04-01 10:00:00", "M001", "パート_初回", "ai", "",
+            "30-34歳", "看護師", "4-5年", "パート", "就業中",
+            "水", "午前",
+            "", "", "",
+        ]
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = [legacy_headers, row]
+            res = client.post(
+                "/api/v1/admin/normalize_send_sheet",
+                json={"sheet": "送信_legacy", "dry_run": True},
+            )
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["status"] == "dry_run"
+        assert body["original_header_count"] == 15
+        assert body["expected_header_count"] == 21
+        assert body["data_rows_output"] == 1
+        after = body["preview"][0]["after"]
+        assert len(after) == 21
+        # 日時 is preserved
+        assert after[0] == "2026-04-01 10:00:00"
+        # 地域 (EXPECTED[12]) was absent → empty
+        assert after[12] == ""
+        # 全文 (EXPECTED[15]) was absent → empty
+        assert after[15] == ""
+
+    def test_dry_run_does_not_write(self, client):
+        headers = [
+            "日時", "会員番号", "職種カテゴリ", "テンプレート種別", "テンプレートVer",
+            "生成パス", "パターン", "年齢層", "資格", "経験区分",
+            "希望雇用形態", "就業状況", "地域", "曜日", "時間帯",
+            "全文", "返信", "返信日", "返信カテゴリ",
+            "応募", "応募日",
+        ]
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = [headers, headers]
+            res = client.post(
+                "/api/v1/admin/normalize_send_sheet",
+                json={"sheet": "送信_clean", "dry_run": True},
+            )
+        assert res.status_code == 200
+        mw.append_rows.assert_not_called()
+        mw._get_service.assert_not_called()
+
+    def test_empty_rows_skipped(self, client):
+        headers = [
+            "日時", "会員番号", "職種カテゴリ", "テンプレート種別", "テンプレートVer",
+            "生成パス", "パターン", "年齢層", "資格", "経験区分",
+            "希望雇用形態", "就業状況", "地域", "曜日", "時間帯",
+            "全文", "返信", "返信日", "返信カテゴリ", "応募", "応募日",
+        ]
+        real_row = ["2026-04-01"] + [""] * 20
+        empty_row = [""] * 21
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = [headers, real_row, empty_row, empty_row]
+            res = client.post(
+                "/api/v1/admin/normalize_send_sheet",
+                json={"sheet": "送信_clean", "dry_run": True},
+            )
+        body = res.json()
+        assert body["data_rows_input"] == 3
+        assert body["data_rows_output"] == 1
+        assert body["empty_rows_skipped"] == 2
+
+    def test_real_run_clears_and_writes(self, client):
+        headers = [
+            "日時", "会員番号", "職種カテゴリ", "テンプレート種別", "テンプレートVer",
+            "生成パス", "パターン", "年齢層", "資格", "経験区分",
+            "希望雇用形態", "就業状況", "地域", "曜日", "時間帯",
+            "全文", "返信", "返信日", "返信カテゴリ", "応募", "応募日",
+        ]
+        row = ["2026-04-01"] + [""] * 20
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = [headers, row]
+            service = MagicMock()
+            mw._get_service.return_value = service
+            res = client.post(
+                "/api/v1/admin/normalize_send_sheet",
+                json={"sheet": "送信_clean", "dry_run": False},
+            )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["status"] == "ok"
+        assert body["written_rows"] == 1
+        # clear was invoked with A1:ZZ range
+        clear_calls = service.spreadsheets().values().clear.call_args_list
+        assert clear_calls, "expected at least one clear call"
+        assert any("ZZ" in str(c) for c in clear_calls)
+        # header update hit A1
+        update_calls = service.spreadsheets().values().update.call_args_list
+        assert update_calls, "expected at least one header update"
+        # data appended exactly once
+        mw.append_rows.assert_called_once()
