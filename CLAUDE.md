@@ -27,6 +27,7 @@
 | 茅ヶ崎徳洲会病院 | `companies/chigasaki-tokushukai/` | 病院（病棟看護師・正職員のみ） |
 | an訪問看護 | `companies/an-visiting-nurse/` | 横浜市南区。看護師/PT/OT/相談支援専門員 |
 | ネオ・サミット湯河原 | `companies/daiwa-house-ls/` | 大和ハウスライフサポート。有料老人ホーム。入居相談員（営業） |
+| 野村病院 | `companies/nomura-hospital/` | 医療法人天秋会。山口県下関市の精神科病院（147床）。病棟看護師・管理栄養士 |
 
 ## 回答スタイル
 
