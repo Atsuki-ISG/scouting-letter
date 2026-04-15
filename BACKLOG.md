@@ -26,7 +26,7 @@
   - B: 送信履歴の手動修正・削除UI（管理画面の送信履歴タブ）
   - C: 手動送信を拡張で検知してサーバに記録（single-send-tracker → record_manual_send API）
   - D-1: 古い残数の可視化（dashboard staleness バナー + 行ハイライト）
-- [ ] **送信通数管理 Phase D-2**: Cloud Scheduler から `stale_quota_companies` を叩いて Google Chat 通知
+- [x] ~~送信通数管理 Phase D-2~~ — 完了。`POST /api/v1/admin/cron/stale-quota` を追加、Cloud Scheduler で 9:00 JST に叩く。該当ゼロなら無通知（朝のノイズ防止）。セットアップ手順は `server/DEPLOY.md` の「Cloud Scheduler 登録」節
 - [ ] **送信通数管理 Phase D-3**: Gmail API 経由でジョブメドレー残数通知メールを自動 ingest（メール存在確認必要）
 - [x] ~~送信履歴の行編集 (PATCH) UI~~ — 完了。`PATCH /admin/send_data/{company_id}/{row_index}` を追加し、管理画面の送信履歴タブに「編集」ボタンを追加。日時はimmutable、ヘッダードリフト時は409で拒否、`sheets_writer.update_cells_by_name` 経由で監査ログに前値スナップショットを残す。テスト12件すべてpass
 - [ ] **送信ペース予測** — 月次目標 / 残数スナップショット履歴 / 当月の経過日数から「このペースだと月末何通」を算出してダッシュボードに表示。Phase A の履歴データが活きる
@@ -49,7 +49,7 @@
 
 ## 管理画面 (UX)
 
-- [ ] **テンプレート改善提案の編集可能化** — 現状 `improve_template` の結果は「承認 / 却下」の2択のみ。AIが出した改善案を受け入れる前に本文を微修正したい（文言の違和感、固有名詞の誤り、tone調整など）。承認前に提案body を textarea で編集できるUIにして、編集後の内容を書き戻す。hunk単位採用と合わせると「採用するhunkを選ぶ」+「採用後の本文をさらに編集」の2段階が理想。
+- [x] ~~テンプレート改善提案の編集可能化~~ — 完了。diffActions に「編集 / 下書き保存」ボタン追加、編集モードに入ると採用済みhunkをマージした本文が textarea に出て直接編集可能。編集内容は `POST /api/v1/admin/improvement_drafts` でサーバ（`改善下書き` シート）に upsert 保存、ブラウザを閉じても復元可能。テンプレート選択時に下書きがあれば「🗒 下書きあり（N分前）」バッジが出る。適用時に下書きは `status=applied` に soft delete。テスト17件追加
 
 ## コンテンツ改善
 

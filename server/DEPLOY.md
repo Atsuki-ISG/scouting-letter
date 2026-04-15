@@ -273,6 +273,27 @@ gcloud run deploy scout-api --source . --region asia-northeast1
 
 ## トラブルシューティング
 
+## Cloud Scheduler 登録
+
+毎朝 9:00 JST に残数スナップショットの鮮度チェック通知を送る設定:
+
+```bash
+SERVICE_URL=$(gcloud run services describe scout-api --region asia-northeast1 --format='value(status.url)')
+API_KEY=<admin API-Key>  # routes の verify_api_key が受けるキー
+
+gcloud scheduler jobs create http daily-stale-quota \
+    --schedule="0 9 * * *" \
+    --time-zone="Asia/Tokyo" \
+    --http-method=POST \
+    --uri="${SERVICE_URL}/api/v1/admin/cron/stale-quota" \
+    --headers="X-API-Key=${API_KEY}" \
+    --location="asia-northeast1"
+```
+
+- 該当会社がゼロなら通知は送らない（朝のノイズ防止）
+- 閾値変更は `?max_hours=48` でクエリ指定可
+- 手動実行: `gcloud scheduler jobs run daily-stale-quota --location=asia-northeast1`
+
 ### Cloud Runのログを見る
 
 ```bash

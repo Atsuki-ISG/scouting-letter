@@ -8,6 +8,8 @@ from typing import Optional
 from db.sheets_writer import sheets_writer
 from db.sheets_client import sheets_client, SHEET_FIX_FEEDBACK, SHEET_CONVERSATION_LOGS
 from auth.api_key import verify_api_key
+from api._dashboard_helpers import find_stale_quota_companies
+from monitoring.notifier import notify_google_chat
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -1198,6 +1200,249 @@ async def revert_template(row_index: int, data: dict, operator=Depends(verify_ap
         "body": old_body,
         **reload_status,
     }
+
+
+# ---------------------------------------------------------------------------
+# 改善下書き: improve_template の承認直前に本文を編集・サーバ保存できる仕組み。
+# AI案のhunk採用後、更に人間が textarea で手を入れた本文を、Sheets 上の
+# `改善下書き` シートに persist する。ブラウザを閉じても戻れる & クロスマシン
+# 共有可能。status は draft → applied/discarded の soft delete。
+#
+# 必ず `@router.get("/{sheet_slug}")` より前に登録すること(そうしないと
+# `/improvement_drafts` が generic list_rows に食われて 404 になる)。
+# ---------------------------------------------------------------------------
+
+SHEET_IMPROVEMENT_DRAFTS = "改善下書き"
+IMPROVEMENT_DRAFT_COLUMNS = [
+    "id",
+    "company",
+    "template_row_index",
+    "template_type",
+    "job_category",
+    "original_body",
+    "draft_body",
+    "directive",
+    "analysis_summary",
+    "status",
+    "created_at",
+    "updated_at",
+    "created_by",
+]
+
+
+def _gen_draft_id() -> str:
+    return f"draft_{uuid.uuid4().hex[:10]}"
+
+
+def _load_draft_rows():
+    """Return (headers, rows) for the improvement drafts sheet.
+
+    Never raises — if the sheet doesn't exist yet, returns the canonical
+    header + empty body so list endpoints don't 500 on first access.
+    """
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_IMPROVEMENT_DRAFTS)
+    except Exception:
+        return IMPROVEMENT_DRAFT_COLUMNS, []
+    if not all_rows:
+        return IMPROVEMENT_DRAFT_COLUMNS, []
+    return all_rows[0], all_rows[1:]
+
+
+def _draft_row_to_dict(headers, row):
+    row = list(row) + [""] * (len(headers) - len(row))
+    d = {headers[i]: row[i] for i in range(len(headers))}
+    # Coerce template_row_index to int for the client
+    if d.get("template_row_index"):
+        try:
+            d["template_row_index"] = int(d["template_row_index"])
+        except (TypeError, ValueError):
+            pass
+    return d
+
+
+def _find_draft_row(draft_id: str):
+    """Return (sheet_row_index_1based, draft_dict) or (None, None)."""
+    headers, rows = _load_draft_rows()
+    try:
+        id_idx = headers.index("id")
+    except ValueError:
+        return None, None
+    for i, row in enumerate(rows, start=2):
+        if len(row) > id_idx and row[id_idx] == draft_id:
+            return i, _draft_row_to_dict(headers, row)
+    return None, None
+
+
+@router.post("/improvement_drafts")
+async def upsert_improvement_draft(
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    """下書きの upsert。id があれば更新、なければ新規。
+
+    Required fields (on create): company, template_row_index, template_type,
+    job_category, original_body, draft_body.
+
+    Returns: {"status": "ok", "draft": {...}}
+    """
+    draft_id = (data.get("id") or "").strip()
+    company = (data.get("company") or "").strip()
+    template_row_index = data.get("template_row_index")
+    template_type = (data.get("template_type") or "").strip()
+    job_category = (data.get("job_category") or "").strip()
+    original_body = data.get("original_body", "")
+    draft_body = data.get("draft_body", "")
+    directive = (data.get("directive") or "")
+    analysis_summary = (data.get("analysis_summary") or "")
+
+    # Required fields on create (not on update — update needs id + draft_body)
+    if not draft_id:
+        if not company or template_row_index in (None, "") or not template_type \
+                or not job_category or not original_body or not draft_body:
+            raise HTTPException(
+                400,
+                "company, template_row_index, template_type, job_category, "
+                "original_body, draft_body are required for new drafts",
+            )
+
+    # Always ensure the sheet exists so list/get don't have to.
+    sheets_writer.ensure_sheet_exists(SHEET_IMPROVEMENT_DRAFTS, IMPROVEMENT_DRAFT_COLUMNS)
+
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "+00:00"
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+
+    if draft_id:
+        # Update path
+        row_index, existing = _find_draft_row(draft_id)
+        if row_index is None:
+            raise HTTPException(404, f"Draft {draft_id} not found")
+
+        cells = {
+            "draft_body": draft_body,
+            "updated_at": now_iso,
+        }
+        # Optional fields that can be edited alongside body
+        if data.get("directive") is not None:
+            cells["directive"] = directive
+        if data.get("analysis_summary") is not None:
+            cells["analysis_summary"] = analysis_summary
+
+        sheets_writer.update_cells_by_name(
+            SHEET_IMPROVEMENT_DRAFTS,
+            row_index,
+            cells,
+            actor=f"improvement_draft:{actor_name}",
+        )
+        # Merge into a fresh dict for response
+        merged = dict(existing)
+        merged.update(cells)
+        merged["id"] = draft_id
+        return {"status": "ok", "draft": merged}
+
+    # Create path
+    new_id = _gen_draft_id()
+    row_dict = {
+        "id": new_id,
+        "company": company,
+        "template_row_index": str(template_row_index),
+        "template_type": template_type,
+        "job_category": job_category,
+        "original_body": original_body,
+        "draft_body": draft_body,
+        "directive": directive,
+        "analysis_summary": analysis_summary,
+        "status": "draft",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "created_by": actor_name,
+    }
+    row_values = [row_dict.get(c, "") for c in IMPROVEMENT_DRAFT_COLUMNS]
+    sheets_writer.append_row(SHEET_IMPROVEMENT_DRAFTS, row_values)
+
+    # Response mirrors draft dict but with int row_index
+    response_draft = dict(row_dict)
+    try:
+        response_draft["template_row_index"] = int(response_draft["template_row_index"])
+    except (TypeError, ValueError):
+        pass
+    return {"status": "ok", "draft": response_draft}
+
+
+@router.get("/improvement_drafts")
+async def list_improvement_drafts(
+    company: Optional[str] = None,
+    row_index: Optional[int] = None,
+    operator: dict = Depends(verify_api_key),
+):
+    """下書き一覧（status=draft のみ）。company + row_index でフィルタ可。"""
+    headers, rows = _load_draft_rows()
+    try:
+        company_idx = headers.index("company")
+        row_idx_col = headers.index("template_row_index")
+        status_idx = headers.index("status")
+    except ValueError:
+        return {"items": []}
+
+    items = []
+    for row in rows:
+        row = list(row) + [""] * (len(headers) - len(row))
+        if row[status_idx] != "draft":
+            continue
+        if company is not None and row[company_idx] != company:
+            continue
+        if row_index is not None:
+            try:
+                if int(row[row_idx_col]) != int(row_index):
+                    continue
+            except (TypeError, ValueError):
+                continue
+        items.append(_draft_row_to_dict(headers, row))
+    return {"items": items}
+
+
+@router.get("/improvement_drafts/{draft_id}")
+async def get_improvement_draft(
+    draft_id: str,
+    operator: dict = Depends(verify_api_key),
+):
+    row_index, draft = _find_draft_row(draft_id)
+    if row_index is None:
+        raise HTTPException(404, f"Draft {draft_id} not found")
+    return {"draft": draft}
+
+
+@router.post("/improvement_drafts/{draft_id}/discard")
+async def discard_improvement_draft(
+    draft_id: str,
+    data: Optional[dict] = None,
+    operator: dict = Depends(verify_api_key),
+):
+    """下書きを soft delete。
+
+    Body `{"new_status": "discarded"}`（デフォルト）で破棄、`"applied"` で
+    採用済みに遷移させる（適用API成功時に UI から叩く）。
+    """
+    data = data or {}
+    new_status = (data.get("new_status") or "discarded").strip()
+    if new_status not in ("discarded", "applied"):
+        raise HTTPException(400, "new_status must be 'discarded' or 'applied'")
+
+    row_index, existing = _find_draft_row(draft_id)
+    if row_index is None:
+        raise HTTPException(404, f"Draft {draft_id} not found")
+    if existing.get("status") != "draft":
+        raise HTTPException(409, f"Draft {draft_id} already {existing.get('status')}")
+
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "+00:00"
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    sheets_writer.update_cells_by_name(
+        SHEET_IMPROVEMENT_DRAFTS,
+        row_index,
+        {"status": new_status, "updated_at": now_iso},
+        actor=f"improvement_draft:{actor_name}",
+    )
+    return {"status": "ok", "new_status": new_status}
 
 
 @router.get("/{sheet_slug}")
@@ -5387,6 +5632,45 @@ async def cron_prune_audit_log(
         raise HTTPException(400, "days must be >= 0")
     result = sheets_writer.prune_audit_log(retention_days=days)
     return {"status": "ok", **result}
+
+
+def _format_stale_quota_message(items: list) -> str:
+    """Google Chat 用のメッセージ。件数のみ通知（詳細は管理画面で確認）。"""
+    return (
+        f"⚠️ *残数スナップショット未更新*\n"
+        f"24時間以上、送信残数が更新されていない会社が {len(items)} 件あります。\n"
+        f"管理画面のダッシュボードで確認してください。"
+    )
+
+
+@router.post("/cron/stale-quota")
+async def cron_stale_quota(
+    max_hours: float = 24,
+    operator=Depends(verify_api_key),
+):
+    """Cloud Scheduler が毎朝 9:00 JST に叩くエンドポイント。
+
+    `max_hours` 時間以上残数スナップショットが更新されていない会社を検出し、
+    Google Chat に通知する。該当なしの場合は通知しない（朝のノイズ防止）。
+
+    Cloud Scheduler 設定例:
+        gcloud scheduler jobs create http daily-stale-quota \\
+            --schedule="0 9 * * *" --time-zone="Asia/Tokyo" \\
+            --http-method=POST \\
+            --uri="https://<cloud-run-url>/api/v1/admin/cron/stale-quota" \\
+            --headers="X-API-Key=<secret>"
+    """
+    items = find_stale_quota_companies(max_hours=max_hours)
+    sent = False
+    if items:
+        message = _format_stale_quota_message(items)
+        sent = await notify_google_chat(message)
+    return {
+        "status": "ok",
+        "stale_count": len(items),
+        "sent": sent,
+        "max_hours": max_hours,
+    }
 
 
 @router.post("/cron/daily-report")

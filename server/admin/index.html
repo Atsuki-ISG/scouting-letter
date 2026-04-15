@@ -2326,6 +2326,7 @@ window.icon = function(name, cls='icon-sm') {
         <div class="analysis-panel-header">
           <h3>テンプレート編集</h3>
           <span id="templateVersionBadge" style="font-size:11px;color:var(--c-text-muted);font-weight:500;"></span>
+          <span id="analysisDraftBadge"></span>
           <span style="font-size:11px;color:var(--c-text-muted);font-weight:500;">テキスト選択 → ツール表示</span>
           <button class="btn btn-secondary btn-sm" style="margin-left:auto;font-size:11px;" onclick="openTemplateHistory()" title="このテンプレートの変更履歴を表示・復元"><svg class="icon icon-sm"><use href="#i-file-text"/></svg> 履歴</button>
           <button class="btn btn-secondary btn-sm" style="font-size:11px;" onclick="openExpandFromCurrentTemplate()" title="このテンプレートを他のテンプレートに展開"><svg class="icon icon-sm"><use href="#i-share"/></svg> 展開</button>
@@ -2339,8 +2340,22 @@ window.icon = function(name, cls='icon-sm') {
         <div id="diffView" class="diff-view" style="display:none;"></div>
         <div id="diffActions" class="diff-actions" style="display:none;">
           <button class="btn btn-primary btn-sm" onclick="applyImprovement()"><svg class="icon icon-sm"><use href="#i-check"/></svg> 選択を適用</button>
+          <button class="btn btn-secondary btn-sm" onclick="enterEditMode()" title="採用した差分をマージしてから本文を編集"><svg class="icon icon-sm"><use href="#i-edit"/></svg> 編集</button>
+          <button class="btn btn-secondary btn-sm" onclick="saveDraft()" title="編集内容をサーバに下書き保存"><svg class="icon icon-sm"><use href="#i-file-text"/></svg> 下書き保存</button>
           <button class="btn btn-secondary btn-sm" onclick="switchDiffViewMode()"><svg class="icon icon-sm"><use href="#i-refresh"/></svg> 表示切替</button>
           <button class="btn btn-secondary btn-sm" onclick="exitDiffMode()"><svg class="icon icon-sm"><use href="#i-undo"/></svg> 戻す</button>
+        </div>
+        <div id="diffEditView" style="display:none;">
+          <div style="font-size:11px;color:var(--c-text-muted);margin-bottom:6px;">
+            💡 採用した差分をマージした本文です。必要に応じて編集してください。保存時に下書きとしてサーバに永続化されます。
+          </div>
+          <textarea id="diffEditTextarea" style="width:100%;min-height:400px;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.7;border:1px solid var(--c-border);border-radius:var(--radius-sm);resize:vertical;"></textarea>
+          <div style="margin-top:8px;display:flex;gap:8px;align-items:center;">
+            <button class="btn btn-primary btn-sm" onclick="applyEditedBody()"><svg class="icon icon-sm"><use href="#i-check"/></svg> この内容で適用</button>
+            <button class="btn btn-secondary btn-sm" onclick="saveDraft()"><svg class="icon icon-sm"><use href="#i-file-text"/></svg> 下書き保存</button>
+            <button class="btn btn-secondary btn-sm" onclick="exitEditMode()"><svg class="icon icon-sm"><use href="#i-undo"/></svg> 差分に戻る</button>
+            <span id="diffDraftIndicator" style="margin-left:auto;font-size:11px;color:var(--c-text-muted);"></span>
+          </div>
         </div>
         <!-- 一括展開UI -->
         <div id="expandSection" style="display:none;margin-top:12px;">
@@ -6102,6 +6117,10 @@ function loadTemplateIntoEditor(index) {
   if (badge) {
     badge.textContent = t.version ? `v${t.version}（最新）` : '';
   }
+  // Check for saved drafts for this template
+  if (typeof loadDraftIfAny === 'function') {
+    loadDraftIfAny();
+  }
 }
 
 // ===== テンプレート変更履歴モーダル =====
@@ -6403,6 +6422,10 @@ let diffOriginalBody = null;
 let diffChanges = [];
 let diffRowIndex = null;
 let diffMode = false;
+// Edit mode (textarea 編集 + サーバ下書き保存)
+let diffEditMode = false;
+let diffDraftId = null;
+let diffEditedBody = null;
 
 // LCS on arrays of strings (lines or words)
 function lcsTable(a, b) {
@@ -6669,11 +6692,172 @@ function exitDiffMode() {
   document.getElementById('templateEditor').style.display = '';
   document.getElementById('diffView').style.display = 'none';
   document.getElementById('diffActions').style.display = 'none';
+  document.getElementById('diffEditView').style.display = 'none';
   const h = document.querySelector('#analysisView .analysis-panel:first-child .analysis-panel-header h3');
   if (h) h.textContent = 'テンプレート編集';
   diffMode = false;
+  diffEditMode = false;
   diffImprovedBody = null;
   diffChanges = [];
+  diffEditedBody = null;
+  diffDraftId = null;
+}
+
+// ===== Edit mode: diff承認後に本文をtextareaで微修正 + サーバ下書き保存 =====
+
+function _computeMergedBodyForEditing() {
+  // 採用状態を反映した本文を作る。hunk モードなら mergeAcceptedHunks、
+  // Before/After モードは improvement そのまま。
+  if (diffHunks && diffHunks.length > 0) {
+    return mergeAcceptedHunks(diffOriginalBody, diffImprovedBody, diffHunks);
+  }
+  return (diffImprovedBody || '').replace(/\\n/g, '\n');
+}
+
+function enterEditMode() {
+  if (!diffImprovedBody) return;
+  const body = diffEditedBody != null ? diffEditedBody : _computeMergedBodyForEditing();
+  document.getElementById('diffEditTextarea').value = body;
+  document.getElementById('diffView').style.display = 'none';
+  document.getElementById('diffEditView').style.display = '';
+  // Keep diffActions hidden while editing; diffEditView has its own buttons
+  document.getElementById('diffActions').style.display = 'none';
+  diffEditMode = true;
+  _refreshDraftIndicator();
+}
+
+function exitEditMode() {
+  // Pull current textarea content into memory so re-entering preserves it
+  diffEditedBody = document.getElementById('diffEditTextarea').value;
+  document.getElementById('diffEditView').style.display = 'none';
+  document.getElementById('diffView').style.display = '';
+  document.getElementById('diffActions').style.display = '';
+  diffEditMode = false;
+}
+
+function _refreshDraftIndicator() {
+  const el = document.getElementById('diffDraftIndicator');
+  if (!el) return;
+  el.textContent = diffDraftId ? `🗒 下書き保存済み (${diffDraftId})` : '';
+}
+
+async function saveDraft() {
+  // Source body: edited textarea if in edit mode, otherwise merged hunks
+  let body;
+  if (diffEditMode) {
+    body = document.getElementById('diffEditTextarea').value;
+    diffEditedBody = body;
+  } else {
+    body = _computeMergedBodyForEditing();
+  }
+
+  const t = analysisTemplates.find(t => t._row_index === diffRowIndex);
+  if (!t) { toast('テンプレート情報が取得できません', true); return; }
+  const company = document.getElementById('companySelect').value;
+
+  const payload = {
+    company,
+    template_row_index: diffRowIndex,
+    template_type: t.type,
+    job_category: t.job_category || '',
+    original_body: (diffOriginalBody || '').replace(/\\n/g, '\n'),
+    draft_body: body,
+    directive: (document.getElementById('improveDirective')?.value || '').trim(),
+  };
+  if (diffDraftId) payload.id = diffDraftId;
+
+  try {
+    const data = await api('POST', '/api/v1/admin/improvement_drafts', payload);
+    if (data.status !== 'ok') { toast(data.detail || '保存エラー', true); return; }
+    diffDraftId = data.draft.id;
+    _refreshDraftIndicator();
+    toast('下書きを保存しました');
+  } catch (e) {
+    toast('下書き保存エラー: ' + e.message, true);
+  }
+}
+
+async function applyEditedBody() {
+  const body = document.getElementById('diffEditTextarea').value;
+  if (!body.trim()) { toast('本文が空です', true); return; }
+  if (!confirm('編集した本文でテンプレートを更新しますか？')) return;
+
+  try {
+    const storedBody = body.replace(/\n/g, '\\n');
+    await api('PUT', `/api/v1/admin/templates/${diffRowIndex}`, { body: storedBody });
+
+    // Mark draft as applied (if any)
+    if (diffDraftId) {
+      try {
+        await api('POST', `/api/v1/admin/improvement_drafts/${diffDraftId}/discard`, { new_status: 'applied' });
+      } catch (e) { /* non-fatal */ }
+    }
+
+    analysisOriginalBody = storedBody;
+    const escaped = storedBody
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\\n/g, '\n').replace(/\n/g, '<br>');
+    document.getElementById('templateEditor').innerHTML = escaped;
+    exitDiffMode();
+    toast('テンプレートを更新しました');
+    // Reload templates list to pick up new version number
+    if (typeof loadAnalysisTemplates === 'function') loadAnalysisTemplates();
+  } catch (e) {
+    toast('更新エラー: ' + e.message, true);
+  }
+}
+
+async function loadDraftIfAny() {
+  // Call on template selection. If a draft exists for (company, row_index), show badge.
+  const company = document.getElementById('companySelect').value;
+  if (!company || !analysisCurrentRowIndex) return;
+  try {
+    const data = await api('GET',
+      `/api/v1/admin/improvement_drafts?company=${encodeURIComponent(company)}&row_index=${analysisCurrentRowIndex}`);
+    const items = data.items || [];
+    const badgeHost = document.getElementById('analysisDraftBadge');
+    if (!badgeHost) return;
+    if (items.length === 0) { badgeHost.innerHTML = ''; return; }
+    const d = items[0];
+    badgeHost.innerHTML =
+      `<button class="btn btn-sm btn-secondary" style="font-size:11px;margin-left:8px;" ` +
+      `onclick="restoreDraft('${d.id}')" title="この下書きを編集モードで開く">🗒 下書きあり (${_timeAgo(d.updated_at)})</button>`;
+  } catch (e) {
+    // silent — non-critical
+  }
+}
+
+function _timeAgo(iso) {
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (!t) return '';
+  const mins = Math.floor((Date.now() - t) / 60000);
+  if (mins < 1) return 'たった今';
+  if (mins < 60) return mins + '分前';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + '時間前';
+  return Math.floor(hrs / 24) + '日前';
+}
+
+async function restoreDraft(draftId) {
+  try {
+    const data = await api('GET', `/api/v1/admin/improvement_drafts/${draftId}`);
+    const d = data.draft;
+    // Restore diff-mode state so apply flow works
+    diffOriginalBody = d.original_body || '';
+    diffImprovedBody = d.draft_body || '';
+    diffChanges = [];
+    diffHunks = [];
+    diffRowIndex = d.template_row_index;
+    diffDraftId = d.id;
+    diffEditedBody = d.draft_body || '';
+    // Render diff (original vs draft) then jump into edit mode
+    renderDiffView(d.original_body || '', d.draft_body || '', []);
+    enterDiffMode();
+    enterEditMode();
+  } catch (e) {
+    toast('下書き復元エラー: ' + e.message, true);
+  }
 }
 
 // ── Diagnosis state ──
