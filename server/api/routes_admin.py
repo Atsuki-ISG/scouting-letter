@@ -2471,6 +2471,150 @@ async def normalize_send_sheet(data: dict, operator=Depends(verify_api_key)):
     return summary
 
 
+@router.post("/cleanup_reply_drift")
+async def cleanup_reply_drift(data: dict, operator=Depends(verify_api_key)):
+    """送信_* シートで 地域/曜日/時間帯 の値が 返信/返信日/返信カテゴリ に
+    二重書き込みされている行を検出し、空にする修復エンドポイント。
+
+    背景: 旧 orchestrator が列追加タイミングに「地域・曜日・時間帯」を
+    「返信・返信日・返信カテゴリ」の位置にも書き込んでしまったため、実
+    返信ではない値が返信列に残っている。全社で数十〜百件規模で発生。
+
+    判定基準 (保守的): 3 列すべてが一致した行のみ drift と判定。
+      - 返信 == 地域 (両方 non-empty)
+      - 返信日 == 曜日
+      - 返信カテゴリ == 時間帯
+
+    1 列だけ一致するケースはユーザーが偶然同じ地域から来た返信の可能性が
+    残るため clean せず partial としてレポートのみ。
+
+    Body: ``{"sheet": "送信_<会社名>", "dry_run": true}``
+
+    レスポンス:
+      {
+        "sheet": ...,
+        "status": "dry_run" | "ok",
+        "total_rows": int,
+        "full_drift_rows": int,        # 3 列全一致で clean 対象
+        "partial_drift_rows": int,     # 返信のみ地域と一致 (clean しない)
+        "real_reply_rows": int,        # 真の返信 (clean しない)
+        "cleaned": int,                # dry_run=False 時の実更新件数
+        "samples_full": [...],         # 先頭 3 件
+        "samples_partial": [...]
+      }
+    """
+    sheet = (data.get("sheet") or "").strip()
+    dry_run = bool(data.get("dry_run", True))
+    if not sheet:
+        raise HTTPException(400, "sheet is required")
+    if not sheet.startswith("送信_"):
+        raise HTTPException(400, "cleanup_reply_drift only operates on 送信_* sheets")
+
+    try:
+        rows = sheets_writer.get_all_rows(sheet)
+    except Exception as e:
+        raise HTTPException(404, f"sheet unreadable: {e}")
+    if len(rows) < 2:
+        return {
+            "sheet": sheet, "status": "ok", "total_rows": 0,
+            "full_drift_rows": 0, "partial_drift_rows": 0,
+            "real_reply_rows": 0, "cleaned": 0,
+            "samples_full": [], "samples_partial": [],
+        }
+
+    headers = [h.strip() for h in rows[0]]
+    required = ["地域", "曜日", "時間帯", "返信", "返信日", "返信カテゴリ", "会員番号", "日時"]
+    col = {}
+    for name in required:
+        try:
+            col[name] = headers.index(name)
+        except ValueError:
+            raise HTTPException(
+                409,
+                f"sheet header missing required column '{name}' — "
+                f"run normalize_send_sheet first"
+            )
+
+    def cell(row: list[str], idx: int) -> str:
+        return row[idx].strip() if idx < len(row) else ""
+
+    full_drift: list[tuple[int, list[str]]] = []
+    partial_drift: list[tuple[int, list[str]]] = []
+    real_reply: list[tuple[int, list[str]]] = []
+
+    for i, row in enumerate(rows[1:], start=2):
+        # Skip structurally-empty rows
+        if not any(c.strip() for c in row if c):
+            continue
+        region = cell(row, col["地域"])
+        reply = cell(row, col["返信"])
+        if not reply:
+            continue
+        rday = cell(row, col["返信日"])
+        rcat = cell(row, col["返信カテゴリ"])
+        day = cell(row, col["曜日"])
+        time = cell(row, col["時間帯"])
+
+        three_match = (
+            reply == region and region
+            and rday == day and rcat == time
+        )
+        if three_match:
+            full_drift.append((i, row))
+        elif reply == region and region:
+            partial_drift.append((i, row))
+        else:
+            real_reply.append((i, row))
+
+    def snapshot(entry: tuple[int, list[str]]) -> dict:
+        i, row = entry
+        return {
+            "row_index": i,
+            "会員番号": cell(row, col["会員番号"]),
+            "日時": cell(row, col["日時"]),
+            "地域": cell(row, col["地域"]),
+            "返信": cell(row, col["返信"]),
+            "返信日": cell(row, col["返信日"]),
+            "返信カテゴリ": cell(row, col["返信カテゴリ"]),
+        }
+
+    summary = {
+        "sheet": sheet,
+        "total_rows": max(0, len(rows) - 1),
+        "full_drift_rows": len(full_drift),
+        "partial_drift_rows": len(partial_drift),
+        "real_reply_rows": len(real_reply),
+        "samples_full": [snapshot(e) for e in full_drift[:3]],
+        "samples_partial": [snapshot(e) for e in partial_drift[:3]],
+    }
+
+    if dry_run:
+        summary["status"] = "dry_run"
+        summary["cleaned"] = 0
+        return summary
+
+    # Clean each full_drift row via update_cells_by_name so the change is
+    # audited with a before-snapshot (recoverable).
+    actor = f"cleanup_reply_drift:{(operator or {}).get('name', 'unknown')}"
+    cleaned = 0
+    for i, row in full_drift:
+        try:
+            sheets_writer.update_cells_by_name(
+                sheet, i,
+                {"返信": "", "返信日": "", "返信カテゴリ": ""},
+                actor=actor,
+            )
+            cleaned += 1
+        except Exception:
+            # Keep going — individual row failures shouldn't abort the batch.
+            # The audit log will show which rows succeeded.
+            pass
+
+    summary["status"] = "ok"
+    summary["cleaned"] = cleaned
+    return summary
+
+
 @router.post("/inspect_sheet_shape")
 async def inspect_sheet_shape(data: dict, operator=Depends(verify_api_key)):
     """Return raw header + one sample row for a specific sheet (by title).

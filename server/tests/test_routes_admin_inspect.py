@@ -265,3 +265,116 @@ class TestNormalizeSendSheet:
         assert len(payload) == 2  # 1 header + 1 data row
         # append_rows must NOT be called — would re-introduce the gap bug
         mw.append_rows.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/cleanup_reply_drift
+# ---------------------------------------------------------------------------
+
+SEND_HEADERS = [
+    "日時", "会員番号", "職種カテゴリ", "テンプレート種別", "テンプレートVer",
+    "生成パス", "パターン", "年齢層", "資格", "経験区分",
+    "希望雇用形態", "就業状況", "地域", "曜日", "時間帯",
+    "全文", "返信", "返信日", "返信カテゴリ", "応募", "応募日",
+]
+
+
+def _send_row(**overrides):
+    base = {h: "" for h in SEND_HEADERS}
+    base["日時"] = "2026-04-10 10:00:00"
+    base["会員番号"] = "M001"
+    base.update(overrides)
+    return [base[h] for h in SEND_HEADERS]
+
+
+class TestCleanupReplyDrift:
+    def test_rejects_non_send_sheet(self, client):
+        res = client.post(
+            "/api/v1/admin/cleanup_reply_drift",
+            json={"sheet": "テンプレート", "dry_run": True},
+        )
+        assert res.status_code == 400
+
+    def test_rejects_missing_header_requires_normalize_first(self, client):
+        """If the sheet lacks required columns, must 409 (run normalize first)."""
+        partial = ["日時", "会員番号", "返信"]  # missing 地域 etc.
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = [partial, ["2026", "M1", "有"]]
+            res = client.post(
+                "/api/v1/admin/cleanup_reply_drift",
+                json={"sheet": "送信_old", "dry_run": True},
+            )
+        assert res.status_code == 409
+
+    def test_classifies_rows_correctly(self, client):
+        """Full drift vs partial vs real reply."""
+        rows = [
+            SEND_HEADERS,
+            # full drift: 返信==地域 AND 返信日==曜日 AND 返信カテゴリ==時間帯
+            _send_row(
+                会員番号="DRIFT",
+                地域="神奈川県横浜市", 曜日="月", 時間帯="午前",
+                返信="神奈川県横浜市", 返信日="月", 返信カテゴリ="午前",
+            ),
+            # partial: 返信==地域 but 返信日 differs
+            _send_row(
+                会員番号="PARTIAL",
+                地域="東京都新宿区", 曜日="火", 時間帯="午後",
+                返信="東京都新宿区", 返信日="", 返信カテゴリ="",
+            ),
+            # real reply (返信 != 地域)
+            _send_row(
+                会員番号="REAL",
+                地域="千葉県船橋市", 曜日="水", 時間帯="夕方",
+                返信="有", 返信日="2026-04-11", 返信カテゴリ="興味あり",
+            ),
+            # no reply at all (skipped from counting)
+            _send_row(会員番号="EMPTY", 地域="埼玉県"),
+        ]
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = rows
+            res = client.post(
+                "/api/v1/admin/cleanup_reply_drift",
+                json={"sheet": "送信_test", "dry_run": True},
+            )
+        body = res.json()
+        assert res.status_code == 200, res.text
+        assert body["status"] == "dry_run"
+        assert body["full_drift_rows"] == 1
+        assert body["partial_drift_rows"] == 1
+        assert body["real_reply_rows"] == 1
+        # samples match the DRIFT row
+        assert body["samples_full"][0]["会員番号"] == "DRIFT"
+        assert body["samples_full"][0]["地域"] == "神奈川県横浜市"
+        # dry_run → no writes
+        mw.update_cells_by_name.assert_not_called()
+
+    def test_real_run_clears_only_full_drift(self, client):
+        rows = [
+            SEND_HEADERS,
+            _send_row(
+                会員番号="A",
+                地域="愛知県名古屋市", 曜日="月", 時間帯="午前",
+                返信="愛知県名古屋市", 返信日="月", 返信カテゴリ="午前",
+            ),
+            _send_row(
+                会員番号="B",
+                地域="京都府京都市", 曜日="木", 時間帯="午後",
+                返信="有", 返信日="2026-04-12", 返信カテゴリ="興味あり",
+            ),
+        ]
+        with patch("api.routes_admin.sheets_writer") as mw:
+            mw.get_all_rows.return_value = rows
+            res = client.post(
+                "/api/v1/admin/cleanup_reply_drift",
+                json={"sheet": "送信_test", "dry_run": False},
+            )
+        body = res.json()
+        assert body["status"] == "ok"
+        assert body["cleaned"] == 1
+        # Only the drift row should have been cleared.
+        assert mw.update_cells_by_name.call_count == 1
+        call = mw.update_cells_by_name.call_args
+        assert call.args[0] == "送信_test"
+        assert call.args[1] == 2  # row index of the drift row
+        assert call.args[2] == {"返信": "", "返信日": "", "返信カテゴリ": ""}
