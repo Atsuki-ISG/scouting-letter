@@ -39,20 +39,32 @@ function setupTabs(): void {
   });
 }
 
-/** 会社選択 */
-async function setupCompanySelect(): Promise<void> {
-  const select = document.getElementById('company') as HTMLSelectElement;
-
-  // APIから会社リストを取得（フォールバック付き）
-  const companies = await configProvider.getCompanyListWithDisplayNames();
+/** 会社ドロップダウンに会社リストを反映（既存選択は維持） */
+async function renderCompanyOptions(forceRefresh = false): Promise<void> {
+  const select = document.getElementById('company') as HTMLSelectElement | null;
+  if (!select) return;
+  const companies = await configProvider.getCompanyListWithDisplayNames(forceRefresh);
+  const currentValue = select.value;
   for (const company of companies) {
-    if (!select.querySelector(`option[value="${company.id}"]`)) {
+    const existing = select.querySelector(`option[value="${company.id}"]`) as HTMLOptionElement | null;
+    if (!existing) {
       const option = document.createElement('option');
       option.value = company.id;
       option.textContent = company.display_name;
       select.appendChild(option);
+    } else if (existing.textContent !== company.display_name) {
+      // display_name が遅れて届いた場合に表示を更新（英→日本語）
+      existing.textContent = company.display_name;
     }
   }
+  if (currentValue) select.value = currentValue;
+}
+
+/** 会社選択 */
+async function setupCompanySelect(): Promise<void> {
+  const select = document.getElementById('company') as HTMLSelectElement;
+
+  await renderCompanyOptions();
 
   const savedCompany = await storage.getCompany();
   select.value = savedCompany;
@@ -63,6 +75,14 @@ async function setupCompanySelect(): Promise<void> {
     await populateJobOffers(select.value);
     // 会社変更時は求人選択をリセット
     await storage.setSelectedJobOffer(null);
+  });
+
+  // タブ切り替えでサイドパネルに戻ってきたとき、古ければ裏で再取得して
+  // display_name 等を最新化（UIはキャッシュで先に描画済みなのでブロックしない）
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void renderCompanyOptions();
+    }
   });
 }
 
@@ -751,6 +771,34 @@ async function setupDevMode(): Promise<void> {
   });
 }
 
+/** 残数取得の鮮度しきい値（ミリ秒）: 4時間 */
+const QUOTA_FRESH_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * 残数取得を裏で発火（UI ステータスは出さない）。
+ * 失敗してもユーザー作業を妨げないよう握りつぶす。成功時のみ最終取得時刻を保存。
+ */
+async function fetchQuotaSilently(): Promise<void> {
+  try {
+    const companyId = await storage.getCompany();
+    if (!companyId) return;
+    const res: { success: boolean; remaining?: number; error?: string } =
+      await chrome.runtime.sendMessage({ type: 'REQUEST_QUOTA_SNAPSHOT', companyId });
+    if (res?.success) {
+      await storage.setQuotaLastFetch(Date.now());
+    }
+  } catch {
+    /* noop: 裏で走るので失敗しても無視 */
+  }
+}
+
+/** 鮮度 4h を過ぎていれば残数を自動取得 */
+async function fetchQuotaIfStale(): Promise<void> {
+  const last = await storage.getQuotaLastFetch();
+  if (Date.now() - last < QUOTA_FRESH_MS) return;
+  await fetchQuotaSilently();
+}
+
 /** 「残数を取得」ボタン: Service Worker 経由で裏タブ開いて残数スクレイプ */
 function setupFetchQuotaButton(): void {
   const btn = document.getElementById('btn-fetch-quota') as HTMLButtonElement | null;
@@ -776,6 +824,7 @@ function setupFetchQuotaButton(): void {
       const res: { success: boolean; remaining?: number; error?: string } =
         await chrome.runtime.sendMessage({ type: 'REQUEST_QUOTA_SNAPSHOT', companyId });
       if (res?.success) {
+        await storage.setQuotaLastFetch(Date.now());
         setStatus(`残数 ${res.remaining} 通を記録しました`, 'success');
         setTimeout(() => {
           if (status) status.style.display = 'none';
@@ -819,6 +868,16 @@ async function init(): Promise<void> {
 
   // サイドパネル起動時に会社自動検出をリクエスト
   chrome.runtime.sendMessage({ type: 'DETECT_COMPANY' } satisfies Message);
+
+  // 残数が 4h 以上古ければ裏で自動取得（UI ブロックなし）
+  void fetchQuotaIfStale();
+
+  // 連続送信完了後は残数が確実に変化しているので自動取得
+  chrome.runtime.onMessage.addListener((msg: Message) => {
+    if (msg.type === 'CONTINUOUS_SEND_COMPLETE') {
+      void fetchQuotaSilently();
+    }
+  });
 
   // 確認ポップアップ内の停止ボタンから連続送信を停止
   confirmPopup.setStopCallback(() => {

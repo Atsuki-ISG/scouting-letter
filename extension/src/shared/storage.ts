@@ -5,9 +5,14 @@ import type { CompanyConfig } from './api-client';
 /** キャッシュのTTL（ミリ秒）: 1時間 */
 const CONFIG_CACHE_TTL_MS = 60 * 60 * 1000;
 
+interface CachedCompany {
+  id: string;
+  display_name: string;
+}
+
 interface ConfigCache {
   timestamp: number;
-  companies: string[];
+  companies: (string | CachedCompany)[];
   configs: Record<string, CompanyConfig>;
 }
 
@@ -212,6 +217,18 @@ export const storage = {
 
   async setConfigCache(cache: ConfigCache): Promise<void> {
     await chrome.storage.local.set({ [STORAGE_KEYS.CONFIG_CACHE]: cache });
+  },
+
+  // --- 残数取得タイムスタンプ ---
+
+  /** 直近の残数取得（REQUEST_QUOTA_SNAPSHOT 成功）UNIX ms */
+  async getQuotaLastFetch(): Promise<number> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.QUOTA_LAST_FETCH);
+    return Number(result[STORAGE_KEYS.QUOTA_LAST_FETCH] || 0);
+  },
+
+  async setQuotaLastFetch(ts: number): Promise<void> {
+    await chrome.storage.local.set({ [STORAGE_KEYS.QUOTA_LAST_FETCH]: ts });
   },
 
   // --- 生成設定 ---

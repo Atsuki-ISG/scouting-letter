@@ -12,6 +12,12 @@ export interface CompanyListEntry {
   display_name: string;
 }
 
+/** 会社リストキャッシュの鮮度しきい値（ミリ秒）。
+ *  これ未満なら API を叩かずキャッシュを返す（「フレッシュ」扱い）。
+ *  storage 側の TTL(1時間) より短い: こちらは「無通信で返していい期間」、
+ *  storage の TTL は「キャッシュを破棄する期間」。 */
+const COMPANY_LIST_FRESH_MS = 5 * 60 * 1000;
+
 export const configProvider = {
   /**
    * 会社一覧をIDで取得する（後方互換）。
@@ -23,21 +29,35 @@ export const configProvider = {
 
   /**
    * 会社一覧を表示名つきで取得する。
-   * API → キャッシュ → フォールバックの順。
+   * 鮮度内のキャッシュがあれば即返す。古い/無い/forceRefresh なら API を叩く。
+   *
+   * @param forceRefresh true なら TTL を無視して必ず API から再取得
    */
-  async getCompanyListWithDisplayNames(): Promise<CompanyListEntry[]> {
-    // 1. APIから取得を試みる
+  async getCompanyListWithDisplayNames(forceRefresh = false): Promise<CompanyListEntry[]> {
+    // 0. 鮮度内のキャッシュがあればそのまま返す（API を叩かない）
+    if (!forceRefresh) {
+      const cache = await storage.getConfigCache();
+      if (cache && Date.now() - cache.timestamp < COMPANY_LIST_FRESH_MS) {
+        const entries = this.entriesFromCache(cache.companies);
+        // キャッシュに display_name が入っていれば採用、無ければ API にフォールスルー
+        if (entries.some(e => e.display_name !== e.id)) {
+          return entries;
+        }
+      }
+    }
+
+    // 1. APIから取得
     try {
       const companiesWithKw = await apiClient.getCompaniesWithKeywords();
       const entries: CompanyListEntry[] = companiesWithKw.map(c => ({
         id: c.id,
         display_name: c.display_name || c.id,
       }));
-      // キャッシュに保存（IDのみキャッシュ — display_nameは毎回API再取得）
+      // キャッシュに display_name ごと保存
       const cache = await storage.getConfigCache();
       await storage.setConfigCache({
         timestamp: Date.now(),
-        companies: entries.map(e => e.id),
+        companies: entries.map(e => ({ id: e.id, display_name: e.display_name })),
         configs: cache?.configs || {},
       });
       // 検出キーワードをstorageに保存（Content Scriptが使用）
@@ -53,17 +73,24 @@ export const configProvider = {
       // API失敗
     }
 
-    // 2. キャッシュから取得（display_nameは消えているのでIDで代用）
+    // 2. 古くなったキャッシュでも使う（API失敗時）
     const cache = await storage.getConfigCache();
     if (cache && cache.companies.length > 0) {
-      return cache.companies.map(c => {
-        const id = typeof c === 'string' ? c : (c as any).id ?? String(c);
-        return { id, display_name: id };
-      });
+      return this.entriesFromCache(cache.companies);
     }
 
     // 3. フォールバック
     return Object.keys(FALLBACK_COMPANY_JOB_OFFERS).map(id => ({ id, display_name: id }));
+  },
+
+  /** ConfigCache.companies を CompanyListEntry[] に正規化する（旧形式=string[] 互換） */
+  entriesFromCache(companies: unknown[]): CompanyListEntry[] {
+    return companies.map(c => {
+      if (typeof c === 'string') return { id: c, display_name: c };
+      const obj = c as { id?: string; display_name?: string };
+      const id = obj.id ?? String(c);
+      return { id, display_name: obj.display_name || id };
+    });
   },
 
   /**

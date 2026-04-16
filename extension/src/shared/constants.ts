@@ -107,6 +107,7 @@ export const STORAGE_KEYS = {
   DETECTION_KEYWORDS: 'scout_detection_keywords',
   DEV_MODE: 'scout_dev_mode',
   EXTRACT_LIMIT: 'scout_extract_limit',
+  QUOTA_LAST_FETCH: 'scout_quota_last_fetch',
 } as const;
 
 /** 会社IDから施設名キーワード（求人ドロップダウンのテキストに含まれるべき文字列） */
