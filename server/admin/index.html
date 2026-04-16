@@ -5694,8 +5694,10 @@ async function exportFeedback() {
   const params = new URLSearchParams({ format: 'md', status: 'all' });
   if (company) params.set('company', company);
   try {
-    const res = await fetch(`${API_BASE}/api/v1/admin/export_feedback?${params}`, {
-      headers: { 'X-API-Key': apiKey },
+    const key = getApiKey();
+    if (!key) { alert('パスワードが設定されていません'); return; }
+    const res = await fetch(`/api/v1/admin/export_feedback?${params}`, {
+      headers: { 'X-API-Key': key },
     });
     if (!res.ok) throw new Error(await res.text());
     const text = await res.text();
