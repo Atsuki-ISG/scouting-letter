@@ -2735,6 +2735,39 @@ async def clear_header_tail(data: dict, operator=Depends(verify_api_key)):
     }
 
 
+@router.post("/delete_sheet")
+async def delete_sheet(data: dict, operator=Depends(verify_api_key)):
+    """シートを削除する。Sheets の変更履歴から復元可能。
+
+    Body: ``{"sheet": "<title>"}``
+    """
+    from config import SPREADSHEET_ID
+
+    sheet = (data.get("sheet") or "").strip()
+    if not sheet:
+        raise HTTPException(400, "sheet is required")
+
+    service = sheets_writer._get_service()
+    meta = service.spreadsheets().get(
+        spreadsheetId=SPREADSHEET_ID,
+        fields="sheets.properties(title,sheetId)",
+    ).execute()
+    sheet_id = None
+    for s in meta.get("sheets", []):
+        if s["properties"]["title"] == sheet:
+            sheet_id = s["properties"]["sheetId"]
+            break
+    if sheet_id is None:
+        raise HTTPException(404, f"Sheet not found: {sheet}")
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=SPREADSHEET_ID,
+        body={"requests": [{"deleteSheet": {"sheetId": sheet_id}}]},
+    ).execute()
+
+    return {"status": "deleted", "sheet": sheet}
+
+
 @router.post("/inspect_sheet_shape")
 async def inspect_sheet_shape(data: dict, operator=Depends(verify_api_key)):
     """Return raw header + one sample row for a specific sheet (by title).
