@@ -4048,6 +4048,7 @@ async def _decide_proposal_impl(proposal_id: str, data: dict, operator: dict):
             raise HTTPException(400, "keyword/job_category は必須です")
         sheet_name = SHEET_MAP["job_category_keywords"]
         columns = COLUMNS["job_category_keywords"]
+        sheets_writer.ensure_sheet_exists(sheet_name, columns)
         row_dict = {
             "company": scope_company,
             "job_category": job_category,
@@ -4075,6 +4076,7 @@ async def _decide_proposal_impl(proposal_id: str, data: dict, operator: dict):
             raise HTTPException(400, "job_category / content は必須です")
         sheet_name = SHEET_MAP["prompts"]
         columns = COLUMNS["prompts"]
+        sheets_writer.ensure_sheet_exists(sheet_name, columns)
         # content の改行を Sheets 用に \n リテラル化（既存運用に合わせる）
         content_for_sheet = content.replace("\n", "\\n")
         row_dict = {
