@@ -2075,6 +2075,7 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
     """Generate pattern texts for all types using AI based on company info."""
     import json as _json
     from pipeline.ai_generator import generate_personalized_text
+    from config import GEMINI_PRO_MODEL
 
     company_id = data.get("company_id", "").strip()
     company_info = data.get("company_info", "").strip()
@@ -2174,7 +2175,7 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         gen_result = await generate_personalized_text(
             system_prompt=system_prompt,
             user_prompt="\n\n".join(user_parts),
-            model_name=None,
+            model_name=GEMINI_PRO_MODEL,
         )
         result_text = gen_result.text
 
