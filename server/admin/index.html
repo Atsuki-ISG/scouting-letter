@@ -2511,10 +2511,15 @@ window.icon = function(name, cls='icon-sm') {
     </div>
     <div class="modal-body" id="aiGenerateBody">
       <div id="aiInputPhase">
-        <div class="field">
-          <label>会社情報<span class="hint">profile.mdの内容を貼り付け</span></label>
-          <textarea id="aiCompanyInfo" style="min-height:200px" placeholder="会社の特色、教育体制、対象職種など..."></textarea>
-        </div>
+        <p style="font-size:13px;color:var(--c-text-secondary);margin-bottom:12px;">
+          Sheetsのプロフィール・プロンプトセクション（施設特色・教育体制）を自動で参照してパターンを生成します。
+        </p>
+        <details style="margin-bottom:8px;">
+          <summary style="cursor:pointer;font-size:12px;color:var(--c-text-muted);">追加の会社情報を入力（任意）</summary>
+          <div class="field" style="margin-top:8px;">
+            <textarea id="aiCompanyInfo" style="min-height:120px" placeholder="Sheetsにない情報を補足する場合のみ入力..."></textarea>
+          </div>
+        </details>
       </div>
       <div id="aiPreviewPhase" style="display:none">
         <div class="ai-generate-preview" id="aiPreviewContent"></div>
@@ -4066,9 +4071,8 @@ function closeAiGenerate() {
 
 async function startAiGenerate() {
   const info = document.getElementById('aiCompanyInfo').value.trim();
-  if (!info) { toast('会社情報を入力してください', true); return; }
-
   const company = document.getElementById('companySelect').value;
+  if (!info && !company) { toast('会社を選択してください', true); return; }
   const btn = document.getElementById('aiGenerateBtn');
   btn.disabled = true;
   btn.textContent = '生成中...';
@@ -6055,7 +6059,7 @@ ${helpSection('table-patterns', '型はめ設定', `
 <tr><td><strong>F</strong></td><td>教育体制+成長環境</td><td>20〜30代 × 経験未入力</td></tr>
 <tr><td><strong>G</strong></td><td>教育体制メイン</td><td>在学中</td></tr>
 </table>
-<p><strong>AIで一括生成</strong>: ツールバーの「AIで一括生成」から、会社情報を入力してパターンA〜Gのテキストをまとめて生成できます。</p>
+<p><strong>AIで一括生成</strong>: ツールバーの「AIで一括生成」から、パターンA〜Gのテキストをまとめて生成できます。Sheetsのプロフィール・施設特色・教育体制を自動参照します。</p>
 `)}
 
 ${helpSection('table-jobs', '求人', `

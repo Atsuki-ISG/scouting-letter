@@ -2078,8 +2078,6 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
 
     company_id = data.get("company_id", "").strip()
     company_info = data.get("company_info", "").strip()
-    if not company_info:
-        raise HTTPException(400, "company_info is required")
 
     # Load company-specific prompt sections for pattern generation
     config = sheets_client.get_company_config(company_id) if company_id else {}
@@ -2101,6 +2099,22 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
     company_profile = sheets_client.get_company_profile(company_id) if company_id else ""
     if company_profile:
         section_context_parts.insert(0, f"### 会社プロフィール\n{company_profile[:2000]}")
+
+    # company_info が空の場合、Sheetsから自動構築
+    if not company_info:
+        if not company_id:
+            raise HTTPException(400, "company_id または company_info が必要です")
+        auto_parts = []
+        if company_profile:
+            auto_parts.append(company_profile)
+        for sec in prompt_sections:
+            stype = sec.get("section_type", "")
+            content = sec.get("content", "").strip()
+            if stype in ("station_features", "education", "company_info") and content:
+                auto_parts.append(content)
+        if not auto_parts:
+            raise HTTPException(400, f"{company_id} のプロフィール・プロンプトが空です。先にデータを登録してください")
+        company_info = "\n\n".join(auto_parts)
 
     section_context = ""
     if section_context_parts:
