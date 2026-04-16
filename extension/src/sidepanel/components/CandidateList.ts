@@ -1,4 +1,4 @@
-import { CandidateItem, CandidateStatus, CompanyValidationConfig, ConfirmationData, FixRecord, Message, ValidationResult } from '../../shared/types';
+import { CandidateItem, CandidateStatus, CompanyValidationConfig, ConfirmationData, ConfirmResult, FixRecord, Message, ValidationResult } from '../../shared/types';
 import { storage } from '../../shared/storage';
 import { localTimestamp } from '../../shared/constants';
 import { configProvider } from '../../shared/config-provider';
@@ -33,7 +33,7 @@ function deriveCategoryKeywords(jobCategory: string, config?: CompanyValidationC
 }
 
 /** 確認ポップアップを表示するコールバック */
-export type ConfirmCallback = (data: ConfirmationData, options?: { isContinuousSend?: boolean }) => Promise<'ok' | 'ng'>;
+export type ConfirmCallback = (data: ConfirmationData, options?: { isContinuousSend?: boolean }) => Promise<ConfirmResult>;
 
 export class CandidateList {
   private candidates: CandidateItem[] = [];
@@ -89,7 +89,7 @@ export class CandidateList {
     this.restore();
   }
 
-  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[] } | null> {
+  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; personalizedText: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[] } | null> {
     const candidate = this.candidates.find((c) => c.status === 'ready');
     if (!candidate) return null;
 
@@ -103,6 +103,7 @@ export class CandidateList {
     return {
       memberId: candidate.member_id,
       text: candidate.full_scout_text,
+      personalizedText: candidate.personalized_text,
       searchTerm,
       jobCategory,
       employmentType,
@@ -429,8 +430,21 @@ export class CandidateList {
               validationWarnings: validationWarnings.length > 0 ? validationWarnings : undefined,
               profileSummary,
             }, { isContinuousSend: this.continuousSendActive });
-            if (result === 'ng') {
+            if (result.action === 'ng') {
               await this.skipCandidate(candidate.member_id);
+            } else if (result.action === 'ok' && result.editedPersonalizedText) {
+              // ポップアップ内でパーソナライズ文が編集された → 保存 + フォーム再セット
+              await this.saveEdit(candidate, result.editedPersonalizedText, result.editReason || '');
+              // 更新後のfull_scout_textでフォームを再セット
+              const updated = this.candidates.find((c) => c.member_id === candidate.member_id);
+              if (updated) {
+                chrome.runtime.sendMessage({
+                  type: 'FILL_FORM',
+                  text: updated.full_scout_text,
+                  memberId: updated.member_id,
+                  skipJobOffer: true,
+                } satisfies Message);
+              }
             }
           }
         }

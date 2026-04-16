@@ -147,6 +147,14 @@ export interface ConfirmationData {
   };
 }
 
+/** 確認ポップアップの結果 */
+export interface ConfirmResult {
+  action: 'ok' | 'ng';
+  /** パーソナライズ文が編集された場合のみ設定 */
+  editedPersonalizedText?: string;
+  editReason?: string;
+}
+
 /** 候補者の送信ステータス */
 export type CandidateStatus = 'ready' | 'sent' | 'skipped';
 
@@ -275,7 +283,7 @@ export type Message =
   | { type: 'DEBUG_LOG'; entry: DebugLogEntry }
   | { type: 'DRY_RUN_COMPLETE'; memberId: string }
   | { type: 'CONFIRM_BEFORE_SEND'; data: ConfirmationData }
-  | { type: 'CONFIRM_RESPONSE'; result: 'ok' | 'ng' }
+  | { type: 'CONFIRM_RESPONSE'; result: ConfirmResult }
   | { type: 'JOB_OFFER_FAILED'; memberId?: string; error: string }
   | { type: 'COMPANY_MISMATCH'; companyId: string; keywords: string[] }
   | { type: 'COMPANY_DETECTED'; companyId: string }

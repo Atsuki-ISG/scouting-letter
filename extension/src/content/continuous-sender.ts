@@ -1,8 +1,9 @@
-import { Message } from '../shared/types';
+import { ConfirmResult, Message } from '../shared/types';
 import { STORAGE_KEYS } from '../shared/constants';
 import { sleep, randomSleep } from '../shared/utils';
 import { closeOverlay, waitForOverlayClose } from './scraper';
 import { handleFillForm } from './fill-handler';
+import { fillScoutText } from './form-filler';
 import { safeSendMessage, debugLog } from './helpers';
 
 /** 求人選択失敗時の一時停止resolver */
@@ -121,7 +122,7 @@ function waitForOverlayCloseOrSkip(timeoutMs: number): Promise<'closed' | 'skipp
 }
 
 /** サイドパネルから次の候補者を取得 */
-function getNextCandidate(): Promise<{ memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[] } | null> {
+function getNextCandidate(): Promise<{ memberId: string; text: string; personalizedText: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[] } | null> {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'GET_NEXT_CANDIDATE' } satisfies Message, (response) => {
       if (response?.type === 'NEXT_CANDIDATE') {
@@ -134,7 +135,7 @@ function getNextCandidate(): Promise<{ memberId: string; text: string; searchTer
 }
 
 /** サイドパネルに確認リクエストを送り、結果を待つ（stop()でキャンセル可能） */
-function requestConfirmation(data: { memberId: string; text: string; jobOfferLabel: string; templateType: string; personalizedText: string; fullScoutText: string }): Promise<'ok' | 'ng' | 'cancelled'> {
+function requestConfirmation(data: { memberId: string; text: string; jobOfferLabel: string; templateType: string; personalizedText: string; fullScoutText: string }): Promise<ConfirmResult | 'cancelled'> {
   return new Promise((resolve) => {
     let resolved = false;
     const cleanup = () => {
@@ -250,10 +251,10 @@ export async function start(): Promise<void> {
       text: next.text,
       jobOfferLabel: jobCategory ? `${jobCategory}/${employmentType || ''}` : '',
       templateType: '',
-      personalizedText: '',
+      personalizedText: next.personalizedText,
       fullScoutText: next.text,
     });
-    console.log(`[Scout Assistant] Confirmation result: ${confirmResult}`);
+    console.log(`[Scout Assistant] Confirmation result:`, confirmResult);
 
     if (confirmResult === 'cancelled') {
       debugLog('確認ポップアップ', 'success', '停止');
@@ -262,7 +263,7 @@ export async function start(): Promise<void> {
       break;
     }
 
-    if (confirmResult === 'ng') {
+    if (confirmResult.action === 'ng') {
       debugLog('確認ポップアップ', 'success', 'スキップ');
       closeOverlay();
       await waitForOverlayClose();
@@ -271,7 +272,17 @@ export async function start(): Promise<void> {
       continue;
     }
 
-    debugLog('確認ポップアップ', 'success', 'OK → 送信待ち');
+    // ポップアップ内でパーソナライズ文が編集された → フォームを再セット
+    if (confirmResult.editedPersonalizedText) {
+      const newFullText = next.text.replace(
+        next.personalizedText || '',
+        confirmResult.editedPersonalizedText
+      );
+      await fillScoutText(newFullText);
+      debugLog('確認ポップアップ', 'success', 'OK（編集あり）→ 送信待ち');
+    } else {
+      debugLog('確認ポップアップ', 'success', 'OK → 送信待ち');
+    }
 
     console.log(`[Scout Assistant] Waiting for overlay close or skip...`);
     debugLog('確認待ち', 'pending', '送信 or スキップを待機中');

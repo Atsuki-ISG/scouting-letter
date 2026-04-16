@@ -1,9 +1,9 @@
-import { ConfirmationData } from '../../shared/types';
+import { ConfirmationData, ConfirmResult } from '../../shared/types';
 import { escapeHtml } from '../../shared/utils';
 
 export class ConfirmationPopup {
   private containerEl: HTMLElement;
-  private resolver: ((result: 'ok' | 'ng') => void) | null = null;
+  private resolver: ((result: ConfirmResult) => void) | null = null;
   private stopCallback: (() => void) | null = null;
 
   constructor() {
@@ -15,7 +15,7 @@ export class ConfirmationPopup {
     this.stopCallback = cb;
   }
 
-  show(data: ConfirmationData, options?: { isContinuousSend?: boolean }): Promise<'ok' | 'ng'> {
+  show(data: ConfirmationData, options?: { isContinuousSend?: boolean }): Promise<ConfirmResult> {
     return new Promise((resolve) => {
       this.resolver = resolve;
 
@@ -72,9 +72,17 @@ export class ConfirmationPopup {
               <input type="checkbox" class="confirm-check" data-check="content">
               <span class="confirmation-check-content">
                 <span class="confirmation-label">パーソナライズ文</span>
-                <span class="confirmation-value">${escapeHtml(data.personalized_text)}</span>
+                <span class="confirmation-personalized-preview" title="クリックして編集">${escapeHtml(data.personalized_text)}</span>
               </span>
             </label>
+            <div class="confirmation-edit hidden">
+              <textarea class="confirmation-edit-textarea" rows="4">${escapeHtml(data.personalized_text)}</textarea>
+              <input class="confirmation-edit-reason" type="text" placeholder="修正理由（任意）">
+              <div class="confirmation-edit-actions">
+                <button class="btn btn-sm btn-primary btn-confirm-edit-save">保存</button>
+                <button class="btn btn-sm btn-secondary btn-confirm-edit-cancel">キャンセル</button>
+              </div>
+            </div>
             ${profileHtml}
             <details class="confirmation-details">
               <summary>全文プレビュー</summary>
@@ -93,6 +101,53 @@ export class ConfirmationPopup {
 
       this.containerEl.classList.remove('hidden');
 
+      // 編集状態の管理
+      let editedText: string | undefined;
+      let editReason: string | undefined;
+      const previewEl = this.containerEl.querySelector('.confirmation-personalized-preview') as HTMLElement;
+      const editEl = this.containerEl.querySelector('.confirmation-edit') as HTMLElement;
+      const textareaEl = this.containerEl.querySelector('.confirmation-edit-textarea') as HTMLTextAreaElement;
+      const reasonEl = this.containerEl.querySelector('.confirmation-edit-reason') as HTMLInputElement;
+      const fulltextEl = this.containerEl.querySelector('.confirmation-fulltext') as HTMLElement;
+
+      previewEl.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        textareaEl.value = editedText ?? data.personalized_text;
+        reasonEl.value = editReason ?? '';
+        previewEl.classList.add('hidden');
+        editEl.classList.remove('hidden');
+        textareaEl.focus();
+      });
+
+      this.containerEl.querySelector('.btn-confirm-edit-save')?.addEventListener('click', () => {
+        const newText = textareaEl.value.trim();
+        if (newText && newText !== data.personalized_text) {
+          editedText = newText;
+          editReason = reasonEl.value.trim();
+          previewEl.textContent = newText;
+          // 全文プレビューも更新
+          const currentFullText = editedText
+            ? data.full_scout_text.replace(data.personalized_text, newText)
+            : data.full_scout_text;
+          if (fulltextEl) fulltextEl.textContent = currentFullText;
+          previewEl.classList.add('edited');
+        } else {
+          editedText = undefined;
+          editReason = undefined;
+          previewEl.textContent = data.personalized_text;
+          previewEl.classList.remove('edited');
+          if (fulltextEl) fulltextEl.textContent = data.full_scout_text;
+        }
+        previewEl.classList.remove('hidden');
+        editEl.classList.add('hidden');
+      });
+
+      this.containerEl.querySelector('.btn-confirm-edit-cancel')?.addEventListener('click', () => {
+        previewEl.classList.remove('hidden');
+        editEl.classList.add('hidden');
+      });
+
       // チェックリスト制御
       const okBtn = this.containerEl.querySelector('.btn-confirm-ok') as HTMLButtonElement;
       const checks = this.containerEl.querySelectorAll<HTMLInputElement>('.confirm-check');
@@ -108,19 +163,19 @@ export class ConfirmationPopup {
 
       okBtn.addEventListener('click', () => {
         this.hide();
-        this.resolver?.('ok');
+        this.resolver?.({ action: 'ok', editedPersonalizedText: editedText, editReason });
         this.resolver = null;
       });
 
       this.containerEl.querySelector('.btn-confirm-ng')?.addEventListener('click', () => {
         this.hide();
-        this.resolver?.('ng');
+        this.resolver?.({ action: 'ng' });
         this.resolver = null;
       });
 
       this.containerEl.querySelector('.confirmation-backdrop')?.addEventListener('click', () => {
         this.hide();
-        this.resolver?.('ng');
+        this.resolver?.({ action: 'ng' });
         this.resolver = null;
       });
 
@@ -129,10 +184,6 @@ export class ConfirmationPopup {
         const stopRow = this.containerEl.querySelector('.confirmation-stop-row');
         stopRow?.classList.remove('hidden');
         this.containerEl.querySelector('.btn-confirm-stop')?.addEventListener('click', () => {
-          // resolver('ng')は呼ばない — STOP_CONTINUOUS_SENDで
-          // continuous-senderのstop()→confirmCancelResolverが発火し、
-          // requestConfirmationが'cancelled'で解決してループがbreakする。
-          // ポップアップはstopContinuousSend内のDOM操作で閉じられる。
           this.resolver = null;
           this.stopCallback?.();
         });
