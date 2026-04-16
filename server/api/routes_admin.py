@@ -3954,6 +3954,20 @@ async def decide_improvement_proposal(
     status=approved にし、紐付く fix_feedback も adopted にする。
     """
     import json
+    import traceback
+    from datetime import datetime as _dt
+    from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
+
+    try:
+        return await _decide_proposal_impl(proposal_id, data, operator)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"承認処理エラー: {type(e).__name__}: {e}\n{traceback.format_exc()[-500:]}")
+
+
+async def _decide_proposal_impl(proposal_id: str, data: dict, operator: dict):
+    import json
     from datetime import datetime as _dt
     from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
 

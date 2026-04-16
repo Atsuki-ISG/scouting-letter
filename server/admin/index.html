@@ -7178,15 +7178,15 @@ function renderDiagnosisProposals(proposals) {
     html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--c-border-light);">`;
     html += `<span style="background:${targetBg};padding:2px 8px;border-radius:4px;font-size:11px;">${targetLabel}</span>`;
     html += `<span style="flex:1;">${p.rationale}</span>`;
-    html += `<button class="btn btn-sm btn-primary" style="font-size:11px;" onclick="approveProposal('${p.id}',this)">承認</button>`;
-    html += `<button class="btn btn-sm" style="font-size:11px;" onclick="rejectProposal('${p.id}',this)">却下</button>`;
+    html += `<button class="btn btn-sm btn-primary" style="font-size:11px;" onclick="approveDiagnosisProposal('${p.id}',this)">承認</button>`;
+    html += `<button class="btn btn-sm" style="font-size:11px;" onclick="rejectDiagnosisProposal('${p.id}',this)">却下</button>`;
     html += '</div>';
   }
   html += '</div></div>';
   container.innerHTML += html;
 }
 
-async function approveProposal(proposalId, btnEl) {
+async function approveDiagnosisProposal(proposalId, btnEl) {
   try {
     const data = await api('POST', `/api/v1/admin/improvement_proposals/${proposalId}/decide`, {
       decision: 'approve',
@@ -7204,7 +7204,7 @@ async function approveProposal(proposalId, btnEl) {
   }
 }
 
-async function rejectProposal(proposalId, btnEl) {
+async function rejectDiagnosisProposal(proposalId, btnEl) {
   try {
     const data = await api('POST', `/api/v1/admin/improvement_proposals/${proposalId}/decide`, {
       decision: 'reject',
