@@ -2151,6 +2151,11 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
 - 上から目線にならない（「フォローします」「安心してください」等は不可）
 - feature_variations: 3つ、各バリエーションは会社の特色を短く表現（「〜する」「〜な」で終わる連体修飾形）
 
+## feature_variations の生成方針（重要）
+- 会社情報・施設特色（station_features）に書かれた具体的なキーワードや表現を積極的に取り込むこと
+- 一般的・抽象的な表現（「やりがいのある」「成長できる」）ではなく、その会社固有の表現を使う
+- 会社情報に「施設の顔」「紹介会社への営業」「OJT制度」等の特徴的な表現があれば、それをそのままfeature_variationsに活用する
+
 ## 出力形式
 以下のJSON配列で返してください。他のテキストは不要です。
 ```json
