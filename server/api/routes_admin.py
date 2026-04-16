@@ -2176,6 +2176,8 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
             system_prompt=system_prompt,
             user_prompt="\n\n".join(user_parts),
             model_name=GEMINI_PRO_MODEL,
+            max_output_tokens=8192,
+            temperature=0.4,
         )
         result_text = gen_result.text
 
