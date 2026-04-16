@@ -2179,14 +2179,24 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         )
         result_text = gen_result.text
 
-        # Extract JSON from response (may be wrapped in markdown code blocks)
+        # Extract JSON from response (may be wrapped in markdown code blocks or thinking tags)
         import re
-        json_match = re.search(r'\[[\s\S]*\]', result_text)
+        # Strip thinking tags if present
+        cleaned = re.sub(r'<think>[\s\S]*?</think>', '', result_text).strip()
+        # Strip markdown code fences
+        cleaned = re.sub(r'^```(?:json)?\s*\n?', '', cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(r'\n?```\s*$', '', cleaned, flags=re.MULTILINE)
+        cleaned = cleaned.strip()
+
+        json_match = re.search(r'\[[\s\S]*\]', cleaned)
         if not json_match:
-            raise ValueError("AI応答からJSONを抽出できませんでした")
+            logger.error(f"generate_patterns: JSON抽出失敗。raw response ({len(result_text)}chars): {result_text[:500]}")
+            raise ValueError(f"AI応答からJSONを抽出できませんでした（応答 {len(result_text)}文字）")
 
         patterns = _json.loads(json_match.group(0))
-        return {"patterns": patterns}
+        return {"patterns": patterns, "model": gen_result.model_name if hasattr(gen_result, 'model_name') else ""}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, f"AI生成エラー: {str(e)}")
 
