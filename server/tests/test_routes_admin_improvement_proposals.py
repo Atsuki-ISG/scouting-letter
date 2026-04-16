@@ -111,10 +111,10 @@ class TestGenerateProposals:
 
     def test_generates_and_appends_proposals(self, client, mock_gemini):
         with patch("api.routes_admin.sheets_writer") as mw:
-            # Phase A pending row + empty existing keywords
+            # adopted row + empty existing keywords
             def get_all_rows(name):
                 if name == "修正フィードバック":
-                    return [FIX_HEADERS, _fix_row()]
+                    return [FIX_HEADERS, _fix_row(status="adopted")]
                 if name == "職種キーワード":
                     return [KEYWORDS_HEADERS]
                 return []
@@ -140,7 +140,7 @@ class TestGenerateProposals:
         with patch("api.routes_admin.sheets_writer") as mw:
             def get_all_rows(name):
                 if name == "修正フィードバック":
-                    return [FIX_HEADERS, _fix_row()]
+                    return [FIX_HEADERS, _fix_row(status="adopted")]
                 if name == "職種キーワード":
                     return [
                         KEYWORDS_HEADERS,
@@ -154,13 +154,14 @@ class TestGenerateProposals:
         assert body["appended"] == 1
         assert body["proposals"][0]["payload_json"].find("ICU") >= 0
 
-    def test_returns_warning_when_no_pending(self, client, mock_gemini):
+    def test_returns_warning_when_no_matching_status(self, client, mock_gemini):
         with patch("api.routes_admin.sheets_writer") as mw:
-            mw.get_all_rows.return_value = [FIX_HEADERS, _fix_row(status="adopted")]
+            # pending のfixしかないが、デフォルトは adopted を探す → 見つからない
+            mw.get_all_rows.return_value = [FIX_HEADERS, _fix_row(status="pending")]
             res = client.post("/api/v1/admin/improvement_proposals/generate", json={})
         body = res.json()
         assert body["appended"] == 0
-        assert "no pending" in body.get("warning", "").lower()
+        assert "no adopted" in body.get("warning", "").lower()
         # Gemini must NOT be called
         mock_gemini.assert_not_called()
 
@@ -168,7 +169,7 @@ class TestGenerateProposals:
         with patch("api.routes_admin.sheets_writer") as mw:
             def get_all_rows(name):
                 if name == "修正フィードバック":
-                    return [FIX_HEADERS, _fix_row()]
+                    return [FIX_HEADERS, _fix_row(status="adopted")]
                 if name == "職種キーワード":
                     return [KEYWORDS_HEADERS]
                 return []
@@ -353,7 +354,7 @@ class TestGenerateProposalsPrompts:
         with patch("api.routes_admin.sheets_writer") as mw:
             def get_all_rows(name):
                 if name == "修正フィードバック":
-                    return [FIX_HEADERS, _fix_row()]
+                    return [FIX_HEADERS, _fix_row(status="adopted")]
                 if name == "プロンプト":
                     return [PROMPT_HEADERS]
                 return []

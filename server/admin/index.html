@@ -5426,8 +5426,11 @@ function drawFixFeedbackTable() {
         <span class="fb-status fb-adopted" style="margin-left:6px;">取込済 ${adoptedCount}</span>
         <span class="fb-status fb-skipped" style="margin-left:6px;">スキップ ${skippedCount}</span>
       </span>
-      <button class="btn btn-sm btn-primary" style="margin-left:auto;" onclick="generateImprovementProposals()" ${_improvementGenerating ? 'disabled' : ''}>
-        ${_improvementGenerating ? '生成中…' : 'AI改善提案を生成'}
+      <button class="btn btn-sm btn-primary" style="margin-left:auto;" onclick="generateAllImprovementProposals()" ${_improvementGenerating ? 'disabled' : ''}>
+        ${_improvementGenerating ? '生成中…' : '取込済みから提案を一括生成'}
+      </button>
+      <button class="btn btn-sm btn-secondary" style="margin-left:4px;" onclick="exportFeedback()" title="ローカルの /integrate-feedback 用にエクスポート">
+        エクスポート
       </button>
       <label style="margin-left:8px;font-size:12px;">
         <input type="checkbox" ${_fixFeedbackPendingOnly ? 'checked' : ''} onchange="toggleFixPendingFilter(this.checked)">
@@ -5451,11 +5454,16 @@ function drawFixFeedbackTable() {
       </thead>
       <tbody>${rowsHtml}</tbody>
     </table>
-    <p style="font-size:11px;color:var(--c-text-muted);margin-top:12px;">
-      ・行クリックで Before/After 全文を展開<br>
-      ・<strong>取込</strong>: 改善ナレッジに反映する候補としてマーク（Phase A では status を adopted にするのみ。実際のテンプレ/プロンプト反映は Phase B 実装予定）<br>
-      ・<strong>スキップ</strong>: 個別事例として無視
-    </p>
+    <div style="margin-top:14px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:11px;line-height:1.6;">
+      <strong>処理の流れ:</strong>
+      <ol style="margin:4px 0 0 18px;padding:0;">
+        <li><strong>取込</strong>: 反映すべき修正をマーク → <strong>一括生成</strong>: 取込済みからAIが提案を生成 → <strong>承認</strong>: Sheetsに自動反映
+          <br><span style="color:#64748b;">（職種キーワード・プロンプト・パターン特色の3種を一括処理）</span></li>
+        <li><strong>エクスポート</strong> → ローカルで <code>/integrate-feedback</code> → recipes.md・learnings.md等に反映
+          <br><span style="color:#64748b;">（Sheets以外のgit管理ファイルへの反映用）</span></li>
+      </ol>
+      <div style="margin-top:6px;color:#64748b;">・行クリックで Before/After 全文を展開　・<strong>スキップ</strong>: 個別事例として無視</div>
+    </div>
     <style>
       .fb-status { display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600; }
       .fb-pending { background:#fef3c7;color:#92400e; }
@@ -5505,13 +5513,18 @@ const TARGET_LABELS = {
   prompts: 'プロンプト追加',
   patterns: '型はめパターン',
 };
+const TARGET_DESCRIPTIONS = {
+  job_category_keywords: '候補者の職種を自動判定する辞書。判定精度が上がる',
+  prompts: 'AI生成時に参照する会社の特色・教育体制・接点ガイド。生成文の具体性が上がる',
+  patterns: '経歴なし候補者向けの型はめ文の特色バリエーション。バリエーションが増える',
+};
 
 function drawImprovementProposalsSection() {
   const proposals = _improvementProposals;
   if (!proposals || proposals.length === 0) {
     return `
       <div style="margin-bottom:14px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:var(--c-text-muted);">
-        🤖 AI改善提案はまだありません。「AI改善提案を生成」ボタンから対象シート（職種キーワード/プロンプト/型はめパターン）を選んで生成できます。
+        AI改善提案はまだありません。取込済みのフィードバックがあれば「取込済みから提案を一括生成」で3種の改善提案を生成できます。
       </div>
     `;
   }
@@ -5526,6 +5539,7 @@ function drawImprovementProposalsSection() {
 
 function drawProposalGroup(target, items) {
   const label = TARGET_LABELS[target] || target;
+  const desc = TARGET_DESCRIPTIONS[target] || '';
   let head = '';
   let bodyRows = '';
   if (target === 'job_category_keywords') {
@@ -5575,7 +5589,8 @@ function drawProposalGroup(target, items) {
   return `
     <div style="margin-bottom:14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;">
       <div style="padding:9px 14px;background:#f1f5f9;border-bottom:1px solid #cbd5e1;border-radius:8px 8px 0 0;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;">
-        🤖 AI改善提案（${escHtml(label)}） <span style="color:#64748b;font-weight:400;font-size:11px;">${items.length} 件 pending</span>
+        AI改善提案（${escHtml(label)}） <span style="color:#64748b;font-weight:400;font-size:11px;">${items.length} 件 pending</span>
+        ${desc ? `<span style="color:#64748b;font-weight:400;font-size:11px;margin-left:auto;">→ ${escHtml(desc)}</span>` : ''}
       </div>
       <table class="data-table" style="margin:0;">
         <thead>
@@ -5636,24 +5651,93 @@ function scopeSelect(current, cls, allowGlobal = true) {
   </select>`;
 }
 
+async function generateAllImprovementProposals() {
+  if (_improvementGenerating) return;
+  const adoptedCount = _fixFeedbackData.filter(i => i.status === 'adopted').length;
+  if (adoptedCount === 0) {
+    alert('取込済みのフィードバックがありません。\n先に修正フィードバックを「取込」してください。');
+    return;
+  }
+  if (!confirm(
+    `取込済み ${adoptedCount} 件のフィードバックから、以下3種の改善提案を一括生成します:\n\n`
+    + `  ・職種キーワード — 職種判定の辞書を拡充\n`
+    + `  ・プロンプト — AI生成時の会社情報・接点ガイドを追加\n`
+    + `  ・パターン特色 — 型はめ文の特色バリエーションを追加\n\n`
+    + `Gemini API コスト（3リクエスト・計数十円程度）が発生します。続行しますか？`
+  )) return;
+
+  _improvementGenerating = true;
+  drawFixFeedbackTable();
+  try {
+    const company = document.getElementById('companySelect').value;
+    const body = { status_filter: 'adopted' };
+    if (company) body.company = company;
+    const res = await api('POST', '/api/v1/admin/improvement_proposals/generate_all', body);
+    const r = res.results || {};
+    const counts = Object.entries(r).map(([k, v]) => `${TARGET_LABELS[k] || k}: ${(v.proposals || []).length}件`);
+    if (res.total_appended === 0) {
+      alert(res.warning || '新規提案はありませんでした');
+    } else {
+      alert(`${res.total_appended} 件の提案を生成しました\n\n${counts.join('\n')}`);
+    }
+  } catch (e) {
+    alert('生成失敗: ' + (e.message || String(e)));
+  } finally {
+    _improvementGenerating = false;
+    const company = document.getElementById('companySelect').value;
+    await renderFixFeedbackTab(company);
+  }
+}
+
+async function exportFeedback() {
+  const company = document.getElementById('companySelect').value;
+  const params = new URLSearchParams({ format: 'md', status: 'all' });
+  if (company) params.set('company', company);
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/admin/export_feedback?${params}`, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const text = await res.text();
+    if (!text.trim()) { alert('エクスポート対象のフィードバックがありません'); return; }
+    // クリップボードにコピー + ダウンロード選択
+    const action = prompt(
+      'エクスポート方法を選択:\n\n  1 = クリップボードにコピー（Claude Codeに貼り付け用）\n  2 = ファイルダウンロード\n',
+      '1'
+    );
+    if (action === '1') {
+      await navigator.clipboard.writeText(text);
+      alert('クリップボードにコピーしました。\nClaude Code で /integrate-feedback を実行し、貼り付けてください。');
+    } else if (action === '2') {
+      const blob = new Blob([text], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fixes-${company || 'all'}-${new Date().toISOString().slice(0, 10)}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  } catch (e) {
+    alert('エクスポート失敗: ' + (e.message || String(e)));
+  }
+}
+
+// 個別ターゲット指定での生成（旧フロー互換）
 async function generateImprovementProposals() {
   if (_improvementGenerating) return;
   const target = prompt(
-    '対象シートを入力してください:\n\n  1 = 職種キーワード（推奨）\n  2 = プロンプト追加\n  3 = 型はめパターン\n',
+    '対象シートを入力してください:\n\n  1 = 職種キーワード\n  2 = プロンプト追加\n  3 = 型はめパターン\n',
     '1'
   );
   if (!target) return;
   const targetMap = { '1': 'job_category_keywords', '2': 'prompts', '3': 'patterns' };
   const targetKey = targetMap[target.trim()];
   if (!targetKey) { alert('1〜3 を入力してください'); return; }
-  if (!confirm(`未対応の修正フィードバックを Gemini に渡して「${TARGET_LABELS[targetKey]}」の改善提案を生成します。\n\nコストが発生します（1リクエスト数円程度）。続行しますか？`)) {
-    return;
-  }
   _improvementGenerating = true;
   drawFixFeedbackTable();
   try {
     const company = document.getElementById('companySelect').value;
-    const body = { target: targetKey };
+    const body = { target: targetKey, status_filter: 'adopted' };
     if (company) body.company = company;
     const res = await api('POST', '/api/v1/admin/improvement_proposals/generate', body);
     if ((res.proposals || []).length === 0) {

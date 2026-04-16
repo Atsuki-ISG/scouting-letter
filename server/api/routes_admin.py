@@ -978,6 +978,91 @@ async def list_fix_feedback(
     return {"items": items}
 
 
+@router.get("/export_feedback")
+async def export_feedback(
+    company: Optional[str] = None,
+    format: str = "md",
+    status: Optional[str] = "all",
+    operator: dict = Depends(verify_api_key),
+):
+    """修正フィードバックをエクスポート。ローカルの /integrate-feedback 用。
+
+    Query params:
+      - company: 会社フィルタ
+      - format: "md" (default) or "json"
+      - status: "all" (default) / "pending" / "adopted"
+    """
+    from fastapi.responses import PlainTextResponse
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+    except Exception:
+        all_rows = []
+    if not all_rows or len(all_rows) < 2:
+        if format == "json":
+            return {"items": []}
+        return PlainTextResponse("", media_type="text/markdown")
+
+    headers = [h.strip() for h in all_rows[0]]
+    items: list[dict] = []
+    for row in all_rows[1:]:
+        item = {col: (row[i].strip() if i < len(row) else "") for i, col in enumerate(headers)}
+        if company and item.get("company", "") != company:
+            continue
+        if status and status != "all" and item.get("status", "") != status:
+            continue
+        items.append(item)
+
+    items.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+
+    if format == "json":
+        return {"items": items}
+
+    # Markdown format: companies/[company]/history/fixes/YYYY-MM.md 互換
+    lines: list[str] = []
+    lines.append(f"# 修正フィードバック エクスポート")
+    lines.append(f"")
+    if company:
+        lines.append(f"会社: {company}")
+    lines.append(f"件数: {len(items)}")
+    lines.append(f"")
+
+    for item in items:
+        member_id = item.get("member_id", "unknown")
+        lines.append(f"## {member_id}")
+        lines.append(f"")
+        lines.append(f"### 候補者情報")
+        lines.append(f"- 会社: {item.get('company', '')}")
+        lines.append(f"- テンプレート種別: {item.get('template_type', '')}")
+        lines.append(f"- 日時: {item.get('timestamp', '')}")
+        lines.append(f"- 状態: {item.get('status', '')}")
+        lines.append(f"")
+        lines.append(f"### 修正前（初回生成）")
+        lines.append(f"```")
+        lines.append(item.get("before", ""))
+        lines.append(f"```")
+        lines.append(f"")
+        lines.append(f"### 問題点")
+        lines.append(item.get("reason", ""))
+        lines.append(f"")
+        lines.append(f"### 修正後")
+        lines.append(f"```")
+        lines.append(item.get("after", ""))
+        lines.append(f"```")
+        lines.append(f"")
+        lines.append(f"### 修正ポイント")
+        lines.append(item.get("reason", ""))
+        lines.append(f"")
+        if item.get("note"):
+            lines.append(f"### メモ")
+            lines.append(item.get("note", ""))
+            lines.append(f"")
+        lines.append(f"---")
+        lines.append(f"")
+
+    md_text = "\n".join(lines)
+    return PlainTextResponse(md_text, media_type="text/markdown")
+
+
 @router.get("/improvement_proposals")
 async def list_improvement_proposals(
     status: Optional[str] = None,
@@ -3548,68 +3633,34 @@ JSON配列のみ。説明文や ``` 禁止。
     return system_prompt, user_prompt, dedup_keys
 
 
-@router.post("/improvement_proposals/generate")
-async def generate_improvement_proposals(
-    data: dict,
-    operator=Depends(verify_api_key),
-):
-    """pending な fix_feedback を集約して Gemini に渡し、改善提案を生成する。
+async def _generate_proposals_for_target(
+    target: str,
+    fixes: list[dict],
+    dry_run: bool,
+    actor_name: str,
+) -> tuple[list[dict], str]:
+    """単一ターゲットに対して提案を生成する内部関数。
 
-    Body:
-      - target (optional, default "job_category_keywords"):
-        "job_category_keywords" | "prompts" | "patterns"
-      - company (optional)
-      - max_fixes (optional, default 50)
-      - dry_run (optional, default False)
+    Returns: (proposals_list, model_name)
     """
     import json
     import re as _re
     from datetime import datetime as _dt
     from pipeline.ai_generator import generate_personalized_text
+    from config import GEMINI_PRO_MODEL
     from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
 
-    target = (data.get("target") or "job_category_keywords").strip()
-    if target not in SUPPORTED_PROPOSAL_TARGETS:
-        raise HTTPException(400, f"Unsupported target: {target}")
-    company_filter = (data.get("company") or "").strip()
-    max_fixes = int(data.get("max_fixes") or 50)
-    dry_run = bool(data.get("dry_run") or False)
-
-    # 1. pending な fix_feedback を取得
-    try:
-        all_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
-    except Exception:
-        return {"status": "ok", "appended": 0, "proposals": [], "warning": "no fix_feedback sheet"}
-    if not all_rows or len(all_rows) < 2:
-        return {"status": "ok", "appended": 0, "proposals": [], "warning": "no fixes"}
-
-    headers = [h.strip() for h in all_rows[0]]
-    pending: list[dict] = []
-    for row in all_rows[1:]:
-        item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(headers)}
-        if item.get("status", "") != "pending":
-            continue
-        if company_filter and item.get("company", "") != company_filter:
-            continue
-        pending.append(item)
-        if len(pending) >= max_fixes:
-            break
-
-    if not pending:
-        return {"status": "ok", "appended": 0, "proposals": [], "warning": "no pending fixes"}
-
-    # 2. target ごとに system/user prompt + dedup_keys を組み立てる
+    # 1. target ごとに prompt + dedup_keys を組み立て
     if target == "job_category_keywords":
-        system_prompt, user_prompt, dedup_keys = _build_keyword_proposal_inputs(pending)
+        system_prompt, user_prompt, dedup_keys = _build_keyword_proposal_inputs(fixes)
     elif target == "prompts":
-        system_prompt, user_prompt, dedup_keys = _build_prompt_proposal_inputs(pending)
+        system_prompt, user_prompt, dedup_keys = _build_prompt_proposal_inputs(fixes)
     elif target == "patterns":
-        system_prompt, user_prompt, dedup_keys = _build_pattern_proposal_inputs(pending)
+        system_prompt, user_prompt, dedup_keys = _build_pattern_proposal_inputs(fixes)
     else:
-        raise HTTPException(400, f"Unsupported target: {target}")
+        return [], ""
 
-    # 3. Gemini 呼び出し
-    from config import GEMINI_PRO_MODEL
+    # 2. Gemini 呼び出し
     try:
         result = await generate_personalized_text(
             system_prompt,
@@ -3620,21 +3671,21 @@ async def generate_improvement_proposals(
         )
         raw = result.text or ""
     except Exception as e:
-        raise HTTPException(500, f"AI生成エラー: {e}")
+        return [], f"error:{e}"
 
     raw = _re.sub(r"^```[^\n]*\n", "", raw.strip())
     raw = _re.sub(r"\n```$", "", raw.strip())
     try:
         suggestions = json.loads(raw)
         if not isinstance(suggestions, list):
-            raise ValueError("Gemini did not return a list")
-    except Exception as e:
-        raise HTTPException(500, f"Gemini出力のJSONパース失敗: {e} / raw={raw[:300]}")
+            suggestions = []
+    except Exception:
+        suggestions = []
 
-    # 4. target ごとに proposal dict を組み立てる
+    # 3. proposal dict を組み立て
     proposals_out: list[dict] = []
-    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
     now_iso = _dt.utcnow().isoformat(timespec="seconds")
+    model_name = result.model_name if hasattr(result, "model_name") else ""
 
     for s in suggestions:
         scope_company = (s.get("scope_company") or "").strip()
@@ -3681,7 +3732,7 @@ async def generate_improvement_proposals(
                 continue
             if (target_company, pattern_type, job_category, employment_variant, new_feature) in dedup_keys:
                 continue
-            scope_company = target_company  # patterns は会社固有が前提
+            scope_company = target_company
             payload = {
                 "pattern_type": pattern_type,
                 "job_category": job_category,
@@ -3704,10 +3755,8 @@ async def generate_improvement_proposals(
         }
         proposals_out.append(proposal)
 
-    if not proposals_out:
-        return {"status": "ok", "appended": 0, "proposals": [], "warning": "AIから新規提案なし"}
-
-    if not dry_run:
+    # 4. Sheets に書き込み
+    if proposals_out and not dry_run:
         sheets_writer.ensure_sheet_exists(SHEET_IMPROVEMENT_PROPOSALS, IMPROVEMENT_PROPOSAL_COLUMNS)
         for p in proposals_out:
             sheets_writer.append_row(
@@ -3715,12 +3764,142 @@ async def generate_improvement_proposals(
                 [p[c] for c in IMPROVEMENT_PROPOSAL_COLUMNS],
             )
 
+    return proposals_out, model_name
+
+
+@router.post("/improvement_proposals/generate")
+async def generate_improvement_proposals(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """fix_feedback を集約して Gemini に渡し、改善提案を生成する。
+
+    Body:
+      - target (optional, default "job_category_keywords"):
+        "job_category_keywords" | "prompts" | "patterns"
+      - company (optional)
+      - max_fixes (optional, default 50)
+      - dry_run (optional, default False)
+      - status_filter (optional, default "adopted"):
+        "pending" | "adopted" | "all"
+    """
+    import json
+    import re as _re
+    from datetime import datetime as _dt
+    from pipeline.ai_generator import generate_personalized_text
+    from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
+
+    target = (data.get("target") or "job_category_keywords").strip()
+    if target not in SUPPORTED_PROPOSAL_TARGETS:
+        raise HTTPException(400, f"Unsupported target: {target}")
+    company_filter = (data.get("company") or "").strip()
+    max_fixes = int(data.get("max_fixes") or 50)
+    dry_run = bool(data.get("dry_run") or False)
+    status_filter = (data.get("status_filter") or "adopted").strip()
+
+    # 1. fix_feedback を取得（status_filter で絞り込み）
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+    except Exception:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": "no fix_feedback sheet"}
+    if not all_rows or len(all_rows) < 2:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": "no fixes"}
+
+    headers = [h.strip() for h in all_rows[0]]
+    pending: list[dict] = []
+    for row in all_rows[1:]:
+        item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(headers)}
+        row_status = item.get("status", "")
+        if status_filter != "all" and row_status != status_filter:
+            continue
+        if company_filter and item.get("company", "") != company_filter:
+            continue
+        pending.append(item)
+        if len(pending) >= max_fixes:
+            break
+
+    if not pending:
+        return {"status": "ok", "appended": 0, "proposals": [], "warning": f"no {status_filter} fixes"}
+
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+    proposals_out, model_name = await _generate_proposals_for_target(
+        target, pending, dry_run, actor_name,
+    )
+
     return {
         "status": "ok",
         "target": target,
-        "appended": 0 if dry_run else len(proposals_out),
+        "appended": len(proposals_out) if not dry_run else 0,
         "proposals": proposals_out,
-        "model": result.model_name if hasattr(result, "model_name") else "",
+        "model": model_name,
+        "actor": actor_name,
+    }
+
+
+@router.post("/improvement_proposals/generate_all")
+async def generate_all_improvement_proposals(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """全ターゲット（keywords/prompts/patterns）に対して一括で改善提案を生成する。
+
+    Body:
+      - company (optional)
+      - max_fixes (optional, default 50)
+      - dry_run (optional, default False)
+      - status_filter (optional, default "adopted")
+    """
+    company_filter = (data.get("company") or "").strip()
+    max_fixes = int(data.get("max_fixes") or 50)
+    dry_run = bool(data.get("dry_run") or False)
+    status_filter = (data.get("status_filter") or "adopted").strip()
+
+    # 1. fix_feedback を取得
+    try:
+        all_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+    except Exception:
+        return {"status": "ok", "results": {}, "total_appended": 0, "warning": "no fix_feedback sheet"}
+    if not all_rows or len(all_rows) < 2:
+        return {"status": "ok", "results": {}, "total_appended": 0, "warning": "no fixes"}
+
+    headers = [h.strip() for h in all_rows[0]]
+    fixes: list[dict] = []
+    for row in all_rows[1:]:
+        item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(headers)}
+        row_status = item.get("status", "")
+        if status_filter != "all" and row_status != status_filter:
+            continue
+        if company_filter and item.get("company", "") != company_filter:
+            continue
+        fixes.append(item)
+        if len(fixes) >= max_fixes:
+            break
+
+    if not fixes:
+        return {"status": "ok", "results": {}, "total_appended": 0,
+                "warning": f"no {status_filter} fixes", "fixes_processed": 0}
+
+    actor_name = operator.get("name") or operator.get("operator_id") or "operator"
+
+    # 2. 全ターゲットに対して順次生成
+    results: dict = {}
+    total_appended = 0
+    for target in SUPPORTED_PROPOSAL_TARGETS:
+        proposals, model_name = await _generate_proposals_for_target(
+            target, fixes, dry_run, actor_name,
+        )
+        results[target] = {
+            "appended": len(proposals) if not dry_run else 0,
+            "proposals": proposals,
+            "model": model_name,
+        }
+        total_appended += len(proposals) if not dry_run else 0
+
+    return {
+        "status": "ok",
+        "results": results,
+        "total_appended": total_appended,
+        "fixes_processed": len(fixes),
         "actor": actor_name,
     }
 
