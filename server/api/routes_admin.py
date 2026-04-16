@@ -2190,7 +2190,8 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
 
         json_match = re.search(r'\[[\s\S]*\]', cleaned)
         if not json_match:
-            logger.error(f"generate_patterns: JSON抽出失敗。raw response ({len(result_text)}chars): {result_text[:500]}")
+            import logging
+            logging.getLogger(__name__).error(f"generate_patterns: JSON抽出失敗。raw response ({len(result_text)}chars): {result_text[:500]}")
             raise ValueError(f"AI応答からJSONを抽出できませんでした（応答 {len(result_text)}文字）")
 
         patterns = _json.loads(json_match.group(0))
