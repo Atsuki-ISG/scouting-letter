@@ -2615,6 +2615,41 @@ async def cleanup_reply_drift(data: dict, operator=Depends(verify_api_key)):
     return summary
 
 
+@router.post("/clear_header_tail")
+async def clear_header_tail(data: dict, operator=Depends(verify_api_key)):
+    """指定シートのヘッダー行（row 1）の末尾ゴミ列をクリアする。
+
+    Body: ``{"sheet": "<title>", "keep_columns": 18}``
+
+    keep_columns 列目（0-indexed）以降の row 1 セルを空にする。
+    データ行には触れない。生成ログ等の送信_* 以外のシートに使える。
+    """
+    sheet = (data.get("sheet") or "").strip()
+    keep = int(data.get("keep_columns", 0))
+    if not sheet or keep < 1:
+        raise HTTPException(400, "sheet and keep_columns (>= 1) required")
+
+    from config import SPREADSHEET_ID
+    from db.sheets_writer import _column_letter
+
+    service = sheets_writer._get_service()
+    start_letter = _column_letter(keep)
+    service.spreadsheets().values().clear(
+        spreadsheetId=SPREADSHEET_ID,
+        range=f"'{sheet}'!{start_letter}1:ZZ1",
+    ).execute()
+
+    # Verify
+    new_headers = sheets_writer.get_headers(sheet)
+    return {
+        "status": "ok",
+        "sheet": sheet,
+        "kept_columns": keep,
+        "new_header_count": len(new_headers),
+        "headers": new_headers,
+    }
+
+
 @router.post("/inspect_sheet_shape")
 async def inspect_sheet_shape(data: dict, operator=Depends(verify_api_key)):
     """Return raw header + one sample row for a specific sheet (by title).
