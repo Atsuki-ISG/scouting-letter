@@ -5568,18 +5568,26 @@ function drawProposalGroup(target, items) {
       `);
     }).join('');
   } else if (target === 'patterns') {
-    head = `<th>会社</th><th>型</th><th>職種</th><th>追加バリエーション</th>`;
+    head = `<th>会社</th><th>型</th><th>職種</th><th>種別</th><th>内容</th>`;
     bodyRows = items.map(p => {
       const payload = p.payload || {};
+      const isRewrite = (p.operation === 'rewrite');
       const types = ['A', 'B1', 'B2', 'C', 'D', 'E', 'F', 'G'];
       const typeOptions = types.map(t =>
         `<option value="${t}" ${t === payload.pattern_type ? 'selected' : ''}>${t}</option>`
       ).join('');
+      const contentCell = isRewrite
+        ? `<td><textarea class="prop-new-template" rows="3" style="width:280px;font-size:11px;">${escHtml(payload.new_template_text || '')}</textarea></td>`
+        : `<td><input type="text" class="prop-new-feature" value="${escHtml(payload.new_feature || '')}" style="width:240px;font-size:12px;"></td>`;
+      const opLabel = isRewrite
+        ? '<span style="background:#f59e0b;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;">書換</span>'
+        : '<span style="background:#10b981;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;">追加</span>';
       return rowShell(p, `
         <td>${scopeSelect(p.scope_company, 'prop-scope', /*allowGlobal=*/false)}</td>
         <td><select class="prop-pattern-type" style="font-size:11px;">${typeOptions}</select></td>
         <td>${jobCategorySelect(payload.job_category, 'prop-jc')}</td>
-        <td><input type="text" class="prop-new-feature" value="${escHtml(payload.new_feature || '')}" style="width:240px;font-size:12px;"></td>
+        <td>${opLabel}</td>
+        ${contentCell}
       `);
     }).join('');
   } else {
@@ -5786,14 +5794,14 @@ function _readProposalEdits(proposalId) {
     };
   }
   if (target === 'patterns') {
+    const newTemplate = get('prop-new-template');
+    const isRewrite = !!newTemplate;
     return {
       target,
       scope_company: get('prop-scope'),
-      payload_overrides: {
-        pattern_type: get('prop-pattern-type'),
-        job_category: get('prop-jc'),
-        new_feature: get('prop-new-feature'),
-      },
+      payload_overrides: isRewrite
+        ? { pattern_type: get('prop-pattern-type'), job_category: get('prop-jc'), new_template_text: newTemplate }
+        : { pattern_type: get('prop-pattern-type'), job_category: get('prop-jc'), new_feature: get('prop-new-feature') },
     };
   }
   return null;
@@ -5809,8 +5817,8 @@ async function approveProposal(id) {
   if (edits.target === 'prompts' && !edits.payload_overrides.content) {
     alert('追加内容（content）が空です'); return;
   }
-  if (edits.target === 'patterns' && !edits.payload_overrides.new_feature) {
-    alert('追加バリエーションが空です'); return;
+  if (edits.target === 'patterns' && !edits.payload_overrides.new_feature && !edits.payload_overrides.new_template_text) {
+    alert('追加バリエーションまたは書き換えテキストが空です'); return;
   }
   if (edits.target === 'patterns' && !edits.scope_company) {
     alert('対象会社を選択してください'); return;

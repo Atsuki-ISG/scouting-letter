@@ -2082,14 +2082,35 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         raise HTTPException(400, "company_info is required")
 
     # Load company-specific prompt sections for pattern generation
-    prompt_sections = sheets_client.get_company_config(company_id).get("prompt_sections", []) if company_id else []
+    config = sheets_client.get_company_config(company_id) if company_id else {}
+    prompt_sections = config.get("prompt_sections", [])
     custom_prompt = ""
     for sec in prompt_sections:
         if sec.get("section_type") == "pattern_generation":
             custom_prompt += sec.get("content", "") + "\n"
 
+    # Collect station_features, education, and profile as additional context
+    section_context_parts: list[str] = []
+    for sec in prompt_sections:
+        stype = sec.get("section_type", "")
+        content = sec.get("content", "").strip()
+        if stype in ("station_features", "education") and content:
+            jc = sec.get("job_category", "")
+            label = f"{stype}" + (f" ({jc})" if jc else "")
+            section_context_parts.append(f"### {label}\n{content}")
+    company_profile = sheets_client.get_company_profile(company_id) if company_id else ""
+    if company_profile:
+        section_context_parts.insert(0, f"### 会社プロフィール\n{company_profile[:2000]}")
+
+    section_context = ""
+    if section_context_parts:
+        section_context = (
+            "\n\n## 会社の特色・教育体制（プロンプトセクションから自動取得）\n"
+            + "\n\n".join(section_context_parts)
+        )
+
     # Build system prompt
-    system_prompt = custom_prompt if custom_prompt.strip() else """あなたは訪問看護・介護系のスカウト文ライターです。
+    system_prompt = custom_prompt if custom_prompt.strip() else """あなたは介護・医療系のスカウト文ライターです。
 以下の会社情報をもとに、8つのパターン型のスカウト文（template_text）と特色バリエーション（feature_variations）を生成してください。
 
 ## 型の構造
@@ -2133,9 +2154,12 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
 ```"""
 
     try:
+        user_parts = [f"以下の会社情報をもとに、10パターンのスカウト文を生成してください。\n\n{company_info}"]
+        if section_context:
+            user_parts.append(section_context)
         gen_result = await generate_personalized_text(
             system_prompt=system_prompt,
-            user_prompt=f"以下の会社情報をもとに、10パターンのスカウト文を生成してください。\n\n{company_info}",
+            user_prompt="\n\n".join(user_parts),
             model_name=None,
         )
         result_text = gen_result.text
@@ -3425,7 +3449,7 @@ IMPROVEMENT_PROPOSAL_COLUMNS = [
 SUPPORTED_PROPOSAL_TARGETS = {
     "job_category_keywords": {"append"},
     "prompts": {"append"},
-    "patterns": {"update"},
+    "patterns": {"update", "rewrite"},
 }
 
 # プロンプトシートで会社固有に上書き可能な section_type（routes_admin.py 1029行に既出）
@@ -3610,23 +3634,33 @@ def _build_pattern_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
 
     system_prompt = """あなたはスカウト文生成パイプラインの「型はめパターン」を改善するアシスタントです。
 
-ディレクターが手動修正したスカウト文の差分から、既存の型はめパターンの「特色バリエーション」(feature_variations) に追加すべき語句・短文を特定し、JSON配列で返してください。
+ディレクターが手動修正したスカウト文の差分から、既存の型はめパターンの改善提案をJSON配列で返してください。
+提案は2種類あります:
+
+## 1. feature_variations への追加 (operation: "update")
+型のテキスト中の {特色} プレースホルダーに差し替える特色バリエーションを追加。
+
+## 2. template_text の書き換え (operation: "rewrite")
+型の骨格テキスト自体に問題がある場合（表現が不自然、トーンが合わない、構造が悪い等）に書き換え提案。
+- 修正差分から同じパターンで繰り返し同じ箇所が直されている場合に提案する
+- 軽微な表現改善だけでは提案しない。構造的な問題がある場合のみ
 
 # 前提
-- パターン (型A〜G) は経験年数 × 年齢のマトリクスで選ばれる、骨格は固定の型です
+- パターン (型A〜G) は経験年数 × 年齢のマトリクスで選ばれる型です
 - feature_variations は型のテキスト中で差し替え可能な特色バリエーション（| 区切り）
 - 既存パターン一覧をユーザープロンプトに渡します。company / pattern_type / job_category がマッチするものに対してのみ提案してください
 
 # 判断基準
-- after や reason から、その会社の強みや業務特色を表す短い表現（10〜30文字）を抽出
-- 既に feature_variations に含まれているものは提案しない
-- 候補者個別の事情ではなく、その会社の他候補者にも使い回せる語句に限る
-- scope_company は基本的に対象会社IDを指定する
+- feature_variations追加: after や reason から、その会社の強みや業務特色を表す短い表現（10〜30文字）を抽出。既存のものと重複しない
+- template_text書き換え: 複数の修正で同じパターンの同じ箇所が直されている場合のみ。候補者個別の事情ではなく構造的な改善
+- いずれも候補者個別の事情ではなく、その会社の他候補者にも使い回せるものに限る
 
 # 出力フォーマット（厳守）
 JSON配列のみ。説明文や ``` 禁止。
-各要素のキー:
-- "company": 対象会社ID（必須、scope_company と同じ値）
+
+feature_variations追加の場合:
+- "operation": "update"
+- "company": 対象会社ID
 - "scope_company": 対象会社ID
 - "pattern_type": "A" / "B1" / "B2" / "C" / "D" / "E" / "F" / "G"
 - "job_category": "nurse" など
@@ -3635,7 +3669,18 @@ JSON配列のみ。説明文や ``` 禁止。
 - "rationale": なぜ追加するか（30〜80文字）
 - "source_fix_ids": fix_feedback id 配列
 
-提案は最大6件。なければ []。"""
+template_text書き換えの場合:
+- "operation": "rewrite"
+- "company": 対象会社ID
+- "scope_company": 対象会社ID
+- "pattern_type": "A" / "B1" / "B2" / "C" / "D" / "E" / "F" / "G"
+- "job_category": "nurse" など
+- "employment_variant": "" / "就業中" / "離職中"
+- "new_template_text": 書き換え後のtemplate_text全文（{特色} {N} プレースホルダーを維持）
+- "rationale": なぜ書き換えるか（30〜80文字）
+- "source_fix_ids": fix_feedback id 配列
+
+提案は最大8件（うちrewriteは最大3件）。なければ []。"""
 
     fixes_for_prompt = [
         {
@@ -3758,27 +3803,43 @@ async def _generate_proposals_for_target(
         else:  # patterns
             pattern_type = (s.get("pattern_type") or "").strip()
             job_category = (s.get("job_category") or "").strip()
-            new_feature = (s.get("new_feature") or "").strip()
             employment_variant = (s.get("employment_variant") or "").strip()
             target_company = (s.get("company") or scope_company or "").strip()
-            if not pattern_type or not job_category or not new_feature or not target_company:
-                continue
-            if (target_company, pattern_type, job_category, employment_variant, new_feature) in dedup_keys:
-                continue
-            scope_company = target_company
-            payload = {
-                "pattern_type": pattern_type,
-                "job_category": job_category,
-                "employment_variant": employment_variant,
-                "new_feature": new_feature,
-            }
+            op = (s.get("operation") or "update").strip()
+            if op not in ("update", "rewrite"):
+                op = "update"
+
+            if op == "rewrite":
+                new_template_text = (s.get("new_template_text") or "").strip()
+                if not pattern_type or not job_category or not new_template_text or not target_company:
+                    continue
+                scope_company = target_company
+                payload = {
+                    "pattern_type": pattern_type,
+                    "job_category": job_category,
+                    "employment_variant": employment_variant,
+                    "new_template_text": new_template_text,
+                }
+            else:
+                new_feature = (s.get("new_feature") or "").strip()
+                if not pattern_type or not job_category or not new_feature or not target_company:
+                    continue
+                if (target_company, pattern_type, job_category, employment_variant, new_feature) in dedup_keys:
+                    continue
+                scope_company = target_company
+                payload = {
+                    "pattern_type": pattern_type,
+                    "job_category": job_category,
+                    "employment_variant": employment_variant,
+                    "new_feature": new_feature,
+                }
 
         proposal = {
             "id": _gen_proposal_id(),
             "created_at": now_iso,
             "source_fix_ids": ",".join(s.get("source_fix_ids") or []),
             "target_sheet": target,
-            "operation": "append" if target != "patterns" else "update",
+            "operation": op if target == "patterns" else "append",
             "scope_company": scope_company,
             "payload_json": json.dumps(payload, ensure_ascii=False),
             "rationale": (s.get("rationale") or "").strip()[:300],
@@ -4089,17 +4150,23 @@ async def _decide_proposal_impl(proposal_id: str, data: dict, operator: dict):
         sheets_writer.append_row(sheet_name, [row_dict.get(c, "") for c in columns])
         appended_row = row_dict
 
-    elif target_sheet == "patterns" and operation == "update":
-        # patterns の場合: 既存行の feature_variations に new_feature を append する
-        for k in ("pattern_type", "job_category", "employment_variant", "new_feature"):
+    elif target_sheet == "patterns" and operation in ("update", "rewrite"):
+        # patterns update: feature_variations に new_feature を append
+        # patterns rewrite: template_text を書き換え
+        override_keys = ["pattern_type", "job_category", "employment_variant"]
+        if operation == "update":
+            override_keys.append("new_feature")
+        else:
+            override_keys.append("new_template_text")
+        for k in override_keys:
             if k in overrides and overrides[k] is not None:
                 payload[k] = str(overrides[k]).strip()
+
         pattern_type = payload.get("pattern_type", "").strip()
         job_category = payload.get("job_category", "").strip()
         employment_variant = payload.get("employment_variant", "").strip()
-        new_feature = payload.get("new_feature", "").strip()
-        if not pattern_type or not job_category or not new_feature:
-            raise HTTPException(400, "pattern_type / job_category / new_feature は必須です")
+        if not pattern_type or not job_category:
+            raise HTTPException(400, "pattern_type / job_category は必須です")
         if not scope_company:
             raise HTTPException(400, "patterns の承認には scope_company（対象会社ID）が必須です")
 
@@ -4142,24 +4209,47 @@ async def _decide_proposal_impl(proposal_id: str, data: dict, operator: dict):
                 404,
                 f"対象パターンが見つかりません: company={scope_company} type={pattern_type} jc={job_category} ev={employment_variant}",
             )
-        if new_feature in existing_features:
-            raise HTTPException(409, f"feature '{new_feature}' は既に登録済みです")
-        merged = existing_features + [new_feature]
-        sheets_writer.update_cells_by_name(
-            sheet_name,
-            pattern_row_idx,
-            {"feature_variations": "|".join(merged)},
-            actor=f"approve_proposal_pattern:{actor_name}",
-        )
-        appended_row = {
-            "company": scope_company,
-            "pattern_type": pattern_type,
-            "job_category": job_category,
-            "employment_variant": employment_variant,
-            "feature_variations": "|".join(merged),
-            "added_feature": new_feature,
-            "_row_index": pattern_row_idx,
-        }
+
+        if operation == "update":
+            new_feature = payload.get("new_feature", "").strip()
+            if not new_feature:
+                raise HTTPException(400, "new_feature は必須です")
+            if new_feature in existing_features:
+                raise HTTPException(409, f"feature '{new_feature}' は既に登録済みです")
+            merged = existing_features + [new_feature]
+            sheets_writer.update_cells_by_name(
+                sheet_name,
+                pattern_row_idx,
+                {"feature_variations": "|".join(merged)},
+                actor=f"approve_proposal_pattern:{actor_name}",
+            )
+            appended_row = {
+                "company": scope_company,
+                "pattern_type": pattern_type,
+                "job_category": job_category,
+                "employment_variant": employment_variant,
+                "feature_variations": "|".join(merged),
+                "added_feature": new_feature,
+                "_row_index": pattern_row_idx,
+            }
+        else:  # rewrite
+            new_template_text = payload.get("new_template_text", "").strip()
+            if not new_template_text:
+                raise HTTPException(400, "new_template_text は必須です")
+            sheets_writer.update_cells_by_name(
+                sheet_name,
+                pattern_row_idx,
+                {"template_text": new_template_text},
+                actor=f"approve_proposal_pattern_rewrite:{actor_name}",
+            )
+            appended_row = {
+                "company": scope_company,
+                "pattern_type": pattern_type,
+                "job_category": job_category,
+                "employment_variant": employment_variant,
+                "new_template_text": new_template_text,
+                "_row_index": pattern_row_idx,
+            }
 
     else:
         raise HTTPException(400, f"未対応の target/operation: {target_sheet}/{operation}")

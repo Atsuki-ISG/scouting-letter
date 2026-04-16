@@ -1,9 +1,11 @@
-"""Migrate company profile.md files to the プロフィール sheet via Admin API.
+"""Sync company profile.md files to the プロフィール sheet via Admin API.
 
 Usage:
     python3 server/scripts/migrate_profiles_to_sheets.py [--dry-run] [--base-url URL]
 
-Reads each company's profile.md and POSTs to /api/v1/admin/profiles.
+Reads each company's profile.md and upserts to /api/v1/admin/profiles.
+- Existing rows (matched by company) are updated via PUT.
+- Missing rows are created via POST.
 Requires API_KEY env var (same as ADMIN_PASSWORD on Cloud Run).
 """
 import sys
@@ -22,22 +24,22 @@ COMPANIES = [
     "chigasaki-tokushukai",
     "nomura-hospital",
     "an-visiting-nurse",
+    "daiwa-house-ls",
 ]
 
 DEFAULT_BASE_URL = "https://scout-api-1080076995871.asia-northeast1.run.app"
 
 
-def post_profile(base_url: str, api_key: str, company: str, content: str) -> dict:
-    url = f"{base_url}/api/v1/admin/profiles"
-    data = json.dumps({"company": company, "content": content}).encode("utf-8")
+def _request(url, api_key, data=None, method="GET"):
+    body = json.dumps(data).encode("utf-8") if data else None
     req = urllib.request.Request(
         url,
-        data=data,
+        data=body,
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
         },
-        method="POST",
+        method=method,
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8"))
@@ -54,7 +56,8 @@ def main():
         print("ERROR: Set API_KEY env var")
         sys.exit(1)
 
-    profiles = []
+    # Read local profiles
+    profiles: list[tuple[str, str]] = []
     for company in COMPANIES:
         path = os.path.join(REPO_ROOT, "companies", company, "profile.md")
         if not os.path.exists(path):
@@ -66,14 +69,41 @@ def main():
         print(f"  READ {company}: {len(content)} chars")
 
     if args.dry_run:
-        print(f"\n[DRY RUN] Would POST {len(profiles)} profiles to {args.base_url}")
+        print(f"\n[DRY RUN] Would sync {len(profiles)} profiles to {args.base_url}")
         return
+
+    # Fetch existing rows to find row_index for each company
+    base = args.base_url.rstrip("/")
+    existing = _request(f"{base}/api/v1/admin/profiles", api_key)
+    row_map: dict[str, int] = {}
+    for row in existing.get("rows", []):
+        c = row.get("company", "")
+        ri = row.get("_row_index") or row.get("row_index")
+        if c and ri:
+            row_map[c] = int(ri)
 
     success = 0
     for company, content in profiles:
         try:
-            result = post_profile(args.base_url, api_key, company, content)
-            print(f"  OK {company}: row {result.get('row_index', '?')}")
+            if company in row_map:
+                # Update existing row
+                ri = row_map[company]
+                result = _request(
+                    f"{base}/api/v1/admin/profiles/{ri}",
+                    api_key,
+                    {"content": content},
+                    method="PUT",
+                )
+                print(f"  UPDATE {company} (row {ri}): {result.get('status', '?')}")
+            else:
+                # Create new row
+                result = _request(
+                    f"{base}/api/v1/admin/profiles",
+                    api_key,
+                    {"company": company, "content": content},
+                    method="POST",
+                )
+                print(f"  CREATE {company}: {result.get('status', '?')}")
             success += 1
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")
@@ -81,7 +111,7 @@ def main():
         except Exception as e:
             print(f"  FAIL {company}: {e}")
 
-    print(f"\n  {success}/{len(profiles)} profiles migrated")
+    print(f"\n  {success}/{len(profiles)} profiles synced")
 
 
 if __name__ == "__main__":

@@ -38,8 +38,10 @@ COMPANY_FACILITY_TYPE: dict[str, str] = {
     "ark-visiting-nurse": "visiting_nurse",
     "lcc-visiting-nurse": "visiting_nurse",
     "ichigo-visiting-nurse": "visiting_nurse",
+    "an-visiting-nurse": "visiting_nurse",
     "chigasaki-tokushukai": "hospital",
     "nomura-hospital": "hospital",
+    "daiwa-house-ls": "care_home",
 }
 
 # Sections that MUST have company-specific overrides (not rely on globals)
@@ -108,8 +110,10 @@ COMPANY_NAME_MARKERS: dict[str, list[str]] = {
     "ark-visiting-nurse": ["アーク訪問看護"],
     "lcc-visiting-nurse": ["LCC訪問看護"],
     "ichigo-visiting-nurse": ["いちご訪問看護"],
+    "an-visiting-nurse": ["an訪問看護"],
     "chigasaki-tokushukai": ["茅ヶ崎徳洲会", "徳洲会病院"],
     "nomura-hospital": ["野村病院"],
+    "daiwa-house-ls": ["ネオ・サミット湯河原", "大和ハウスライフサポート"],
 }
 
 
