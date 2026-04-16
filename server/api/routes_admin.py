@@ -2192,7 +2192,8 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         if not json_match:
             import logging
             logging.getLogger(__name__).error(f"generate_patterns: JSON抽出失敗。raw response ({len(result_text)}chars): {result_text[:500]}")
-            raise ValueError(f"AI応答からJSONを抽出できませんでした（応答 {len(result_text)}文字）")
+            preview = cleaned[:300] if cleaned else result_text[:300]
+            raise ValueError(f"AI応答からJSONを抽出できませんでした（応答 {len(result_text)}文字）: {preview}")
 
         patterns = _json.loads(json_match.group(0))
         return {"patterns": patterns, "model": gen_result.model_name if hasattr(gen_result, 'model_name') else ""}
