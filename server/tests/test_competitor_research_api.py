@@ -94,21 +94,30 @@ def test_research_competitors_endpoint(client, mock_sheets_client, mock_sheets_w
     assert "隠れた強み" in data["analysis"]
 
 
-def test_research_competitors_writes_knowledge(client, mock_sheets_client, mock_sheets_writer):
-    """Extracted scout hooks should be written to knowledge pool."""
+def test_research_competitors_returns_hooks_without_writing_knowledge(
+    client, mock_sheets_client, mock_sheets_writer,
+):
+    """Hooks must be returned in extracted_hooks and NOT written to the knowledge pool.
+
+    Template-level hooks are one-shot inspirations for the improvement flow,
+    not permanent rules. Writing them to the pool clutters it and mixes
+    ideas with constraints.
+    """
     with _mock_gemini_search():
         response = client.post(
             "/api/v1/admin/research_competitors",
             json={
                 "company": "ark-visiting-nurse",
-                "save_to_knowledge": True,
+                "save_to_knowledge": True,  # should now be ignored
             },
         )
     data = response.json()
     assert data["status"] == "ok"
-    assert data.get("knowledge_count", 0) >= 1
-    mock_sheets_writer.ensure_sheet_exists.assert_called()
-    mock_sheets_writer.append_rows.assert_called()
+    assert isinstance(data.get("extracted_hooks"), list)
+    assert len(data["extracted_hooks"]) >= 1
+    assert data.get("knowledge_count", 0) == 0
+    # NO knowledge-pool writes should happen
+    mock_sheets_writer.append_rows.assert_not_called()
 
 
 def test_research_competitors_with_job_category(client, mock_sheets_client, mock_sheets_writer):
@@ -187,16 +196,15 @@ def test_research_competitors_parses_numbered_and_inline_katsuyo(
     with _mock_gemini_realistic():
         response = client.post(
             "/api/v1/admin/research_competitors",
-            json={"company": "lcc-visiting-nurse", "save_to_knowledge": True},
+            json={"company": "lcc-visiting-nurse"},
         )
     data = response.json()
     assert data["status"] == "ok"
+    hooks = data.get("extracted_hooks", [])
     # Expect to capture at minimum: 3 numbered hooks + 3 💾 bullets + 2 活用案 = 8
-    assert data.get("knowledge_count", 0) >= 6
-    mock_sheets_writer.append_rows.assert_called()
-    # Inspect what was written
-    args, _ = mock_sheets_writer.append_rows.call_args
-    _, rows = args
-    rule_texts = [r[3] for r in rows]
+    assert len(hooks) >= 6
+    # Pool should never be written to from competitor research
+    mock_sheets_writer.append_rows.assert_not_called()
+    rule_texts = hooks
     assert any("教育ステーション" in t for t in rule_texts)
     assert any("サテライト" in t for t in rule_texts)

@@ -379,15 +379,27 @@ class SheetsClient:
             if x["id"] in self._EMPLOYMENT_TYPE_ORDER else 999,
         )
 
-    def get_knowledge_pool(self, company_id: str) -> list[dict]:
+    def get_knowledge_pool(
+        self,
+        company_id: str,
+        categories: list[str] | None = None,
+    ) -> list[dict]:
         """Return approved knowledge rules for a company (global + company-specific).
 
         Sheet columns: id, company, category, rule, source, status, created_at
         Only status='approved' rows are returned.
         Global rules (company='') apply to all companies.
+
+        Args:
+            company_id: filter to rules for this company (plus globals).
+            categories: if given, only rows whose category is in this list
+                are returned. Use this to keep template-improvement ideas
+                (e.g. one-shot hook expressions) out of the personalization
+                prompt, or vice versa.
         """
         self._ensure_cache()
         rows = self._cache.get(SHEET_KNOWLEDGE_POOL, [])
+        category_filter = set(categories) if categories else None
         result: list[dict] = []
         for row in rows:
             if (row.get("status") or "").strip().lower() != "approved":
@@ -395,12 +407,15 @@ class SheetsClient:
             row_company = (row.get("company") or "").strip()
             if row_company and row_company != company_id:
                 continue
+            row_category = (row.get("category") or "").strip()
+            if category_filter is not None and row_category not in category_filter:
+                continue
             rule = (row.get("rule") or "").strip()
             if not rule:
                 continue
             result.append({
                 "company": row_company,
-                "category": (row.get("category") or "").strip(),
+                "category": row_category,
                 "rule": rule,
                 "source": (row.get("source") or "").strip(),
             })

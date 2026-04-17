@@ -2503,6 +2503,45 @@ window.icon = function(name, cls='icon-sm') {
 </div>
 
 <!-- AI Generate Patterns Dialog -->
+<!-- Consolidate knowledge pool modal -->
+<div class="modal-overlay" id="consolidateOverlay">
+  <div class="modal" style="max-width:920px">
+    <div class="modal-header">
+      <h3>🔄 ナレッジ整理</h3>
+      <button class="modal-close" onclick="closeConsolidate()">&times;</button>
+    </div>
+    <div class="modal-body" id="consolidateBody">
+      <div id="consolidateInputPhase">
+        <p style="font-size:13px;color:var(--c-text-secondary);margin-bottom:12px;">
+          承認済みルールを AI が整理し、重複マージ・矛盾解消・不要ルールの除外を提案します。
+          提案は確認画面でレビューしてから適用できます（書き込みは承認後）。
+        </p>
+        <div class="field">
+          <label style="font-size:12px;color:var(--c-text-muted);">対象会社</label>
+          <div id="consolidateCompanyLabel" style="font-size:13px;font-weight:600;"></div>
+        </div>
+        <div class="field" style="margin-top:12px;">
+          <label style="font-size:12px;color:var(--c-text-muted);">対象カテゴリ</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+            <label style="font-size:13px;"><input type="checkbox" class="consolidate-cat" value="tone" checked> tone</label>
+            <label style="font-size:13px;"><input type="checkbox" class="consolidate-cat" value="expression" checked> expression</label>
+            <label style="font-size:13px;"><input type="checkbox" class="consolidate-cat" value="profile_handling" checked> profile_handling</label>
+            <label style="font-size:13px;"><input type="checkbox" class="consolidate-cat" value="qualification" checked> qualification</label>
+          </div>
+        </div>
+      </div>
+      <div id="consolidatePreviewPhase" style="display:none">
+        <div id="consolidatePreviewContent"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeConsolidate()">キャンセル</button>
+      <button class="btn btn-primary" id="consolidateProposeBtn" onclick="proposeConsolidation()">提案を作成</button>
+      <button class="btn btn-primary" id="consolidateApplyBtn" style="display:none" onclick="applyConsolidation()">承認して適用</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="aiGenerateOverlay">
   <div class="modal" style="max-width:800px">
     <div class="modal-header">
@@ -3699,7 +3738,7 @@ async function updateKnowledgeStatus(rowIndex, newStatus) {
   try {
     await api('PUT', `/api/v1/admin/knowledge_pool/${rowIndex}`, { status: newStatus });
     toast(`ステータスを ${newStatus} に更新しました`);
-    loadTab('knowledge_pool');
+    if (currentTab === 'knowledge_pool') loadData();
   } catch (e) {
     toast('更新エラー: ' + e.message, true);
   }
@@ -3795,6 +3834,9 @@ function renderTable() {
     <div class="toolbar">
       <span class="toolbar-title">${tabName}（${currentRows.length}件）</span>
       <div style="display:flex;gap:8px;align-items:center">
+        ${currentTab === 'knowledge_pool' ? `
+          <button class="btn btn-secondary btn-sm" onclick="openConsolidateKnowledge()" title="AIが重複/矛盾を整理して提案します">🔄 整理する</button>
+        ` : ''}
         ${!isReadOnly ? `
           <button class="btn btn-secondary btn-sm" onclick="toggleGlobalLock()" title="${_globalEditUnlocked ? '全社共通行をロック' : '全社共通行のロック解除'}">${_globalEditUnlocked ? '🔓 ロック' : '🔒 ロック解除'}</button>
           ${isPatterns ? '<button class="btn btn-secondary" onclick="openAiGenerate()">AIで一括生成</button>' : ''}
@@ -4067,6 +4109,125 @@ function openAiGenerate() {
 
 function closeAiGenerate() {
   document.getElementById('aiGenerateOverlay').classList.remove('open');
+}
+
+// ===== Consolidate knowledge pool =====
+let _consolidateProposal = null; // { proposed_rules, archive_row_indexes, rationale, candidates }
+
+function openConsolidateKnowledge() {
+  const company = document.getElementById('companySelect').value || '';
+  document.getElementById('consolidateCompanyLabel').textContent = company
+    ? `${company}（＋全社共通ルール）`
+    : '全社共通ルールのみ';
+  document.getElementById('consolidateInputPhase').style.display = '';
+  document.getElementById('consolidatePreviewPhase').style.display = 'none';
+  document.getElementById('consolidatePreviewContent').innerHTML = '';
+  document.getElementById('consolidateProposeBtn').style.display = '';
+  document.getElementById('consolidateProposeBtn').disabled = false;
+  document.getElementById('consolidateProposeBtn').textContent = '提案を作成';
+  document.getElementById('consolidateApplyBtn').style.display = 'none';
+  _consolidateProposal = null;
+  document.getElementById('consolidateOverlay').classList.add('open');
+}
+
+function closeConsolidate() {
+  document.getElementById('consolidateOverlay').classList.remove('open');
+}
+
+async function proposeConsolidation() {
+  const company = document.getElementById('companySelect').value || '';
+  const categories = Array.from(document.querySelectorAll('.consolidate-cat:checked'))
+    .map(el => el.value);
+  if (categories.length === 0) {
+    toast('カテゴリを1つ以上選んでください', true);
+    return;
+  }
+  const btn = document.getElementById('consolidateProposeBtn');
+  btn.disabled = true;
+  btn.textContent = 'AIが整理中...';
+  try {
+    const data = await api('POST', '/api/v1/admin/consolidate_knowledge', {
+      company, categories,
+    });
+    if (data.status === 'error') {
+      toast(data.detail, true);
+      btn.disabled = false;
+      btn.textContent = '提案を作成';
+      return;
+    }
+    _consolidateProposal = data;
+    renderConsolidatePreview(data);
+    document.getElementById('consolidateInputPhase').style.display = 'none';
+    document.getElementById('consolidatePreviewPhase').style.display = '';
+    btn.style.display = 'none';
+    document.getElementById('consolidateApplyBtn').style.display = '';
+  } catch (e) {
+    toast('整理エラー: ' + e.message, true);
+    btn.disabled = false;
+    btn.textContent = '提案を作成';
+  }
+}
+
+function renderConsolidatePreview(data) {
+  const { candidates = [], proposed_rules = [], archive_row_indexes = [], rationale = '' } = data;
+  const archiveSet = new Set(archive_row_indexes);
+  const kept = candidates.filter(c => !archiveSet.has(c.row_index));
+  const dropped = candidates.filter(c => archiveSet.has(c.row_index));
+
+  let html = `<div style="font-size:13px;line-height:1.6;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div>
+        <div style="font-weight:600;margin-bottom:6px;">旧ルール（${candidates.length}件）</div>
+        <div style="font-size:12px;color:var(--c-text-muted);margin-bottom:4px;">✅ 残す（${kept.length}）</div>
+        <ul style="margin:0 0 12px;padding-left:18px;font-size:12px;line-height:1.7;">
+          ${kept.map(c => `<li>[${c.category}] ${escHtml(c.rule)} <span style="color:#94a3b8">(行${c.row_index})</span></li>`).join('') || '<li style="color:#94a3b8">なし</li>'}
+        </ul>
+        <div style="font-size:12px;color:var(--c-text-muted);margin-bottom:4px;">🗃 廃止（${dropped.length}）</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.7;color:#94a3b8;text-decoration:line-through;">
+          ${dropped.map(c => `<li>[${c.category}] ${escHtml(c.rule)} <span>(行${c.row_index})</span></li>`).join('') || '<li style="text-decoration:none">なし</li>'}
+        </ul>
+      </div>
+      <div>
+        <div style="font-weight:600;margin-bottom:6px;">新ルール集（${proposed_rules.length}件）</div>
+        <ul style="margin:0 0 12px;padding-left:18px;font-size:12px;line-height:1.7;">
+          ${proposed_rules.map(r => `<li>[${r.category}] ${escHtml(r.rule)}</li>`).join('') || '<li style="color:#94a3b8">提案なし</li>'}
+        </ul>
+      </div>
+    </div>
+    ${rationale ? `<div style="margin-top:16px;padding:10px 12px;background:#f8fafc;border-radius:6px;font-size:12px;color:var(--c-text-secondary);white-space:pre-wrap;">${escHtml(rationale)}</div>` : ''}
+  </div>`;
+  document.getElementById('consolidatePreviewContent').innerHTML = html;
+}
+
+async function applyConsolidation() {
+  if (!_consolidateProposal) return;
+  if (!confirm(`旧ルール ${_consolidateProposal.archive_row_indexes.length} 件を archived にし、新ルール ${_consolidateProposal.proposed_rules.length} 件を approved で追加します。よろしいですか？`)) {
+    return;
+  }
+  const company = document.getElementById('companySelect').value || '';
+  const btn = document.getElementById('consolidateApplyBtn');
+  btn.disabled = true;
+  btn.textContent = '適用中...';
+  try {
+    const data = await api('POST', '/api/v1/admin/apply_consolidation', {
+      company,
+      archive_row_indexes: _consolidateProposal.archive_row_indexes,
+      new_rules: _consolidateProposal.proposed_rules,
+    });
+    if (data.status === 'error') {
+      toast(data.detail, true);
+      btn.disabled = false;
+      btn.textContent = '承認して適用';
+      return;
+    }
+    toast(`整理完了: archived ${data.archived_count} / appended ${data.appended_count}`);
+    closeConsolidate();
+    if (currentTab === 'knowledge_pool') loadData();
+  } catch (e) {
+    toast('適用エラー: ' + e.message, true);
+    btn.disabled = false;
+    btn.textContent = '承認して適用';
+  }
 }
 
 async function startAiGenerate() {
@@ -7879,7 +8040,6 @@ async function runCompetitorResearch() {
   try {
     const data = await api('POST', '/api/v1/admin/research_competitors', {
       company,
-      save_to_knowledge: true,
     });
     if (data.status === 'error') {
       el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">${escHtml(data.detail)}</div>`;
@@ -7890,10 +8050,20 @@ async function runCompetitorResearch() {
     if (data.analysis) {
       html += '<div class="analysis-md">' + simpleMarkdown(data.analysis) + '</div>';
     }
-    if (data.knowledge_count > 0) {
-      html += `<div style="margin-top:12px;padding:8px 12px;background:#f0fdf4;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:12px;">📚 ${data.knowledge_count}件のフック提案をナレッジプールに追加しました（承認待ち）<button class="btn btn-secondary btn-sm" onclick="switchToTableTab('knowledge_pool')">ナレッジタブを開く</button></div>`;
+    const hooks = Array.isArray(data.extracted_hooks) ? data.extracted_hooks : [];
+    if (hooks.length > 0) {
+      html += `<div style="margin-top:16px;padding:12px 14px;background:#f0fdf4;border-radius:6px;">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">💡 抽出されたフック候補（${hooks.length}件）</div>
+        <ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.7;">
+          ${hooks.map(h => `<li>${escHtml(h)}</li>`).join('')}
+        </ul>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-primary btn-sm" onclick='pushHooksToImproveDirective(${JSON.stringify(hooks).replace(/'/g, "&#39;")})'>→ 改善フローに流す</button>
+          <span style="font-size:11px;color:var(--c-text-muted);">※ フックはテンプレート改善用のアイデアです。ナレッジプール（恒久ルール）には入りません。</span>
+        </div>
+      </div>`;
     } else {
-      html += `<div style="margin-top:12px;padding:8px 12px;background:#fef3c7;border-radius:6px;font-size:13px">⚠️ フック表現を自動抽出できませんでした。下の「📚 ナレッジに抽出」ボタンでAIに再抽出させてください。</div>`;
+      html += `<div style="margin-top:12px;padding:8px 12px;background:#fef3c7;border-radius:6px;font-size:13px">⚠️ フック表現を自動抽出できませんでした。分析テキストから手動でコピーしてください。</div>`;
     }
     el.innerHTML = html;
 
@@ -7908,6 +8078,23 @@ async function runCompetitorResearch() {
   } catch (e) {
     el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">競合調査エラー: ${escHtml(e.message)}</div>`;
   }
+}
+
+// Push competitor-research hooks into the improvement-flow directive box.
+// Hooks are one-shot inspirations, not permanent rules — they belong to the
+// improvement flow, not the knowledge pool.
+function pushHooksToImproveDirective(hooks) {
+  const area = document.getElementById('improveInputArea');
+  if (area) area.style.display = '';
+  const ta = document.getElementById('improveDirective');
+  if (!ta) return;
+  const existing = (ta.value || '').trim();
+  const block = '【競合調査で得たフック候補（どれか/複数をテンプレートの冒頭フックに反映したい）】\n'
+    + hooks.map(h => '- ' + h).join('\n');
+  ta.value = existing ? `${existing}\n\n${block}` : block;
+  ta.focus();
+  ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  toast('改善フローの方向性欄にフックを追加しました');
 }
 
 // --- Knowledge extraction from analysis ---

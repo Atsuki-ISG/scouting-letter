@@ -98,3 +98,48 @@ def test_extract_knowledge_empty_analysis(client, mock_sheets_writer):
     )
     assert response.status_code == 200
     assert response.json().get("status") == "error"
+
+
+def _mock_ai_extract_with_template_tip():
+    """AI returns a mix of valid categories and the retired template_tip."""
+    async def fake_generate(system_prompt, user_prompt, **kwargs):
+        return GenerationResult(
+            text=(
+                "- [tone] 「感銘を受ける」は経験への使用禁止\n"
+                "- [template_tip] 東京都指定の教育ステーションを冒頭に\n"  # retired
+                "- [expression] 「お持ちとのこと」は回りくどい敬語でNG\n"
+                "- [unknown_cat] 何か\n"  # invalid category
+            ),
+            prompt_tokens=100,
+            output_tokens=50,
+            total_tokens=150,
+            model_name="mock",
+        )
+    return patch(
+        "pipeline.ai_generator.generate_personalized_text",
+        side_effect=fake_generate,
+    )
+
+
+def test_extract_knowledge_skips_template_tip_category(client, mock_sheets_writer):
+    """template_tip is no longer a valid pool category — must be dropped.
+
+    Previously template_tip was the fallback for unknown categories. Now it
+    is removed entirely: template-level hooks go to the improvement flow,
+    not the persistent rule pool.
+    """
+    with _mock_ai_extract_with_template_tip():
+        response = client.post(
+            "/api/v1/admin/extract_knowledge",
+            json={
+                "company": "ark-visiting-nurse",
+                "analysis_text": "テスト",
+            },
+        )
+    data = response.json()
+    assert data["status"] == "ok"
+    cats = {r["category"] for r in data["extracted_rules"]}
+    assert "template_tip" not in cats
+    assert "unknown_cat" not in cats
+    # Only the two valid categories should survive
+    assert cats == {"tone", "expression"}

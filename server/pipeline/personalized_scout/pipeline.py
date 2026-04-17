@@ -150,9 +150,14 @@ async def generate_personalized_scout(
     )
 
     # 4.5. Load approved knowledge rules for prompt injection.
+    # Only load categories that produce permanent, per-candidate guidance.
+    # Hook expressions / template-level ideas live outside the pool now.
+    PERSONALIZATION_CATEGORIES = ["tone", "expression", "profile_handling", "qualification"]
     knowledge_rules: list[str] = []
     try:
-        pool = sheets_client.get_knowledge_pool(company_id)
+        pool = sheets_client.get_knowledge_pool(
+            company_id, categories=PERSONALIZATION_CATEGORIES,
+        )
         knowledge_rules = [item["rule"] for item in pool if item.get("rule")]
     except Exception as e:
         logger.warning(f"[{profile.member_id}] knowledge pool load failed: {e}")

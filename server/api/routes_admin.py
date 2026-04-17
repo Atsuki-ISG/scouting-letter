@@ -4340,7 +4340,7 @@ DIAGNOSIS_HISTORY_HEADERS = [
     "improvement_targets_json", "actor",
 ]
 
-VALID_KNOWLEDGE_CATEGORIES = {"tone", "expression", "profile_handling", "template_tip", "qualification"}
+VALID_KNOWLEDGE_CATEGORIES = {"tone", "expression", "profile_handling", "qualification"}
 
 
 @router.post("/diagnose_template")
@@ -6010,9 +6010,10 @@ async def research_competitors(
     """Research competitors using Gemini + Google Search grounding.
 
     Returns competitive analysis with hidden strengths and scout hooks.
-    Optionally saves extracted hooks to the knowledge pool.
+    Hooks are returned in `extracted_hooks` for the improvement flow;
+    they are no longer written to the knowledge pool (template_tip hooks
+    are one-shot inspirations, not permanent rules).
     """
-    from datetime import datetime, timedelta, timezone
     from pipeline.ai_generator import generate_personalized_text
 
     company = (data.get("company") or "").strip()
@@ -6020,7 +6021,8 @@ async def research_competitors(
         return {"status": "error", "detail": "company が指定されていません"}
 
     job_category = data.get("job_category", "")
-    save_to_knowledge = data.get("save_to_knowledge", False)
+    # save_to_knowledge accepted for backward compat but ignored.
+    _ = data.get("save_to_knowledge", False)
 
     # Load company context
     try:
@@ -6131,80 +6133,46 @@ profile.mdに書いてあることをそのまま繰り返すのはNG。
     except Exception as e:
         return {"status": "error", "detail": f"AI調査エラー: {e}"}
 
-    # Extract knowledge rules if requested
-    knowledge_count = 0
-    if save_to_knowledge:
-        JST = timezone(timedelta(hours=9))
-        now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
-        rules = []
-        next_id = int(datetime.now(JST).timestamp())
+    # Extract hook candidates (do NOT write to knowledge pool — these are
+    # one-shot inspirations for the template improvement flow, not permanent
+    # rules. See `knowledge/visiting-nurse-concerns.md` for the distinction.)
+    import re as _re
+    extracted_hooks: list[str] = []
+    seen: set[str] = set()
 
-        # Parse hook candidates across multiple formats:
-        #   - "- フック..."        (bullet)
-        #   - "* フック..."        (bullet)
-        #   - "1. 「フック」"       (numbered list)
-        #   - "活用案：「フック」" (inline)
-        import re as _re
-        seen: set[str] = set()
+    def _add_hook(text: str) -> None:
+        t = text.strip().strip("「」\"'`").strip()
+        if "→" in t:
+            t = t.split("→", 1)[0].strip()
+        if not t or len(t) < 6 or t in seen:
+            return
+        seen.add(t)
+        extracted_hooks.append(t)
 
-        def _add_rule(text: str) -> None:
-            t = text.strip().strip("「」\"'`").strip()
-            # drop trailing "- ..." explanation after →
-            if "→" in t:
-                t = t.split("→", 1)[0].strip()
-            if not t or len(t) < 6:
-                return
-            if t in seen:
-                return
-            seen.add(t)
-            rules.append([
-                str(next_id + len(rules)), company, "template_tip", t,
-                f"競合調査 {now[:10]}", "pending", now,
-            ])
+    bullet_re = _re.compile(r"^[\-\*]\s+(.+)$")
+    numbered_re = _re.compile(r"^\d+[\.\)]\s+(.+)$")
+    heading_re = _re.compile(r"^#+\s+(.+)$")
+    katsuyo_re = _re.compile(r"活用案[：:](.+)$")
 
-        bullet_re = _re.compile(r"^[\-\*]\s+(.+)$")
-        numbered_re = _re.compile(r"^\d+[\.\)]\s+(.+)$")
-        heading_re = _re.compile(r"^#+\s+(.+)$")
-        katsuyo_re = _re.compile(r"活用案[：:](.+)$")
-
-        # Enter "hook zone" when we hit key headings; stay until a different heading (any level) is seen.
-        HOOK_KEYWORDS = ["スカウト文", "フック", "ナレッジ保存", "隠れた強み", "差別化"]
-        in_hook_zone = False
-        for raw in analysis.split("\n"):
-            stripped = raw.strip()
-            if not stripped:
-                continue
-
-            h = heading_re.match(stripped)
-            if h:
-                heading_text = h.group(1)
-                in_hook_zone = any(k in heading_text for k in HOOK_KEYWORDS)
-                continue
-
-            # Always pick up "活用案：「...」" lines regardless of zone
-            m = katsuyo_re.search(stripped)
-            if m:
-                _add_rule(m.group(1))
-                continue
-
-            if not in_hook_zone:
-                continue
-
-            m = bullet_re.match(stripped)
-            if m:
-                _add_rule(m.group(1))
-                continue
-            m = numbered_re.match(stripped)
-            if m:
-                _add_rule(m.group(1))
-                continue
-
-        if rules:
-            sheets_writer.ensure_sheet_exists("ナレッジプール", [
-                "id", "company", "category", "rule", "source", "status", "created_at",
-            ])
-            sheets_writer.append_rows("ナレッジプール", rules)
-            knowledge_count = len(rules)
+    HOOK_KEYWORDS = ["スカウト文", "フック", "ナレッジ保存", "隠れた強み", "差別化"]
+    in_hook_zone = False
+    for raw in analysis.split("\n"):
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        h = heading_re.match(stripped)
+        if h:
+            in_hook_zone = any(k in h.group(1) for k in HOOK_KEYWORDS)
+            continue
+        m = katsuyo_re.search(stripped)
+        if m:
+            _add_hook(m.group(1))
+            continue
+        if not in_hook_zone:
+            continue
+        m = bullet_re.match(stripped) or numbered_re.match(stripped)
+        if m:
+            _add_hook(m.group(1))
 
     return {
         "status": "ok",
@@ -6212,7 +6180,10 @@ profile.mdに書いてあることをそのまま繰り返すのはNG。
         "company_id": company,
         "job_category": category_label,
         "analysis": analysis,
-        "knowledge_count": knowledge_count,
+        "extracted_hooks": extracted_hooks,
+        # knowledge_count kept in response for backward-compat with older
+        # admin builds; always 0 now — hooks go to improvement flow, not pool.
+        "knowledge_count": 0,
         "tokens": {
             "prompt": result.prompt_tokens,
             "output": result.output_tokens,
@@ -6253,24 +6224,29 @@ async def extract_knowledge(
         return {"status": "error", "detail": "analysis_text が空です"}
 
     extraction_prompt = """あなたはスカウト文の品質改善アナリストです。
-以下の分析テキストから、スカウト文生成AIに適用すべき具体的なルールを抽出してください。
+以下の分析テキストから、スカウト文生成AIに**恒久的に**適用すべき具体的なルールを抽出してください。
+
+## 抽出対象（永続ルールのみ）
+- tone: トーン・文体に関するルール（敬語の距離感、語尾の統一など）
+- expression: NG表現・推奨表現（特定語彙の禁止・代替）
+- profile_handling: 候補者タイプ別の対応方針（経歴なし、ブランクあり等）
+- qualification: 資格・経験の言及ルール
+
+## 抽出しないもの
+- **会社固有のフック表現・キャッチコピー**（例: 「東京都指定の教育ST」）は抽出しない。
+  これらはテンプレート改善フローで一度使うアイデアであって、恒久ルールではない。
+- **一回限りの改善アイデア**も抽出しない。
 
 ## 出力形式
 各ルールを1行ずつ、以下の形式で出力してください:
 - [category] ルール本文
 
-category は以下のいずれか:
-- tone: トーン・文体に関するルール
-- expression: NG表現・推奨表現
-- profile_handling: 候補者タイプ別の対応方針
-- template_tip: テンプレート・構成のコツ
-- qualification: 資格・経験の言及ルール
-
 ## ルール
 - 1ルール1行。具体的で短く。
 - AIが「やる」「やらない」を即判断できる粒度で書く
 - 曖昧な指針（「適切に対応する」等）は書かない
-- 最大10ルールまで
+- 上記4カテゴリに当てはまらない内容は抽出しない
+- 最大10ルールまで（少なくて良い）
 
 ## 分析テキスト
 """
@@ -6312,7 +6288,9 @@ category は以下のいずれか:
             category = line[1:bracket_end].strip()
             rule_text = line[bracket_end + 1:].strip()
         if category not in VALID_KNOWLEDGE_CATEGORIES:
-            category = "template_tip"
+            # Unknown/retired category → skip entirely; don't silently
+            # reclassify (was "template_tip" fallback, now removed).
+            continue
         if not rule_text:
             continue
         extracted_rules.append({
@@ -6338,6 +6316,250 @@ category は以下のいずれか:
         "status": "ok",
         "extracted_rules": extracted_rules,
         "count": len(extracted_rules),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Knowledge pool: consolidate (AI-assisted merge/dedupe).
+# NOTE: Must be registered BEFORE the catch-all /{sheet_slug} route.
+# ---------------------------------------------------------------------------
+
+@router.post("/consolidate_knowledge")
+async def consolidate_knowledge(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Propose a consolidated rule set for a company × categories.
+
+    Reads all approved rules matching the filter, asks Gemini to merge
+    duplicates / resolve contradictions / prune stale entries, and returns
+    a proposal. Writes NOTHING — apply via /apply_consolidation.
+    """
+    from pipeline.ai_generator import generate_personalized_text
+    from config import GEMINI_PRO_MODEL
+
+    company = (data.get("company") or "").strip()
+    categories_raw = data.get("categories") or []
+    if not isinstance(categories_raw, list) or not categories_raw:
+        categories_raw = sorted(VALID_KNOWLEDGE_CATEGORIES)
+    categories = [c for c in categories_raw if c in VALID_KNOWLEDGE_CATEGORIES]
+    if not categories:
+        return {"status": "error", "detail": "有効なカテゴリが指定されていません"}
+
+    # Load all approved rows matching the filter, with sheet row numbers.
+    all_rows = sheets_writer.get_all_rows(KNOWLEDGE_POOL_SHEET)
+    if not all_rows:
+        return {"status": "error", "detail": "ナレッジプールが空です"}
+    headers = [h.strip() for h in all_rows[0]]
+
+    def _col(name: str) -> Optional[int]:
+        return headers.index(name) if name in headers else None
+
+    col_company = _col("company")
+    col_category = _col("category")
+    col_rule = _col("rule")
+    col_status = _col("status")
+    if None in (col_company, col_category, col_rule, col_status):
+        return {"status": "error", "detail": "ナレッジプールのヘッダーが不正です"}
+
+    candidates: list[dict] = []
+    for i, row in enumerate(all_rows[1:], start=2):
+        row = row + [""] * (len(headers) - len(row))
+        if row[col_status].strip().lower() != "approved":
+            continue
+        row_company = row[col_company].strip()
+        if company and row_company and row_company != company:
+            continue
+        row_category = row[col_category].strip()
+        if row_category not in categories:
+            continue
+        rule = row[col_rule].strip()
+        if not rule:
+            continue
+        candidates.append({
+            "row_index": i,
+            "company": row_company,
+            "category": row_category,
+            "rule": rule,
+        })
+
+    if len(candidates) < 2:
+        return {
+            "status": "ok",
+            "candidates": candidates,
+            "proposed_rules": [{"category": c["category"], "rule": c["rule"]} for c in candidates],
+            "archive_row_indexes": [],
+            "rationale": "ルールが1件以下のため整理不要です。",
+            "token_estimate": 0,
+        }
+
+    # Build prompt
+    numbered = "\n".join(
+        f"{c['row_index']}. [{c['category']}] {c['rule']}" for c in candidates
+    )
+    system_prompt = """あなたはスカウト文品質ナレッジの整理担当です。
+以下の承認済みルール群を精査し、**重複のマージ・矛盾の解消・使い物にならないルールの除外**を行い、
+圧縮した新しいルール集を提案してください。
+
+## 出力形式（必ず厳守）
+```
+## 新ルール集
+- [category] 新ルール本文
+- [category] 新ルール本文
+...
+
+## 廃止対象の行番号
+row_index, row_index, ...
+
+## 理由
+1. <今回の整理方針の要約>
+2. <主な変更点>
+```
+
+## 制約
+- category は [tone, expression, profile_handling, qualification] のいずれか
+- 1ルール1行、短く具体的に
+- 同じ意味を持つルールは1つに統合
+- 抽象度が高すぎるルール（「適切に対応する」等）は廃止
+- 廃止対象には、マージされた元ルールの row_index をすべて列挙
+
+## 承認済みルール一覧（row_index. [category] 本文）
+"""
+    user_prompt = numbered
+
+    try:
+        result = await generate_personalized_text(
+            system_prompt,
+            user_prompt,
+            model_name=GEMINI_PRO_MODEL,
+            max_output_tokens=4096,
+            temperature=0.2,
+        )
+        raw_text = result.text
+    except Exception as e:
+        return {"status": "error", "detail": f"AI整理エラー: {e}"}
+
+    # Parse output
+    import re as _re
+    section = "none"
+    proposed_rules: list[dict] = []
+    archive_indexes: list[int] = []
+    rationale_lines: list[str] = []
+    for raw in raw_text.split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("## 新ルール集"):
+            section = "rules"; continue
+        if line.startswith("## 廃止対象"):
+            section = "archive"; continue
+        if line.startswith("## 理由"):
+            section = "rationale"; continue
+        if section == "rules":
+            m = _re.match(r"^[\-\*]\s+\[([a-z_]+)\]\s*(.+)$", line)
+            if m:
+                cat, rule = m.group(1), m.group(2).strip()
+                if cat in VALID_KNOWLEDGE_CATEGORIES and rule:
+                    proposed_rules.append({"category": cat, "rule": rule})
+        elif section == "archive":
+            for tok in _re.split(r"[\s,、]+", line):
+                if tok.isdigit():
+                    archive_indexes.append(int(tok))
+        elif section == "rationale":
+            rationale_lines.append(line)
+
+    # Safety: only allow archive_indexes that actually exist in candidates
+    valid_indexes = {c["row_index"] for c in candidates}
+    archive_indexes = [i for i in archive_indexes if i in valid_indexes]
+
+    return {
+        "status": "ok",
+        "candidates": candidates,
+        "proposed_rules": proposed_rules,
+        "archive_row_indexes": archive_indexes,
+        "rationale": "\n".join(rationale_lines),
+        "tokens": {
+            "prompt": result.prompt_tokens,
+            "output": result.output_tokens,
+            "model": result.model_name,
+        },
+    }
+
+
+@router.post("/apply_consolidation")
+async def apply_consolidation(
+    data: dict,
+    operator=Depends(verify_api_key),
+):
+    """Apply a consolidation proposal: archive old rows + append new rules."""
+    from datetime import datetime, timedelta, timezone
+
+    company = (data.get("company") or "").strip()
+    archive_indexes = data.get("archive_row_indexes") or []
+    new_rules = data.get("new_rules") or []
+
+    if not isinstance(archive_indexes, list) or not isinstance(new_rules, list):
+        raise HTTPException(400, "archive_row_indexes / new_rules は配列で指定してください")
+
+    # Validate archive indexes against actual sheet state
+    all_rows = sheets_writer.get_all_rows(KNOWLEDGE_POOL_SHEET)
+    if not all_rows:
+        return {"status": "error", "detail": "ナレッジプールが空です"}
+
+    # Archive: update status column only
+    archived_count = 0
+    for idx in archive_indexes:
+        try:
+            idx_int = int(idx)
+        except (TypeError, ValueError):
+            continue
+        if idx_int < 2 or idx_int > len(all_rows):
+            continue
+        try:
+            sheets_writer.update_cells_by_name(
+                KNOWLEDGE_POOL_SHEET,
+                idx_int,
+                {"status": "archived"},
+                actor="admin_ui_consolidate",
+            )
+            archived_count += 1
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"apply_consolidation: archive failed for row {idx_int}", exc_info=True
+            )
+
+    # Append new rules
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+    base_id = int(datetime.now(JST).timestamp())
+    appended_count = 0
+    new_row_values: list[list[str]] = []
+    for i, r in enumerate(new_rules):
+        category = (r.get("category") or "").strip()
+        rule = (r.get("rule") or "").strip()
+        if category not in VALID_KNOWLEDGE_CATEGORIES or not rule:
+            continue
+        new_row_values.append([
+            str(base_id + i),
+            company,
+            category,
+            rule,
+            f"整理統合 {now[:10]}",
+            "approved",  # consolidated rules are pre-approved
+            now,
+        ])
+        appended_count += 1
+
+    if new_row_values:
+        sheets_writer.ensure_sheet_exists(KNOWLEDGE_POOL_SHEET, KNOWLEDGE_POOL_HEADERS)
+        sheets_writer.append_rows(KNOWLEDGE_POOL_SHEET, new_row_values)
+
+    _safe_reload()
+    return {
+        "status": "ok",
+        "archived_count": archived_count,
+        "appended_count": appended_count,
     }
 
 
