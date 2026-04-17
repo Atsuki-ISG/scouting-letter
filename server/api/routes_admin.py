@@ -6372,7 +6372,14 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
     # the old values. We use update_cells_by_name to write — that method
     # internally re-reads the header and aligns by column name, so even if
     # COLUMNS in code drifts from the sheet, no data is scrambled.
-    all_rows = sheets_writer.get_all_rows(sheet_name)
+    try:
+        all_rows = sheets_writer.get_all_rows(sheet_name)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(
+            f"update_row({sheet_slug}, {row_index}) get_all_rows failed"
+        )
+        raise HTTPException(500, f"シート読み込みエラー: {type(e).__name__}: {str(e)[:200]}")
     if row_index < 2 or row_index > len(all_rows):
         raise HTTPException(404, f"Row {row_index} not found")
 
@@ -6432,9 +6439,17 @@ async def update_row(sheet_slug: str, row_index: int, data: dict, operator=Depen
     if not cells:
         return {"status": "no-op", "merged_fields": [], "version": existing.get("version", "")}
 
-    result = sheets_writer.update_cells_by_name(
-        sheet_name, row_index, cells, actor="admin_ui",
-    )
+    try:
+        result = sheets_writer.update_cells_by_name(
+            sheet_name, row_index, cells, actor="admin_ui",
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(
+            f"update_row({sheet_slug}, {row_index}) update_cells_by_name failed "
+            f"(cells={list(cells.keys())})"
+        )
+        raise HTTPException(500, f"セル更新エラー: {type(e).__name__}: {str(e)[:200]}")
     reload_status = _safe_reload()
     return {
         "status": "updated",
