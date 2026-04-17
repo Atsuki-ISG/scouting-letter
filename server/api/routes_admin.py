@@ -4353,8 +4353,97 @@ async def diagnose_template(
     import json as _json
     import os
     from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
-    from pipeline.ai_generator import generate_personalized_text
+    from pipeline.ai_generator import generate_structured
     from config import GEMINI_PRO_MODEL
+
+    # Schema matches diagnose_scout.md. Kept in sync by integration tests.
+    _DIAGNOSIS_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "gate_scores": {
+                "type": "object",
+                "properties": {
+                    "gate1_open": {"type": "string", "enum": ["A", "B", "C"]},
+                    "gate2_read": {"type": "string", "enum": ["A", "B", "C"]},
+                    "gate3_reply": {"type": "string", "enum": ["A", "B", "C"]},
+                },
+            },
+            "weak_principles": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "principle": {"type": "string"},
+                        "issue": {"type": "string"},
+                        "severity": {"type": "string"},
+                    },
+                },
+            },
+            "ai_smell": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "fingerprint": {"type": "string"},
+                        "evidence": {"type": "string"},
+                        "fix_hint": {"type": "string"},
+                    },
+                },
+            },
+            "structure_issues": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "issue": {"type": "string"},
+                        "detail": {"type": "string"},
+                        "severity": {"type": "string"},
+                    },
+                },
+            },
+            "personalization_issues": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "issue": {"type": "string"},
+                        "detail": {"type": "string"},
+                    },
+                },
+            },
+            "integration_issues": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "issue": {"type": "string"},
+                        "detail": {"type": "string"},
+                    },
+                },
+            },
+            "strengths": {"type": "array", "items": {"type": "string"}},
+            "priority_actions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "action": {"type": "string"},
+                        "impact": {"type": "string"},
+                        "target": {"type": "string"},
+                    },
+                },
+            },
+            "improvement_targets": {
+                "type": "object",
+                "properties": {
+                    "template": {"type": "boolean"},
+                    "prompt": {"type": "boolean"},
+                    "recipes": {"type": "boolean"},
+                },
+            },
+        },
+        "required": ["gate_scores"],
+    }
 
     company = data.get("company", "")
     template_type = data.get("template_type", "")
@@ -4464,35 +4553,24 @@ async def diagnose_template(
 
     user_prompt = "\n".join(user_parts)
 
-    # 6. Call AI
+    # 6. Call AI with structured output (no manual JSON parse = no breakage
+    #    in MOCK_AI mode, and no mid-response truncation surprises in prod).
     try:
-        result = await generate_personalized_text(
-            system_prompt,
-            user_prompt,
+        diagnosis, result = await generate_structured(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            response_schema=_DIAGNOSIS_SCHEMA,
             model_name=GEMINI_PRO_MODEL,
             max_output_tokens=4096,
             temperature=0.3,
         )
-        raw_text = result.text
     except Exception as e:
         return {"status": "error", "detail": f"AI呼び出しエラー: {str(e)}"}
 
-    # 7. Parse JSON response
-    # Strip markdown fences if present
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.split("\n")
-        lines = lines[1:]  # remove opening fence
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        cleaned = "\n".join(lines)
+    if not isinstance(diagnosis, dict):
+        diagnosis = {}
 
-    try:
-        diagnosis = _json.loads(cleaned)
-    except _json.JSONDecodeError:
-        return {"status": "error", "detail": f"AIの出力をJSON解析できませんでした。出力の先頭: {raw_text[:200]}"}
-
-    # 8. Validate/normalize required fields
+    # 7. Validate/normalize required fields
     gate_scores = diagnosis.get("gate_scores", {})
     for gate_key in ("gate1_open", "gate2_read", "gate3_reply"):
         if gate_key not in gate_scores or gate_scores[gate_key] not in ("A", "B", "C"):

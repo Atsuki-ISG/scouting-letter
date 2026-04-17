@@ -91,33 +91,41 @@ VALID_DIAGNOSIS_JSON = json.dumps({
 
 
 def _mock_diagnosis_ai():
-    """Return a patch that makes AI return valid diagnosis JSON."""
-    async def fake_generate(system_prompt, user_prompt, **kwargs):
-        return GenerationResult(
+    """Return a patch that makes generate_structured return the valid diagnosis dict.
+
+    The endpoint now uses generate_structured (JSON-schema enforced) so we
+    mock that instead of the legacy generate_personalized_text path.
+    """
+    import json as _json
+    parsed = _json.loads(VALID_DIAGNOSIS_JSON)
+
+    async def fake_generate(*, system_prompt, user_prompt, response_schema, **kwargs):
+        meta = GenerationResult(
             text=VALID_DIAGNOSIS_JSON,
             prompt_tokens=3000,
             output_tokens=500,
             total_tokens=3500,
             model_name="gemini-2.5-pro",
         )
+        return parsed, meta
+
     return patch(
-        "pipeline.ai_generator.generate_personalized_text",
+        "pipeline.ai_generator.generate_structured",
         side_effect=fake_generate,
     )
 
 
 def _mock_diagnosis_ai_invalid_json():
-    """Return a patch that makes AI return invalid JSON."""
-    async def fake_generate(system_prompt, user_prompt, **kwargs):
-        return GenerationResult(
-            text="これはJSONではありません。診断結果を以下に示します...",
-            prompt_tokens=3000,
-            output_tokens=500,
-            total_tokens=3500,
-            model_name="gemini-2.5-pro",
-        )
+    """Return a patch where generate_structured raises (simulating parse failure).
+
+    generate_structured raises ValueError when Gemini returns something that
+    isn't valid JSON for the schema — that's the new failure path.
+    """
+    async def fake_generate(*, system_prompt, user_prompt, response_schema, **kwargs):
+        raise ValueError("AI JSON schema validation failed")
+
     return patch(
-        "pipeline.ai_generator.generate_personalized_text",
+        "pipeline.ai_generator.generate_structured",
         side_effect=fake_generate,
     )
 
@@ -203,7 +211,7 @@ class TestDiagnoseTemplate:
         assert history_row[2] == "ark-visiting-nurse"  # company
 
     def test_diagnosis_invalid_json_returns_error(self, client, mock_sheets_writer, mock_sheets_client):
-        """Should return error when AI outputs non-JSON."""
+        """generate_structured raising should translate to an error response."""
         with _mock_diagnosis_ai_invalid_json():
             resp = client.post("/api/v1/admin/diagnose_template", json={
                 "company": "ark-visiting-nurse",
@@ -213,7 +221,8 @@ class TestDiagnoseTemplate:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "error"
-        assert "JSON" in data.get("detail", "")
+        # Error surfaces under "AI呼び出しエラー" now (structured output layer).
+        assert "AI" in data.get("detail", "") or "エラー" in data.get("detail", "")
 
     def test_diagnosis_missing_company(self, client, mock_sheets_writer, mock_sheets_client):
         """Should return error when company is missing."""

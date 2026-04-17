@@ -7445,12 +7445,14 @@ function renderDiagnosisView(data) {
     html += '</ul></div>';
   }
 
-  // Structure issues
+  // Structure issues — per-template observations, NOT permanent knowledge.
+  // Intentionally no 蓄積 button: structural issues ("冒頭が弱い" "長すぎる")
+  // belong in the template改善フロー (STEP 3), not in the knowledge pool.
   const struct = d.structure_issues || [];
   if (struct.length) {
-    html += '<div style="margin-bottom:12px;"><strong>構成の問題</strong><ul style="margin:4px 0 0 16px;padding:0;">';
+    html += '<div style="margin-bottom:12px;"><strong>構成の問題</strong> <span style="font-size:11px;color:var(--c-text-muted);">（このテンプレ固有なのでSTEP3で改善）</span><ul style="margin:4px 0 0 16px;padding:0;">';
     for (const s of struct) {
-      html += `<li>${severityBadge(s.severity)} ${s.issue}: ${s.detail} <button class="btn btn-sm" style="font-size:11px;padding:1px 6px;margin-left:4px;" onclick="saveDiagnosisKnowledge('template_tip','${_escAttr(s.issue + ': ' + s.detail)}','診断',this)">蓄積</button></li>`;
+      html += `<li>${severityBadge(s.severity)} ${s.issue}: ${s.detail}</li>`;
     }
     html += '</ul></div>';
   }
