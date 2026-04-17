@@ -3836,7 +3836,7 @@ function renderTable() {
       } else if (isPrompts && h === 'section_type') {
         html += `<td>${renderSectionTypeLabel(String(val))}</td>`;
       } else if (currentTab === 'knowledge_pool' && h === 'status') {
-        html += `<td>${renderKnowledgeStatusBadge(String(val), i)}</td>`;
+        html += `<td>${renderKnowledgeStatusBadge(String(val), row._row_index)}</td>`;
       } else if (currentTab === 'knowledge_pool' && h === 'category') {
         const catLabel = KNOWLEDGE_CATEGORY_LABELS[val] || val;
         html += `<td><span style="font-size:11px;padding:1px 6px;border-radius:3px;background:#f0f9ff;color:#0369a1">${escHtml(catLabel)}</span></td>`;
@@ -7891,7 +7891,9 @@ async function runCompetitorResearch() {
       html += '<div class="analysis-md">' + simpleMarkdown(data.analysis) + '</div>';
     }
     if (data.knowledge_count > 0) {
-      html += `<div style="margin-top:12px;padding:8px 12px;background:#f0fdf4;border-radius:6px;font-size:13px">📚 ${data.knowledge_count}件のフック提案をナレッジプールに追加しました（承認待ち）</div>`;
+      html += `<div style="margin-top:12px;padding:8px 12px;background:#f0fdf4;border-radius:6px;font-size:13px;display:flex;align-items:center;gap:12px;">📚 ${data.knowledge_count}件のフック提案をナレッジプールに追加しました（承認待ち）<button class="btn btn-secondary btn-sm" onclick="switchToTableTab('knowledge_pool')">ナレッジタブを開く</button></div>`;
+    } else {
+      html += `<div style="margin-top:12px;padding:8px 12px;background:#fef3c7;border-radius:6px;font-size:13px">⚠️ フック表現を自動抽出できませんでした。下の「📚 ナレッジに抽出」ボタンでAIに再抽出させてください。</div>`;
     }
     el.innerHTML = html;
 
@@ -7932,7 +7934,14 @@ async function extractKnowledge() {
       toast(data.detail, true);
       return;
     }
-    toast(`${data.count}件のルールをナレッジプールに追加しました（承認待ち）`);
+    if (data.count > 0) {
+      toast(`${data.count}件のルールをナレッジプールに追加しました（承認待ち）`);
+      if (confirm(`${data.count}件追加しました。ナレッジタブを開いて確認しますか？`)) {
+        switchToTableTab('knowledge_pool');
+      }
+    } else {
+      toast('抽出可能なルールが見つかりませんでした。分析テキストを確認してください。', true);
+    }
   } catch (e) {
     toast('ナレッジ抽出エラー: ' + e.message, true);
   } finally {

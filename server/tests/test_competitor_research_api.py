@@ -132,3 +132,71 @@ def test_research_competitors_empty_company(client, mock_sheets_client):
     )
     assert response.status_code == 200
     assert response.json().get("status") == "error"
+
+
+def _mock_gemini_realistic():
+    """Mock with the actual output format observed in production (numbered hooks + 活用案 inline)."""
+    async def fake_generate(system_prompt, user_prompt, **kwargs):
+        return GenerationResult(
+            text="""## 1. 競合施設一覧
+| 施設名 | 給与 | 特色 |
+|--------|------|------|
+| LCC訪看 | 月給33万 | 教育ST指定 |
+
+### 🔍 隠れた強み・差別化の種
+
+#### ① 「大病院内サテライト」がもたらす、圧倒的な医療連携の安心感
+
+発見：独立系訪看でありながら、有名病院の中に拠点がある。
+根拠：病棟看護師が在宅へ転職する際、最大の不安は「医師との連携」です。
+活用案：「在宅医療への挑戦で『医師との連携』が不安ですか？大病院内にサテライトを持つ珍しいステーションです。」
+確認事項：病院内サテライトのスタッフの日常的な連携方法。
+
+#### ② 「東京都指定」という、公的お墨付きの教育力
+
+活用案：「『研修充実』という言葉だけでは不安な方へ。東京都から『訪問看護教育ステーション』に指定された公認の教育拠点です。」
+
+### スカウト文への活用提案
+
+#### 推奨フック表現（件名や冒頭のキャッチコピーに）
+
+1. 「東京都指定の『教育ステーション』で、一生モノの在宅看護スキルを身につけませんか？」
+2. 「北里研究所病院・三楽病院内にサテライトあり。大病院と密に連携できる安心の訪看です」
+3. 「先輩に質問しづらい…を解決。指導担当に手当が出る『メンター制度』であなたを1年間サポート」
+
+### 💾 ナレッジ保存用フック（必須・最後に出力）
+- 東京都指定の訪問看護教育ステーションで行政お墨付きの教育体制
+- 大病院内サテライトで医師と密に連携できる安心感を訴求
+- インセンティブ依存ではない高い基本給で収入が安定することを訴求
+""",
+            prompt_tokens=500,
+            output_tokens=300,
+            total_tokens=800,
+            model_name="gemini-2.5-pro",
+        )
+    return patch(
+        "pipeline.ai_generator.generate_personalized_text",
+        side_effect=fake_generate,
+    )
+
+
+def test_research_competitors_parses_numbered_and_inline_katsuyo(
+    client, mock_sheets_client, mock_sheets_writer
+):
+    """Parser must handle numbered hook lists, inline 活用案, and the dedicated 💾 section."""
+    with _mock_gemini_realistic():
+        response = client.post(
+            "/api/v1/admin/research_competitors",
+            json={"company": "lcc-visiting-nurse", "save_to_knowledge": True},
+        )
+    data = response.json()
+    assert data["status"] == "ok"
+    # Expect to capture at minimum: 3 numbered hooks + 3 💾 bullets + 2 活用案 = 8
+    assert data.get("knowledge_count", 0) >= 6
+    mock_sheets_writer.append_rows.assert_called()
+    # Inspect what was written
+    args, _ = mock_sheets_writer.append_rows.call_args
+    _, rows = args
+    rule_texts = [r[3] for r in rows]
+    assert any("教育ステーション" in t for t in rule_texts)
+    assert any("サテライト" in t for t in rule_texts)

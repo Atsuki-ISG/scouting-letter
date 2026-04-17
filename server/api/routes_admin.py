@@ -6107,6 +6107,13 @@ profile.mdに書いてあることをそのまま繰り返すのはNG。
 
 ### 💡 ヒアリング提案
 仮説検証型: 「〇〇という仮説がありますが実態は？」形式で。
+
+### 💾 ナレッジ保存用フック（必須・最後に出力）
+上記「推奨フック表現」「活用案」から、スカウト文に転用できる具体的な表現を**必ず `- ` 始まりの箇条書きで**抽出してください。
+1行1ルール、5〜10行。短く具体的に。装飾（番号、太字、記号）は付けない。
+例:
+- 東京都指定の訪問看護教育ステーションで、行政お墨付きの教育体制
+- 大病院内サテライトで医師と密に連携できる安心感を訴求
 """
 
     user_prompt = f"「{display_name}」（{category_label}）の競合調査を実施してください。"
@@ -6132,23 +6139,65 @@ profile.mdに書いてあることをそのまま繰り返すのはNG。
         rules = []
         next_id = int(datetime.now(JST).timestamp())
 
-        # Extract lines from scout hook section and hidden strengths
-        in_section = False
-        for line in analysis.split("\n"):
-            stripped = line.strip()
-            if "スカウト文" in stripped or "フック" in stripped or "活用案" in stripped:
-                in_section = True
+        # Parse hook candidates across multiple formats:
+        #   - "- フック..."        (bullet)
+        #   - "* フック..."        (bullet)
+        #   - "1. 「フック」"       (numbered list)
+        #   - "活用案：「フック」" (inline)
+        import re as _re
+        seen: set[str] = set()
+
+        def _add_rule(text: str) -> None:
+            t = text.strip().strip("「」\"'`").strip()
+            # drop trailing "- ..." explanation after →
+            if "→" in t:
+                t = t.split("→", 1)[0].strip()
+            if not t or len(t) < 6:
+                return
+            if t in seen:
+                return
+            seen.add(t)
+            rules.append([
+                str(next_id + len(rules)), company, "template_tip", t,
+                f"競合調査 {now[:10]}", "pending", now,
+            ])
+
+        bullet_re = _re.compile(r"^[\-\*]\s+(.+)$")
+        numbered_re = _re.compile(r"^\d+[\.\)]\s+(.+)$")
+        heading_re = _re.compile(r"^#+\s+(.+)$")
+        katsuyo_re = _re.compile(r"活用案[：:](.+)$")
+
+        # Enter "hook zone" when we hit key headings; stay until a different heading (any level) is seen.
+        HOOK_KEYWORDS = ["スカウト文", "フック", "ナレッジ保存", "隠れた強み", "差別化"]
+        in_hook_zone = False
+        for raw in analysis.split("\n"):
+            stripped = raw.strip()
+            if not stripped:
                 continue
-            if in_section and stripped.startswith("- "):
-                rule_text = stripped[2:].strip().strip("「」")
-                if rule_text and len(rule_text) > 5:
-                    rules.append([
-                        str(next_id), company, "template_tip", rule_text,
-                        f"競合調査 {now[:10]}", "pending", now,
-                    ])
-                    next_id += 1
-            if in_section and stripped.startswith("###"):
-                in_section = False
+
+            h = heading_re.match(stripped)
+            if h:
+                heading_text = h.group(1)
+                in_hook_zone = any(k in heading_text for k in HOOK_KEYWORDS)
+                continue
+
+            # Always pick up "活用案：「...」" lines regardless of zone
+            m = katsuyo_re.search(stripped)
+            if m:
+                _add_rule(m.group(1))
+                continue
+
+            if not in_hook_zone:
+                continue
+
+            m = bullet_re.match(stripped)
+            if m:
+                _add_rule(m.group(1))
+                continue
+            m = numbered_re.match(stripped)
+            if m:
+                _add_rule(m.group(1))
+                continue
 
         if rules:
             sheets_writer.ensure_sheet_exists("ナレッジプール", [
@@ -6242,18 +6291,28 @@ category は以下のいずれか:
     extracted_rules = []
     next_id = int(datetime.now(JST).timestamp())
 
-    for line in raw_text.strip().split("\n"):
-        line = line.strip()
-        if not line or not line.startswith("- "):
+    import re as _re
+    bullet_re = _re.compile(r"^[\-\*•]\s+(.+)$")
+    numbered_re = _re.compile(r"^\d+[\.\)]\s+(.+)$")
+    for raw in raw_text.strip().split("\n"):
+        line = raw.strip()
+        if not line:
             continue
-        line = line[2:].strip()
-        # Parse [category] rule_text
+        m = bullet_re.match(line)
+        if not m:
+            m = numbered_re.match(line)
+        if not m:
+            continue
+        line = m.group(1).strip()
+        # Parse [category] rule_text (optional)
         category = "tone"
         rule_text = line
         if line.startswith("[") and "]" in line:
             bracket_end = line.index("]")
             category = line[1:bracket_end].strip()
             rule_text = line[bracket_end + 1:].strip()
+        if category not in VALID_KNOWLEDGE_CATEGORIES:
+            category = "template_tip"
         if not rule_text:
             continue
         extracted_rules.append({
