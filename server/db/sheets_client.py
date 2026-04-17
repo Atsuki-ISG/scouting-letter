@@ -13,6 +13,8 @@ Expected sheets and columns:
   求人: company, job_category, id, name, label, employment_type, active
   バリデーション: company, age_min, age_max, qualification_rules
   プロフィール: company, content, detection_keywords, display_name, monthly_quota
+  競合調査: company, job_category, conditions_table, culture_narrative, hidden_strengths,
+           hooks, sources, competitors_list, model_used, updated_at, updated_by
 """
 
 from __future__ import annotations
@@ -53,6 +55,7 @@ SHEET_FIX_FEEDBACK = "修正フィードバック"
 SHEET_IMPROVEMENT_PROPOSALS = "改善提案"
 SHEET_CONVERSATION_LOGS = "会話ログ"
 SHEET_KNOWLEDGE_POOL = "ナレッジプール"
+SHEET_COMPETITOR_RESEARCH = "競合調査"
 
 _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "nurse": "看護師",
@@ -90,6 +93,22 @@ ALL_SHEETS = [
     SHEET_JOB_CATEGORY_KEYWORDS,
     SHEET_FIX_FEEDBACK,
     SHEET_KNOWLEDGE_POOL,
+    SHEET_COMPETITOR_RESEARCH,
+]
+
+# Competitor research sheet headers (kept as canonical source of truth).
+COMPETITOR_RESEARCH_HEADERS = [
+    "company",
+    "job_category",
+    "conditions_table",
+    "culture_narrative",
+    "hidden_strengths",
+    "hooks",
+    "sources",
+    "competitors_list",
+    "model_used",
+    "updated_at",
+    "updated_by",
 ]
 
 
@@ -429,6 +448,64 @@ class SheetsClient:
             if row.get("company") == company_id:
                 return row.get("content", "").replace("\\n", "\n")
         return ""
+
+    def get_competitor_research(
+        self, company_id: str, job_category: str = ""
+    ) -> dict | None:
+        """Return the latest competitor research for (company, job_category), or None.
+
+        Lookup rules:
+          1. Exact match on (company, job_category).
+          2. Fallback to row with empty job_category ("会社全体" として保存したもの).
+          3. None if neither found.
+
+        JSON-encoded columns (`sources`, `competitors_list`) are parsed back into
+        lists. Plain-text columns are returned as-is (newline-escaped "\\n" is
+        restored to real newlines, consistent with other readers).
+        """
+        self._ensure_cache()
+        rows = self._cache.get(SHEET_COMPETITOR_RESEARCH, [])
+        exact: dict | None = None
+        fallback: dict | None = None
+        for row in rows:
+            if (row.get("company") or "").strip() != company_id:
+                continue
+            row_category = (row.get("job_category") or "").strip()
+            if row_category == job_category:
+                exact = row
+                break
+            if not row_category and fallback is None:
+                fallback = row
+        row = exact or fallback
+        if not row:
+            return None
+
+        def _maybe_json(text: str) -> list:
+            text = (text or "").strip()
+            if not text:
+                return []
+            try:
+                parsed = json.loads(text)
+                return parsed if isinstance(parsed, list) else [parsed]
+            except Exception:
+                return [s.strip() for s in text.splitlines() if s.strip()]
+
+        def _unescape(text: str) -> str:
+            return (text or "").replace("\\n", "\n")
+
+        return {
+            "company": (row.get("company") or "").strip(),
+            "job_category": (row.get("job_category") or "").strip(),
+            "conditions_table": _unescape(row.get("conditions_table", "")),
+            "culture_narrative": _unescape(row.get("culture_narrative", "")),
+            "hidden_strengths": _unescape(row.get("hidden_strengths", "")),
+            "hooks": _unescape(row.get("hooks", "")),
+            "sources": _maybe_json(row.get("sources", "")),
+            "competitors_list": _maybe_json(row.get("competitors_list", "")),
+            "model_used": (row.get("model_used") or "").strip(),
+            "updated_at": (row.get("updated_at") or "").strip(),
+            "updated_by": (row.get("updated_by") or "").strip(),
+        }
 
     def _get_templates(self, company_id: str) -> dict[str, dict]:
         """Return templates keyed by 'job_category:type' (or just 'type' if no job_category)."""

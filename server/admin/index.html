@@ -2090,6 +2090,86 @@ tbody tr:nth-child(even):hover { background: var(--c-primary-bg); }
   display: inline-block;
 }
 
+/* Flow steps (STEP 1 → 2 → 3) */
+.flow-steps {
+  display: flex; flex-direction: column; gap: 0;
+  padding: 16px; overflow-y: auto;
+}
+.flow-step {
+  position: relative;
+  background: var(--c-surface); border: 1px solid var(--c-border);
+  border-radius: var(--radius-md); transition: all var(--transition);
+  overflow: hidden;
+}
+.flow-step[data-state="locked"] {
+  opacity: 0.55; background: var(--c-surface-alt); border-style: dashed;
+}
+.flow-step[data-state="done"] {
+  border-color: #86efac; background: linear-gradient(180deg, #f0fdf4 0%, var(--c-surface) 18%);
+}
+.flow-step[data-state="ready"] { border-color: var(--c-primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.08); }
+.flow-step-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid var(--c-border);
+}
+.flow-step[data-state="locked"] .flow-step-header { border-bottom-color: transparent; }
+.flow-step-number {
+  flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--c-primary); color: white; font-weight: 700; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+}
+.flow-step[data-state="locked"] .flow-step-number { background: var(--c-text-muted); }
+.flow-step[data-state="done"] .flow-step-number { background: #16a34a; }
+.flow-step-title {
+  font-size: 14px; font-weight: 700; color: var(--c-text);
+  display: flex; align-items: center; gap: 6px;
+}
+.flow-step-status {
+  margin-left: auto; font-size: 11px; color: var(--c-text-muted);
+  display: flex; align-items: center; gap: 4px;
+}
+.flow-step[data-state="done"] .flow-step-status { color: #16a34a; }
+.flow-step-body { padding: 14px 16px; }
+.flow-step-desc {
+  font-size: 12px; color: var(--c-text-muted); margin-bottom: 10px; line-height: 1.5;
+}
+.flow-step-actions {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;
+}
+.flow-step-result { margin-top: 12px; }
+.flow-step-hint {
+  padding: 6px 10px; background: var(--c-surface-alt); border-radius: var(--radius-sm);
+  font-size: 11px; color: var(--c-text-muted); margin-top: 8px;
+}
+/* Connector arrow between steps */
+.flow-connector {
+  display: flex; justify-content: center; height: 24px;
+  position: relative;
+}
+.flow-connector::before {
+  content: ''; width: 2px; height: 100%; background: var(--c-border);
+}
+.flow-connector::after {
+  content: '↓'; position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%); color: var(--c-text-muted);
+  font-size: 14px; background: var(--c-surface); padding: 0 6px;
+}
+.flow-aux {
+  margin-top: 12px; padding: 10px 14px;
+  background: var(--c-surface-alt); border-radius: var(--radius-md);
+  border: 1px dashed var(--c-border);
+}
+.flow-aux-title {
+  font-size: 11px; font-weight: 700; color: var(--c-text-muted);
+  text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;
+}
+.flow-template-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 12px;
+  background: #eff6ff; color: #1e40af; font-size: 11px; font-weight: 600;
+}
+.flow-template-pill.muted { background: #fef3c7; color: #92400e; }
+
 /* Diff View */
 .diff-view {
   flex: 1; padding: 20px 24px; font-size: 13.5px; line-height: 2;
@@ -2407,24 +2487,83 @@ window.icon = function(name, cls='icon-sm') {
       </div>
       <div class="analysis-panel">
         <div class="analysis-panel-header">
-          <h3>サイクル分析</h3>
+          <h3>改善フロー</h3>
           <label style="font-size:11px;color:var(--c-text-muted);display:flex;align-items:center;gap:4px;cursor:pointer;"><input type="checkbox" id="crossCompanyCheck" style="accent-color:var(--c-primary);"> 全社横断</label>
-          <button class="btn btn-primary btn-sm" onclick="runAnalysis()"><svg class="icon icon-sm"><use href="#i-play"/></svg> 分析を実行</button>
-          <button class="btn btn-secondary btn-sm" onclick="runCompetitorResearch()" style="margin-left:4px;">&#x1f50d; 競合調査</button>
-          <button class="btn btn-secondary btn-sm" id="btnExportReport" onclick="openReportExport()" disabled style="margin-left:4px;"><svg class="icon icon-sm"><use href="#i-download"/></svg> 顧客向けレポート出力</button>
+          <button class="btn btn-secondary btn-sm" id="btnExportReport" onclick="openReportExport()" disabled style="margin-left:auto;font-size:11px;"><svg class="icon icon-sm"><use href="#i-download"/></svg> 顧客向けレポート</button>
         </div>
-        <div id="analysisResults" style="flex:1;padding:20px;overflow-y:auto;">
-          <div class="analysis-empty">「分析を実行」を押すと送信データのクロス集計とAI分析が表示されます</div>
-        </div>
-        <div id="improveInputArea" style="display:none;padding:12px 20px;border-top:1px solid var(--c-border);background:var(--c-surface-alt);">
-          <textarea id="improveDirective" rows="2" placeholder="改善の方向性を入力（例: 冒頭を短くしたい、30代に響く表現にして、CTAを柔らかく）" style="width:100%;padding:8px 12px;border:1px solid var(--c-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-sans);resize:vertical;margin-bottom:8px;"></textarea>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <button class="btn btn-primary btn-sm" id="btnDiagnoseTemplate" onclick="runDiagnosis()">&#x1f50d; 診断</button>
-            <button class="btn btn-primary btn-sm" id="btnImproveTemplate" onclick="generateImprovement()" disabled>&#x2728; 改善案を生成</button>
-            <button class="btn btn-secondary btn-sm" onclick="extractKnowledge()">&#x1f4da; ナレッジに抽出</button>
+
+        <div class="flow-steps">
+          <!-- STEP 1 -->
+          <div class="flow-step" id="flowStep1" data-state="ready">
+            <div class="flow-step-header">
+              <div class="flow-step-number">1</div>
+              <div class="flow-step-title">🎯 現状把握</div>
+              <div class="flow-step-status" id="flowStep1Status">未実施</div>
+            </div>
+            <div class="flow-step-body">
+              <div class="flow-step-desc">送信データの傾向分析と競合調査で、この会社のテンプレートの課題と差別化の種を掴みます。</div>
+              <div class="flow-step-actions">
+                <button class="btn btn-primary btn-sm" onclick="runAnalysis()"><svg class="icon icon-sm"><use href="#i-play"/></svg> 送信データ分析</button>
+                <button class="btn btn-secondary btn-sm" onclick="runCompetitorResearch()">🔍 競合調査</button>
+              </div>
+              <div class="flow-step-result" id="analysisResults">
+                <div class="analysis-empty" style="padding:32px 16px;">「送信データ分析」または「競合調査」を押すと結果がここに表示されます</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow-connector"></div>
+
+          <!-- STEP 2 -->
+          <div class="flow-step" id="flowStep2" data-state="locked">
+            <div class="flow-step-header">
+              <div class="flow-step-number">2</div>
+              <div class="flow-step-title">🔍 テンプレート診断</div>
+              <div class="flow-step-status" id="flowStep2Status">テンプレート未選択</div>
+            </div>
+            <div class="flow-step-body">
+              <div class="flow-step-desc">
+                左の一覧からテンプレートを選んで、3ゲート（開封・読了・返信）/ AI臭 / 構成 / パーソナライズを診断します。
+                STEP 1 の結果がある場合はコンテキストとして利用されます。
+              </div>
+              <div class="flow-step-actions">
+                <span id="flowStep2Selected" class="flow-template-pill muted">テンプレート未選択</span>
+                <button class="btn btn-primary btn-sm" id="btnDiagnoseTemplate" onclick="runDiagnosis()" disabled>🔍 テンプレート診断</button>
+              </div>
+              <div class="flow-step-result" id="diagnosisResults" style="display:none;"></div>
+            </div>
+          </div>
+
+          <div class="flow-connector"></div>
+
+          <!-- STEP 3 -->
+          <div class="flow-step" id="flowStep3" data-state="locked">
+            <div class="flow-step-header">
+              <div class="flow-step-number">3</div>
+              <div class="flow-step-title">✨ 改善案の生成</div>
+              <div class="flow-step-status" id="flowStep3Status">診断未実施</div>
+            </div>
+            <div class="flow-step-body">
+              <div class="flow-step-desc">
+                診断結果と（任意で）改善の方向性・競合フックを元に、テンプレートの改善案を生成します。
+                改善案は左のテンプレート編集パネルに差分表示されます。
+              </div>
+              <div id="improveInputArea" style="display:flex;flex-direction:column;gap:8px;">
+                <textarea id="improveDirective" rows="2" placeholder="改善の方向性を入力（例: 冒頭を短くしたい、30代に響く表現に、CTAを柔らかく）&#10;競合調査からフックを流し込むと自動でここに入ります" style="width:100%;padding:8px 12px;border:1px solid var(--c-border);border-radius:var(--radius-sm);font-size:13px;font-family:var(--font-sans);resize:vertical;box-sizing:border-box;"></textarea>
+                <button class="btn btn-primary btn-sm" id="btnImproveTemplate" onclick="generateImprovement()" disabled style="align-self:flex-start;">✨ 改善案を生成 → 左ペインに差分表示</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 補助機能 -->
+          <div class="flow-aux">
+            <div class="flow-aux-title">🛠 補助機能（メインフローとは独立）</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;">
+              <button class="btn btn-secondary btn-sm" onclick="extractKnowledge()">📚 分析テキストからナレッジに抽出</button>
+              <span style="color:var(--c-text-muted);font-size:11px;">分析結果から恒久ルールを抽出してナレッジプールに追加</span>
+            </div>
           </div>
         </div>
-        <div id="diagnosisResults" style="display:none;padding:16px 20px;border-top:1px solid var(--c-border);"></div>
       </div>
     </div>
   </div>
@@ -6380,6 +6519,10 @@ function loadTemplateIntoEditor(index) {
   if (typeof loadDraftIfAny === 'function') {
     loadDraftIfAny();
   }
+  // Flow: selecting a new template resets diagnosis/improvement
+  flowState.step2Done = false;
+  flowState.step3Done = false;
+  updateFlowStates();
 }
 
 // ===== テンプレート変更履歴モーダル =====
@@ -7122,6 +7265,86 @@ async function restoreDraft(draftId) {
 // ── Diagnosis state ──
 let lastDiagnosis = null;
 
+// ── Flow state (STEP 1 → 2 → 3) ──
+const flowState = {
+  step1Done: false,
+  step1Kind: '',      // 'analysis' | 'competitor' | '' (none)
+  step2Done: false,
+  step3Done: false,
+};
+
+function _setStepState(id, state, statusText) {
+  const card = document.getElementById(id);
+  if (!card) return;
+  card.setAttribute('data-state', state);
+  const status = document.getElementById(id + 'Status');
+  if (status) status.textContent = statusText;
+}
+
+function updateFlowStates() {
+  // STEP 1
+  if (flowState.step1Done) {
+    const label = flowState.step1Kind === 'competitor' ? '競合調査 完了' : '送信データ分析 完了';
+    _setStepState('flowStep1', 'done', `✓ ${label}`);
+  } else {
+    _setStepState('flowStep1', 'ready', '未実施');
+  }
+
+  // STEP 2
+  const tRow = (typeof analysisCurrentRowIndex !== 'undefined') ? analysisCurrentRowIndex : null;
+  const tSelected = !!tRow;
+  const pill = document.getElementById('flowStep2Selected');
+  const diagBtn = document.getElementById('btnDiagnoseTemplate');
+  if (tSelected) {
+    let label = '選択中';
+    try {
+      const t = (typeof analysisTemplates !== 'undefined')
+        ? analysisTemplates.find(x => x._row_index === tRow) : null;
+      if (t) label = `選択中: ${t.job_category ? t.job_category + ' · ' : ''}${t.type}`;
+    } catch (_) {}
+    if (pill) {
+      pill.textContent = label;
+      pill.classList.remove('muted');
+    }
+    if (diagBtn) diagBtn.disabled = false;
+  } else {
+    if (pill) {
+      pill.textContent = 'テンプレート未選択';
+      pill.classList.add('muted');
+    }
+    if (diagBtn) diagBtn.disabled = true;
+  }
+
+  if (flowState.step2Done) {
+    _setStepState('flowStep2', 'done', '✓ 診断完了');
+  } else if (tSelected) {
+    _setStepState('flowStep2', 'ready', '診断可能');
+  } else {
+    _setStepState('flowStep2', 'locked', 'テンプレート未選択');
+  }
+
+  // STEP 3
+  const improveBtn = document.getElementById('btnImproveTemplate');
+  if (flowState.step3Done) {
+    _setStepState('flowStep3', 'done', '✓ 改善案生成済み（左ペインで確認）');
+    if (improveBtn) improveBtn.disabled = false;
+  } else if (flowState.step2Done) {
+    _setStepState('flowStep3', 'ready', '改善案を生成可能');
+    if (improveBtn) improveBtn.disabled = false;
+  } else {
+    _setStepState('flowStep3', 'locked', '診断未実施');
+    if (improveBtn) improveBtn.disabled = true;
+  }
+}
+
+function resetFlowState() {
+  flowState.step1Done = false;
+  flowState.step1Kind = '';
+  flowState.step2Done = false;
+  flowState.step3Done = false;
+  updateFlowStates();
+}
+
 async function runDiagnosis() {
   if (analysisCurrentRowIndex === null) return;
   const company = document.getElementById('companySelect').value;
@@ -7149,9 +7372,10 @@ async function runDiagnosis() {
     lastDiagnosis = data.diagnosis;
     renderDiagnosisView(data);
 
-    // Enable improve button
-    const improveBtn = document.getElementById('btnImproveTemplate');
-    if (improveBtn) improveBtn.disabled = false;
+    // Flow: STEP 2 done → STEP 3 ready
+    flowState.step2Done = true;
+    flowState.step3Done = false;
+    updateFlowStates();
   } catch (e) {
     toast('診断エラー: ' + e.message, true);
   } finally {
@@ -7332,6 +7556,10 @@ async function generateImprovement() {
     if (data.proposals && data.proposals.length > 0) {
       renderDiagnosisProposals(data.proposals);
     }
+
+    // Flow: STEP 3 done
+    flowState.step3Done = true;
+    updateFlowStates();
   } catch (e) {
     editor.innerHTML = savedHTML;
     toast('改善案生成エラー: ' + e.message, true);
@@ -7990,13 +8218,15 @@ async function runAnalysis() {
     }
 
     el.innerHTML = html;
-    // Show improve button after analysis completes
-    document.getElementById('improveInputArea').style.display = '';
-    // Reset diagnosis state when new analysis runs
+    // Flow: STEP 1 done; reset STEP 2/3 because the context changed.
+    flowState.step1Done = true;
+    flowState.step1Kind = 'analysis';
+    flowState.step2Done = false;
+    flowState.step3Done = false;
     lastDiagnosis = null;
-    document.getElementById('btnImproveTemplate').disabled = true;
     document.getElementById('diagnosisResults').style.display = 'none';
     document.getElementById('diagnosisResults').innerHTML = '';
+    updateFlowStates();
     // Enable report export button
     const exportBtn = document.getElementById('btnExportReport');
     if (exportBtn) {
@@ -8025,7 +8255,7 @@ async function runAnalysis() {
 
 // --- Competitor research ---
 
-async function runCompetitorResearch() {
+async function runCompetitorResearch(forceRefresh = false) {
   const isCross = document.getElementById('crossCompanyCheck')?.checked;
   if (isCross) {
     toast('競合調査は1会社ずつ実行してください。「全社横断」を外してください。', true);
@@ -8035,49 +8265,134 @@ async function runCompetitorResearch() {
   if (!company) { toast('会社を選択してください', true); return; }
 
   const el = document.getElementById('analysisResults');
-  el.innerHTML = '<div class="analysis-loading"><div class="spinner"></div> 競合調査中（Google検索 + AI分析）...</div>';
+  const loadingLabel = forceRefresh
+    ? '徹底調査中（Google検索 + 多段AI分析、数分かかります）...'
+    : '競合調査中（キャッシュがあれば即座に表示）...';
+  el.innerHTML = `<div class="analysis-loading"><div class="spinner"></div> ${loadingLabel}</div>`;
 
   try {
     const data = await api('POST', '/api/v1/admin/research_competitors', {
       company,
+      force_refresh: forceRefresh,
     });
     if (data.status === 'error') {
       el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">${escHtml(data.detail)}</div>`;
       return;
     }
 
-    let html = `<div class="analysis-period">🔍 競合調査: ${escHtml(data.company)} (${escHtml(data.job_category || '')})</div>`;
-    if (data.analysis) {
-      html += '<div class="analysis-md">' + simpleMarkdown(data.analysis) + '</div>';
-    }
-    const hooks = Array.isArray(data.extracted_hooks) ? data.extracted_hooks : [];
-    if (hooks.length > 0) {
-      html += `<div style="margin-top:16px;padding:12px 14px;background:#f0fdf4;border-radius:6px;">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px;">💡 抽出されたフック候補（${hooks.length}件）</div>
-        <ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.7;">
-          ${hooks.map(h => `<li>${escHtml(h)}</li>`).join('')}
-        </ul>
-        <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button class="btn btn-primary btn-sm" onclick='pushHooksToImproveDirective(${JSON.stringify(hooks).replace(/'/g, "&#39;")})'>→ 改善フローに流す</button>
-          <span style="font-size:11px;color:var(--c-text-muted);">※ フックはテンプレート改善用のアイデアです。ナレッジプール（恒久ルール）には入りません。</span>
-        </div>
-      </div>`;
-    } else {
-      html += `<div style="margin-top:12px;padding:8px 12px;background:#fef3c7;border-radius:6px;font-size:13px">⚠️ フック表現を自動抽出できませんでした。分析テキストから手動でコピーしてください。</div>`;
-    }
-    el.innerHTML = html;
+    renderCompetitorResearch(el, data);
 
-    // Store for knowledge extraction
+    // Store for knowledge extraction (analysis MD is the composed view)
     lastAnalysisSummary = data.analysis || '';
-    document.getElementById('improveInputArea').style.display = '';
-    // Reset diagnosis state
+    // Flow: STEP 1 done (competitor research); reset STEP 2/3.
+    flowState.step1Done = true;
+    flowState.step1Kind = 'competitor';
+    flowState.step2Done = false;
+    flowState.step3Done = false;
     lastDiagnosis = null;
-    document.getElementById('btnImproveTemplate').disabled = true;
     document.getElementById('diagnosisResults').style.display = 'none';
     document.getElementById('diagnosisResults').innerHTML = '';
+    updateFlowStates();
   } catch (e) {
     el.innerHTML = `<div class="analysis-empty" style="color:var(--c-danger)">競合調査エラー: ${escHtml(e.message)}</div>`;
   }
+}
+
+function renderCompetitorResearch(el, data) {
+  const hooks = Array.isArray(data.extracted_hooks) ? data.extracted_hooks : [];
+  const sources = Array.isArray(data.sources) ? data.sources : [];
+  const competitors = Array.isArray(data.competitors_list) ? data.competitors_list : [];
+  const fromCache = !!data.from_cache;
+
+  let html = `<div class="analysis-period">🔍 競合調査: ${escHtml(data.company)} (${escHtml(data.job_category || '')})</div>`;
+
+  // Cache / refresh bar
+  if (fromCache) {
+    html += `<div style="margin-top:8px;padding:8px 12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;display:flex;align-items:center;gap:12px;font-size:12px;">
+      <span>⏱ 保存済みの調査結果を表示しています${data.updated_at ? `（最終更新: ${escHtml(data.updated_at)}）` : ''}</span>
+      <button class="btn btn-secondary btn-sm" onclick="runCompetitorResearch(true)" style="margin-left:auto;">🔬 徹底調査（再調査）</button>
+    </div>`;
+  } else if (data.saved_to_sheet) {
+    html += `<div style="margin-top:8px;padding:6px 10px;background:#f0fdf4;border-radius:4px;font-size:11px;color:var(--c-text-muted);">✓ 競合調査シートに保存しました。次回以降はキャッシュから即表示されます。</div>`;
+  } else if (data.save_error) {
+    html += `<div style="margin-top:8px;padding:6px 10px;background:#fef3c7;border-radius:4px;font-size:11px;">⚠️ Sheetsへの保存に失敗: ${escHtml(data.save_error)}</div>`;
+  }
+
+  // 2-column block: conditions + culture
+  const hasConditions = (data.conditions_table || '').trim();
+  const hasCulture = (data.culture_narrative || '').trim();
+  if (hasConditions || hasCulture) {
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;">`;
+    html += `<div style="padding:12px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:6px;overflow-x:auto;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px;">📊 求人条件比較</div>
+      <div class="analysis-md" style="font-size:12px;">${hasConditions ? simpleMarkdown(data.conditions_table) : '<span style="color:var(--c-text-muted);">（データなし）</span>'}</div>
+    </div>`;
+    html += `<div style="padding:12px;background:var(--c-surface);border:1px solid var(--c-border);border-radius:6px;">
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px;">🏢 雰囲気・文化・研修</div>
+      <div class="analysis-md" style="font-size:12px;">${hasCulture ? simpleMarkdown(data.culture_narrative) : '<span style="color:var(--c-text-muted);">（データなし）</span>'}</div>
+    </div>`;
+    html += `</div>`;
+  }
+
+  // Hidden strengths (full width, highlighted)
+  if ((data.hidden_strengths || '').trim()) {
+    html += `<div style="margin-top:16px;padding:14px 16px;background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border-radius:8px;">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px;">🔍 隠れた強み・差別化の種</div>
+      <div class="analysis-md" style="font-size:12px;">${simpleMarkdown(data.hidden_strengths)}</div>
+    </div>`;
+  }
+
+  // Hooks
+  if (hooks.length > 0) {
+    html += `<div style="margin-top:16px;padding:12px 14px;background:#f0fdf4;border-radius:6px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:8px;">💡 抽出されたフック候補（${hooks.length}件）</div>
+      <ul style="margin:0;padding-left:18px;font-size:12px;line-height:1.7;">
+        ${hooks.map(h => `<li>${escHtml(h)}</li>`).join('')}
+      </ul>
+      <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" onclick='pushHooksToImproveDirective(${JSON.stringify(hooks).replace(/'/g, "&#39;")})'>→ 改善フローに流す</button>
+        <span style="font-size:11px;color:var(--c-text-muted);">※ フックはテンプレート改善用のアイデアです。ナレッジプール（恒久ルール）には入りません。</span>
+      </div>
+    </div>`;
+  } else {
+    html += `<div style="margin-top:12px;padding:8px 12px;background:#fef3c7;border-radius:6px;font-size:13px">⚠️ フック表現を自動抽出できませんでした。</div>`;
+  }
+
+  // Competitors list + sources (collapsible)
+  if (competitors.length > 0 || sources.length > 0) {
+    html += `<details style="margin-top:16px;padding:8px 12px;background:var(--c-surface-alt);border-radius:6px;">
+      <summary style="cursor:pointer;font-size:12px;font-weight:600;">📚 調査対象 ${competitors.length}社 / 参照元 ${sources.length}件</summary>
+      <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:12px;">`;
+    if (competitors.length > 0) {
+      html += `<div>
+        <div style="font-size:11px;font-weight:700;margin-bottom:4px;">調査対象競合</div>
+        <ul style="margin:0;padding-left:18px;font-size:11px;line-height:1.6;">
+          ${competitors.map(c => {
+            const name = escHtml(c.name || '');
+            const url = (c.url || '').trim();
+            const label = url ? `<a href="${escHtml(url)}" target="_blank" rel="noopener">${name}</a>` : name;
+            const notes = c.notes ? ` <span style="color:var(--c-text-muted);">— ${escHtml(c.notes)}</span>` : '';
+            return `<li>${label}${notes}</li>`;
+          }).join('')}
+        </ul>
+      </div>`;
+    }
+    if (sources.length > 0) {
+      html += `<div>
+        <div style="font-size:11px;font-weight:700;margin-bottom:4px;">参照元URL（Google検索 grounding）</div>
+        <ul style="margin:0;padding-left:18px;font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto;">
+          ${sources.map(s => {
+            const uri = (s.uri || '').trim();
+            const title = escHtml(s.title || uri);
+            return uri ? `<li><a href="${escHtml(uri)}" target="_blank" rel="noopener">${title}</a></li>` : '';
+          }).join('')}
+        </ul>
+      </div>`;
+    }
+    html += `</div></details>`;
+  }
+
+  el.innerHTML = html;
 }
 
 // Push competitor-research hooks into the improvement-flow directive box.
@@ -8333,6 +8648,8 @@ document.getElementById('companySelect').addEventListener('change', () => {
   else if (viewMode === 'analysis') loadAnalysisView();
   else loadData();
   loadSendSummary();
+  // Reset improvement flow when switching companies
+  if (typeof resetFlowState === 'function') resetFlowState();
 });
 renderTabs();
 

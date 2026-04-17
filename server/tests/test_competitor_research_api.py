@@ -1,6 +1,8 @@
 """Tests for the competitor research API endpoint.
 
-TDD: Gemini + Google Search grounding で競合調査→ナレッジプール投入。
+Verifies the endpoint wiring (not the pipeline internals — those live in
+`test_competitor_research_pipeline.py`). The pipeline is mocked so these
+tests don't need API keys or network access.
 """
 from __future__ import annotations
 
@@ -11,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from main import app
 from auth.api_key import verify_api_key
-from pipeline.ai_generator import GenerationResult
+from pipeline.competitor_research import ResearchResult
 
 
 def _fake_operator():
@@ -28,183 +30,193 @@ def client():
 @pytest.fixture
 def mock_sheets_client():
     with patch("api.routes_admin.sheets_client") as sc:
-        sc.get_company_profile.return_value = "## ARK訪問看護\n所在地: 北海道札幌市\n訪問看護ステーション"
+        sc.get_company_profile.return_value = "- **所在地**: 北海道札幌市"
         sc.get_company_display_name.return_value = "ARK訪問看護"
         sc.get_company_config.return_value = {
             "job_categories": [{"id": "nurse", "display_name": "看護師"}],
-            "templates": {},
-            "job_offers": [],
         }
+        sc.get_competitor_research.return_value = None  # no cache by default
+        sc.reload = MagicMock()
         yield sc
 
 
 @pytest.fixture
 def mock_sheets_writer():
     with patch("api.routes_admin.sheets_writer") as sw:
-        sw.ensure_sheet_exists = MagicMock()
-        sw.append_rows = MagicMock()
+        sw.upsert_competitor_research = MagicMock(return_value={"action": "insert", "row_index": 2})
         yield sw
 
 
-def _mock_gemini_search():
-    """Mock Gemini with search grounding response."""
-    async def fake_generate(system_prompt, user_prompt, **kwargs):
-        return GenerationResult(
-            text="""## 競合施設一覧
-| 施設名 | 給与 | 特色 |
-|--------|------|------|
-| A訪問看護 | 月給30万 | 教育充実 |
-| B訪問看護 | 月給28万 | 24時間対応 |
-
-## 🔍 隠れた強み・差別化の種
-
-### 発見1: 札幌市内で認知症特化は希少
-根拠: 競合5施設中、認知症ケアを前面に出しているのは1施設のみ
-活用案: 「認知症ケアの経験を活かせる環境」をスカウト文のフックに
-確認事項: 実際の認知症利用者比率をクライアントに確認
-
-## スカウト文への活用提案
-- 「札幌市内で認知症ケアに特化した訪問看護として」
-- 「スタッフあたりの利用者数が少なく、一人ひとりに向き合える環境」
-
-## 💡 ヒアリング提案
-- 「競合と比較して御社のスタッフ定着率が高い印象ですが、その要因は何だとお考えですか？」""",
-            prompt_tokens=500,
-            output_tokens=300,
-            total_tokens=800,
-            model_name="gemini-2.5-flash",
-        )
-    return patch(
-        "pipeline.ai_generator.generate_personalized_text",
-        side_effect=fake_generate,
+def _result() -> ResearchResult:
+    return ResearchResult(
+        conditions_table="| 施設 | 給与 |\n| --- | --- |\n| A訪看 | 月給30万 |",
+        culture_narrative="研修が手厚いのが特徴。",
+        hidden_strengths="1. 発見: 認知症ケアの経験を活かせる環境\n2. 発見: 大病院内サテライト",
+        hooks=(
+            "- 東京都指定の訪問看護教育ステーションで行政お墨付きの教育体制\n"
+            "- 大病院内サテライトで医師と密に連携できる安心感を訴求\n"
+            "- インセンティブ依存ではない高い基本給"
+        ),
+        sources=[{"uri": "https://a.example", "title": "A"}],
+        competitors_list=[{"name": "A訪看", "url": "https://a.example", "notes": "教育充実"}],
+        model_used="pass1-2:gemini-3-flash-preview / pass3:gemini-3.1-pro-preview",
     )
 
 
-def test_research_competitors_endpoint(client, mock_sheets_client, mock_sheets_writer):
-    """POST /admin/research_competitors should return analysis with hidden strengths."""
-    with _mock_gemini_search():
+def _patch_pipeline(result: ResearchResult):
+    """Patch run_research so the endpoint doesn't hit Gemini."""
+    async def fake(**kwargs):
+        return result
+    return patch("api.routes_admin.run_research", side_effect=fake)
+
+
+# ---------------------------------------------------------------------------
+
+class TestEndpointHappyPath:
+    def test_returns_ok_with_analysis_and_hooks(self, client, mock_sheets_client, mock_sheets_writer):
+        with _patch_pipeline(_result()):
+            response = client.post(
+                "/api/v1/admin/research_competitors",
+                json={"company": "ark-visiting-nurse"},
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["company"] == "ARK訪問看護"
+        assert data["company_id"] == "ark-visiting-nurse"
+        assert "隠れた強み" in data["analysis"]
+        assert "求人条件比較" in data["analysis"]
+        assert "雰囲気・文化" in data["analysis"]
+        assert isinstance(data["extracted_hooks"], list)
+        assert len(data["extracted_hooks"]) == 3
+        assert any("教育ステーション" in h for h in data["extracted_hooks"])
+        # New structured fields
+        assert data["conditions_table"].startswith("| 施設")
+        assert data["culture_narrative"].startswith("研修")
+        assert data["sources"] == [{"uri": "https://a.example", "title": "A"}]
+        assert data["from_cache"] is False
+        assert data["saved_to_sheet"] is True
+
+    def test_writes_to_sheet_on_success(self, client, mock_sheets_client, mock_sheets_writer):
+        with _patch_pipeline(_result()):
+            client.post(
+                "/api/v1/admin/research_competitors",
+                json={"company": "ark-visiting-nurse"},
+            )
+        mock_sheets_writer.upsert_competitor_research.assert_called_once()
+        kwargs = mock_sheets_writer.upsert_competitor_research.call_args.kwargs
+        assert kwargs["company"] == "ark-visiting-nurse"
+        assert kwargs["job_category"] == ""
+        # to_sheet_dict-shaped payload
+        assert "conditions_table" in kwargs["data"]
+        assert "hooks" in kwargs["data"]
+
+    def test_accepts_job_category(self, client, mock_sheets_client, mock_sheets_writer):
+        with _patch_pipeline(_result()):
+            response = client.post(
+                "/api/v1/admin/research_competitors",
+                json={"company": "ark-visiting-nurse", "job_category": "nurse"},
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["job_category"] == "看護師"
+        kwargs = mock_sheets_writer.upsert_competitor_research.call_args.kwargs
+        assert kwargs["job_category"] == "nurse"
+
+
+class TestEndpointErrors:
+    def test_empty_company_returns_error(self, client, mock_sheets_client):
         response = client.post(
             "/api/v1/admin/research_competitors",
-            json={"company": "ark-visiting-nurse"},
+            json={"company": ""},
         )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["status"] == "ok"
-    assert "analysis" in data
-    assert "隠れた強み" in data["analysis"]
+        assert response.status_code == 200
+        assert response.json()["status"] == "error"
+
+    def test_pipeline_exception_returns_error_not_500(self, client, mock_sheets_client, mock_sheets_writer):
+        async def boom(**kwargs):
+            raise RuntimeError("gemini died")
+        with patch("api.routes_admin.run_research", side_effect=boom):
+            response = client.post(
+                "/api/v1/admin/research_competitors",
+                json={"company": "ark-visiting-nurse"},
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "error"
+        assert "gemini died" in data["detail"]
+
+    def test_sheet_write_failure_does_not_break_response(self, client, mock_sheets_client, mock_sheets_writer):
+        mock_sheets_writer.upsert_competitor_research.side_effect = RuntimeError("sheets down")
+        with _patch_pipeline(_result()):
+            response = client.post(
+                "/api/v1/admin/research_competitors",
+                json={"company": "ark-visiting-nurse"},
+            )
+        data = response.json()
+        assert data["status"] == "ok"
+        assert data["saved_to_sheet"] is False
+        assert "sheets down" in data["save_error"]
+        # Analysis is still returned
+        assert "隠れた強み" in data["analysis"]
 
 
-def test_research_competitors_returns_hooks_without_writing_knowledge(
-    client, mock_sheets_client, mock_sheets_writer,
-):
-    """Hooks must be returned in extracted_hooks and NOT written to the knowledge pool.
+class TestCaching:
+    def test_cache_hit_skips_pipeline(self, client, mock_sheets_client, mock_sheets_writer):
+        """When the sheet already has research for this (company, category),
+        reuse it instead of running the expensive pipeline again."""
+        mock_sheets_client.get_competitor_research.return_value = {
+            "company": "ark-visiting-nurse",
+            "job_category": "",
+            "conditions_table": "cached table",
+            "culture_narrative": "cached culture",
+            "hidden_strengths": "cached strengths",
+            "hooks": "- cached hook 1\n- cached hook 2",
+            "sources": [{"uri": "https://cached.example", "title": "Cached"}],
+            "competitors_list": [{"name": "Cached"}],
+            "model_used": "cached-model",
+            "updated_at": "2026-04-10 10:00:00",
+            "updated_by": "tester",
+        }
+        with patch("api.routes_admin.run_research") as run_mock:
+            response = client.post(
+                "/api/v1/admin/research_competitors",
+                json={"company": "ark-visiting-nurse"},
+            )
+        data = response.json()
+        assert data["from_cache"] is True
+        assert data["updated_at"] == "2026-04-10 10:00:00"
+        assert data["extracted_hooks"] == ["cached hook 1", "cached hook 2"]
+        # Pipeline must not be called on cache hit
+        run_mock.assert_not_called()
+        # And nothing should be written
+        mock_sheets_writer.upsert_competitor_research.assert_not_called()
 
-    Template-level hooks are one-shot inspirations for the improvement flow,
-    not permanent rules. Writing them to the pool clutters it and mixes
-    ideas with constraints.
-    """
-    with _mock_gemini_search():
-        response = client.post(
-            "/api/v1/admin/research_competitors",
-            json={
-                "company": "ark-visiting-nurse",
-                "save_to_knowledge": True,  # should now be ignored
-            },
-        )
-    data = response.json()
-    assert data["status"] == "ok"
-    assert isinstance(data.get("extracted_hooks"), list)
-    assert len(data["extracted_hooks"]) >= 1
-    assert data.get("knowledge_count", 0) == 0
-    # NO knowledge-pool writes should happen
-    mock_sheets_writer.append_rows.assert_not_called()
+    def test_force_refresh_bypasses_cache(self, client, mock_sheets_client, mock_sheets_writer):
+        mock_sheets_client.get_competitor_research.return_value = {
+            "conditions_table": "OLD",
+            "culture_narrative": "",
+            "hidden_strengths": "",
+            "hooks": "",
+            "sources": [],
+            "competitors_list": [],
+            "updated_at": "2025-01-01",
+        }
+        with _patch_pipeline(_result()):
+            response = client.post(
+                "/api/v1/admin/research_competitors",
+                json={"company": "ark-visiting-nurse", "force_refresh": True},
+            )
+        data = response.json()
+        assert data["from_cache"] is False
+        assert data["conditions_table"].startswith("| 施設")  # fresh data
+        mock_sheets_writer.upsert_competitor_research.assert_called_once()
 
-
-def test_research_competitors_with_job_category(client, mock_sheets_client, mock_sheets_writer):
-    """Should accept optional job_category parameter."""
-    with _mock_gemini_search():
-        response = client.post(
-            "/api/v1/admin/research_competitors",
-            json={
-                "company": "ark-visiting-nurse",
-                "job_category": "nurse",
-            },
-        )
-    assert response.status_code == 200
-
-
-def test_research_competitors_empty_company(client, mock_sheets_client):
-    """Empty company should return error."""
-    response = client.post(
-        "/api/v1/admin/research_competitors",
-        json={"company": ""},
-    )
-    assert response.status_code == 200
-    assert response.json().get("status") == "error"
-
-
-def _mock_gemini_realistic():
-    """Mock with the actual output format observed in production (numbered hooks + 活用案 inline)."""
-    async def fake_generate(system_prompt, user_prompt, **kwargs):
-        return GenerationResult(
-            text="""## 1. 競合施設一覧
-| 施設名 | 給与 | 特色 |
-|--------|------|------|
-| LCC訪看 | 月給33万 | 教育ST指定 |
-
-### 🔍 隠れた強み・差別化の種
-
-#### ① 「大病院内サテライト」がもたらす、圧倒的な医療連携の安心感
-
-発見：独立系訪看でありながら、有名病院の中に拠点がある。
-根拠：病棟看護師が在宅へ転職する際、最大の不安は「医師との連携」です。
-活用案：「在宅医療への挑戦で『医師との連携』が不安ですか？大病院内にサテライトを持つ珍しいステーションです。」
-確認事項：病院内サテライトのスタッフの日常的な連携方法。
-
-#### ② 「東京都指定」という、公的お墨付きの教育力
-
-活用案：「『研修充実』という言葉だけでは不安な方へ。東京都から『訪問看護教育ステーション』に指定された公認の教育拠点です。」
-
-### スカウト文への活用提案
-
-#### 推奨フック表現（件名や冒頭のキャッチコピーに）
-
-1. 「東京都指定の『教育ステーション』で、一生モノの在宅看護スキルを身につけませんか？」
-2. 「北里研究所病院・三楽病院内にサテライトあり。大病院と密に連携できる安心の訪看です」
-3. 「先輩に質問しづらい…を解決。指導担当に手当が出る『メンター制度』であなたを1年間サポート」
-
-### 💾 ナレッジ保存用フック（必須・最後に出力）
-- 東京都指定の訪問看護教育ステーションで行政お墨付きの教育体制
-- 大病院内サテライトで医師と密に連携できる安心感を訴求
-- インセンティブ依存ではない高い基本給で収入が安定することを訴求
-""",
-            prompt_tokens=500,
-            output_tokens=300,
-            total_tokens=800,
-            model_name="gemini-2.5-pro",
-        )
-    return patch(
-        "pipeline.ai_generator.generate_personalized_text",
-        side_effect=fake_generate,
-    )
-
-
-def test_research_competitors_parses_numbered_and_inline_katsuyo(
-    client, mock_sheets_client, mock_sheets_writer
-):
-    """Parser must handle numbered hook lists, inline 活用案, and the dedicated 💾 section."""
-    with _mock_gemini_realistic():
-        response = client.post(
-            "/api/v1/admin/research_competitors",
-            json={"company": "lcc-visiting-nurse"},
-        )
-    data = response.json()
-    assert data["status"] == "ok"
-    hooks = data.get("extracted_hooks", [])
-    # Expect to capture at minimum: 3 numbered hooks + 3 💾 bullets + 2 活用案 = 8
-    assert len(hooks) >= 6
-    # Pool should never be written to from competitor research
-    mock_sheets_writer.append_rows.assert_not_called()
-    rule_texts = hooks
-    assert any("教育ステーション" in t for t in rule_texts)
-    assert any("サテライト" in t for t in rule_texts)
+    def test_save_to_sheet_false_skips_write(self, client, mock_sheets_client, mock_sheets_writer):
+        with _patch_pipeline(_result()):
+            response = client.post(
+                "/api/v1/admin/research_competitors",
+                json={"company": "ark-visiting-nurse", "save_to_sheet": False},
+            )
+        assert response.json()["status"] == "ok"
+        mock_sheets_writer.upsert_competitor_research.assert_not_called()

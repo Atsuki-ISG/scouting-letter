@@ -47,6 +47,75 @@ def _safety_settings_vertex():
     }
 
 
+def _build_search_tool_vertex():
+    """Build the Google Search grounding tool for the Vertex AI SDK.
+
+    Returns None if the SDK version doesn't support it, so callers can
+    fall back silently instead of crashing.
+    """
+    try:
+        from vertexai.generative_models import Tool, grounding
+        return Tool.from_google_search_retrieval(grounding.GoogleSearchRetrieval())
+    except Exception as e:
+        logger.warning(f"Vertex GoogleSearchRetrieval unavailable: {e}")
+        return None
+
+
+def _build_search_tool_genai():
+    """Build the Google Search grounding tool for the genai SDK.
+
+    The google-generativeai SDK exposes GoogleSearchRetrieval via protos.
+    Note: genai SDK's grounding support is less reliable than Vertex; when
+    running via API key, grounding may silently no-op for some models.
+    """
+    try:
+        from google.generativeai import protos
+        return protos.Tool(google_search_retrieval=protos.GoogleSearchRetrieval())
+    except Exception as e:
+        logger.warning(f"genai GoogleSearchRetrieval unavailable: {e}")
+        return None
+
+
+def _extract_citations(response) -> list[dict]:
+    """Pull citation URIs/titles out of Gemini grounding metadata.
+
+    Works with both Vertex and genai SDK response shapes. Returns an empty
+    list when no grounding metadata is present (e.g. tool wasn't enabled
+    or the model chose not to ground its answer).
+    """
+    citations: list[dict] = []
+    seen_uris: set[str] = set()
+    try:
+        candidates = getattr(response, "candidates", None) or []
+        for candidate in candidates:
+            meta = getattr(candidate, "grounding_metadata", None)
+            if meta is None:
+                continue
+            # Gemini 2.x+: grounding_chunks[].web.{uri, title}
+            for chunk in getattr(meta, "grounding_chunks", None) or []:
+                web = getattr(chunk, "web", None)
+                if web is None:
+                    continue
+                uri = getattr(web, "uri", "") or ""
+                title = getattr(web, "title", "") or ""
+                if uri and uri not in seen_uris:
+                    seen_uris.add(uri)
+                    citations.append({"uri": uri, "title": title})
+            # Gemini 1.5 fallback: grounding_attributions[].web.{uri, title}
+            for attr in getattr(meta, "grounding_attributions", None) or []:
+                web = getattr(attr, "web", None)
+                if web is None:
+                    continue
+                uri = getattr(web, "uri", "") or ""
+                title = getattr(web, "title", "") or ""
+                if uri and uri not in seen_uris:
+                    seen_uris.add(uri)
+                    citations.append({"uri": uri, "title": title})
+    except Exception as e:
+        logger.warning(f"Failed to extract grounding citations: {e}")
+    return citations
+
+
 def _extract_text_safe(response) -> str:
     """Extract text from Gemini response, filtering out thinking parts."""
     try:
@@ -93,6 +162,14 @@ class GenerationResult:
     output_tokens: int = 0
     total_tokens: int = 0
     model_name: str = ""
+    # Google Search grounding output. Populated only when the caller passes
+    # `use_google_search=True`. Each entry: {"uri": str, "title": str}.
+    # Empty list means either the tool was off or Gemini returned no sources.
+    citations: list[dict] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.citations is None:
+            self.citations = []
 
 # Disable all automatic retries to avoid burning API quota
 _NO_RETRY = api_retry.Retry(initial=0, maximum=0, deadline=0)
@@ -195,6 +272,7 @@ def _build_generation_config(
     model_name: str,
     *,
     for_vertex: bool = False,
+    thinking_budget: int | None = None,
     **extra,
 ) -> dict:
     """Build generation_config dict, adding thinking_config for supported models.
@@ -202,15 +280,20 @@ def _build_generation_config(
     google-generativeai SDK (<=0.8) does not recognize thinking_config
     in GenerationConfig and raises a validation error. Only Vertex AI SDK
     accepts it, so `for_vertex=True` must be set explicitly.
+
+    `thinking_budget` overrides the env-level `GEMINI_THINKING_BUDGET` for
+    one call. Use 0 to disable thinking entirely, or a positive integer to
+    cap reasoning tokens. If None, falls back to the env default.
     """
     config: dict = {
         "temperature": temperature,
         "max_output_tokens": max_output_tokens,
         **extra,
     }
+    effective_budget = GEMINI_THINKING_BUDGET if thinking_budget is None else thinking_budget
     # Add thinking only for Vertex AI path (genai SDK doesn't support it yet)
-    if for_vertex and GEMINI_THINKING_BUDGET > 0 and ("gemini-3" in model_name or "gemini-2.5" in model_name):
-        config["thinking_config"] = {"thinking_budget": GEMINI_THINKING_BUDGET}
+    if for_vertex and effective_budget > 0 and ("gemini-3" in model_name or "gemini-2.5" in model_name):
+        config["thinking_config"] = {"thinking_budget": effective_budget}
     return config
 
 
@@ -308,12 +391,22 @@ async def generate_personalized_text(
     model_name: str | None = None,
     max_output_tokens: int = 2048,
     temperature: float = 0.7,
+    thinking_budget: int | None = None,
+    use_google_search: bool = False,
 ) -> GenerationResult:
     """Call Gemini to generate personalized scout text.
 
     Supports both:
     - Gemini Developer API (GEMINI_API_KEY set) — free tier, API key auth
     - Vertex AI (GEMINI_API_KEY not set) — GCP, service account auth
+
+    `thinking_budget` overrides the env default for one call (Vertex AI only;
+    ignored by the genai SDK path). Pass 0 to disable thinking.
+
+    `use_google_search=True` enables Google Search grounding. Citations are
+    returned in `GenerationResult.citations`. If the underlying SDK/model
+    doesn't support grounding, the call falls back silently to no-tool
+    (citations will be empty) so the caller still gets a text response.
     """
     primary = model_name or GEMINI_MODEL
 
@@ -335,18 +428,35 @@ async def generate_personalized_text(
     for idx, candidate in enumerate(chain):
         try:
             if _use_vertex:
-                gen_config = _build_generation_config(temperature, max_output_tokens, candidate, for_vertex=True)
+                gen_config = _build_generation_config(
+                    temperature, max_output_tokens, candidate,
+                    for_vertex=True, thinking_budget=thinking_budget,
+                )
                 from vertexai.generative_models import GenerativeModel
                 model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
+                vertex_tools = None
+                if use_google_search:
+                    tool = _build_search_tool_vertex()
+                    if tool is not None:
+                        vertex_tools = [tool]
                 response = await model.generate_content_async(
                     user_prompt,
                     generation_config=gen_config,
                     safety_settings=_safety_settings_vertex(),
+                    tools=vertex_tools,
                 )
             else:
-                gen_config = _build_generation_config(temperature, max_output_tokens, candidate, for_vertex=False)
+                gen_config = _build_generation_config(
+                    temperature, max_output_tokens, candidate,
+                    for_vertex=False, thinking_budget=thinking_budget,
+                )
                 import google.generativeai as genai
                 model = genai.GenerativeModel(model_name=candidate, system_instruction=system_prompt)
+                genai_tools = None
+                if use_google_search:
+                    tool = _build_search_tool_genai()
+                    if tool is not None:
+                        genai_tools = [tool]
                 # google-generativeai doesn't have async, run in thread
                 # Explicitly disable retry to avoid burning quota
                 response = await asyncio.to_thread(
@@ -354,6 +464,7 @@ async def generate_personalized_text(
                     user_prompt,
                     generation_config=gen_config,
                     safety_settings=_safety_settings_genai(),
+                    tools=genai_tools,
                     request_options={"retry": _NO_RETRY},
                 )
             name = candidate
@@ -401,12 +512,15 @@ async def generate_personalized_text(
     except Exception as e:
         logger.warning(f"Failed to extract token usage: {e}")
 
+    citations = _extract_citations(response) if use_google_search else []
+
     return GenerationResult(
         text=text,
         prompt_tokens=prompt_tokens,
         output_tokens=output_tokens,
         total_tokens=total_tokens,
         model_name=name,
+        citations=citations,
     )
 
 
@@ -418,6 +532,7 @@ async def generate_structured(
     model_name: str | None = None,
     max_output_tokens: int = 4096,
     temperature: float = 0.7,
+    thinking_budget: int | None = None,
 ) -> tuple[dict, GenerationResult]:
     """Call Gemini with a JSON schema and parse the structured output.
 
@@ -467,6 +582,7 @@ async def generate_structured(
             if _use_vertex:
                 gen_config = _build_generation_config(
                     temperature, max_output_tokens, candidate, for_vertex=True,
+                    thinking_budget=thinking_budget,
                     response_mime_type="application/json",
                     response_schema=response_schema,
                 )
@@ -480,6 +596,7 @@ async def generate_structured(
             else:
                 gen_config = _build_generation_config(
                     temperature, max_output_tokens, candidate, for_vertex=False,
+                    thinking_budget=thinking_budget,
                     response_mime_type="application/json",
                     response_schema=response_schema,
                 )

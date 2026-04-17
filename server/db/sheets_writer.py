@@ -566,6 +566,80 @@ class SheetsWriter:
             body={"values": rows}
         ).execute()
 
+    def upsert_competitor_research(
+        self,
+        *,
+        company: str,
+        job_category: str,
+        data: dict,
+        actor: str = "",
+    ) -> dict:
+        """Upsert a competitor research row keyed by (company, job_category).
+
+        `data` should contain any subset of the non-key columns declared in
+        COMPETITOR_RESEARCH_HEADERS. Missing columns are left blank on insert
+        and untouched on update. `updated_at` is always set to now(JST) and
+        `updated_by` to `actor`.
+
+        Returns {"action": "insert"|"update", "row_index": <1-based>}.
+        """
+        # Import here to avoid circular import at module load
+        from db.sheets_client import (
+            SHEET_COMPETITOR_RESEARCH,
+            COMPETITOR_RESEARCH_HEADERS,
+        )
+
+        self.ensure_sheet_exists(SHEET_COMPETITOR_RESEARCH, COMPETITOR_RESEARCH_HEADERS)
+
+        all_rows = self.get_all_rows(SHEET_COMPETITOR_RESEARCH)
+        headers = [h.strip() for h in all_rows[0]] if all_rows else list(COMPETITOR_RESEARCH_HEADERS)
+
+        # Find matching row (company + job_category)
+        try:
+            i_company = headers.index("company")
+            i_category = headers.index("job_category")
+        except ValueError:
+            raise ValueError(
+                f"'{SHEET_COMPETITOR_RESEARCH}' header missing required keys; got {headers}"
+            )
+
+        match_row_index: int | None = None
+        for idx, row in enumerate(all_rows[1:], start=2):
+            row_padded = row + [""] * (len(headers) - len(row))
+            if (
+                (row_padded[i_company] or "").strip() == company
+                and (row_padded[i_category] or "").strip() == job_category
+            ):
+                match_row_index = idx
+                break
+
+        now_str = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+        cells = dict(data)
+        cells["company"] = company
+        cells["job_category"] = job_category
+        cells["updated_at"] = now_str
+        cells["updated_by"] = actor or ""
+
+        if match_row_index is None:
+            # Insert: build full row in header order
+            values = [str(cells.get(h, "")) for h in headers]
+            self.append_row(SHEET_COMPETITOR_RESEARCH, values)
+            # Row index = existing rows + 1 (1-based)
+            new_index = len(all_rows) + 1 if all_rows else 2
+            logger.info(
+                f"Inserted competitor research row for ({company}, {job_category}) at row {new_index}"
+            )
+            return {"action": "insert", "row_index": new_index}
+
+        # Update via safe by-name writer so audit snapshot is recorded
+        self.update_cells_by_name(
+            SHEET_COMPETITOR_RESEARCH,
+            match_row_index,
+            cells,
+            actor=actor,
+        )
+        return {"action": "update", "row_index": match_row_index}
+
     # ------------------------------------------------------------------
     # Audit log
     # ------------------------------------------------------------------

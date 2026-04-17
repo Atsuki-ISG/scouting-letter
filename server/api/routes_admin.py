@@ -7,6 +7,7 @@ from typing import Optional
 
 from db.sheets_writer import sheets_writer
 from db.sheets_client import sheets_client, SHEET_FIX_FEEDBACK, SHEET_CONVERSATION_LOGS
+from pipeline.competitor_research import run_research
 from auth.api_key import verify_api_key
 from api._dashboard_helpers import (
     find_stale_quota_companies,
@@ -6007,21 +6008,26 @@ async def research_competitors(
     data: dict,
     operator=Depends(verify_api_key),
 ):
-    """Research competitors using Gemini + Google Search grounding.
+    """Multi-pass competitor research with Google Search grounding.
 
-    Returns competitive analysis with hidden strengths and scout hooks.
-    Hooks are returned in `extracted_hooks` for the improvement flow;
-    they are no longer written to the knowledge pool (template_tip hooks
-    are one-shot inspirations, not permanent rules).
+    Pipeline: competitor listup → per-competitor deep dive (conditions +
+    culture) in parallel → synthesis (Pro + thinking) → hook extraction.
+    Result is persisted to the 競合調査 Sheet for reuse by diagnosis /
+    improvement flows; `force_refresh=True` bypasses the cache. See
+    `pipeline/competitor_research.py` for the detailed pipeline design.
+
+    Response keeps `analysis` + `extracted_hooks` for UI backward compat,
+    plus new structured fields (conditions_table / culture_narrative /
+    hidden_strengths / sources / competitors_list).
     """
-    from pipeline.ai_generator import generate_personalized_text
-
     company = (data.get("company") or "").strip()
     if not company:
         return {"status": "error", "detail": "company が指定されていません"}
 
-    job_category = data.get("job_category", "")
-    # save_to_knowledge accepted for backward compat but ignored.
+    job_category = (data.get("job_category") or "").strip()
+    force_refresh = bool(data.get("force_refresh", False))
+    save_to_sheet = data.get("save_to_sheet", True)
+    # Legacy flag, still accepted so old clients don't break.
     _ = data.get("save_to_knowledge", False)
 
     # Load company context
@@ -6035,161 +6041,126 @@ async def research_competitors(
         display_name = company
         categories = []
 
-    category_label = job_category or (categories[0] if categories else "看護師")
+    from db.sheets_client import label_for_category
+    category_label = (
+        label_for_category(job_category)
+        if job_category
+        else (categories[0] if categories else "看護師")
+    )
 
-    # Extract area from profile
-    area_hint = ""
-    for keyword in ["所在地", "住所", "エリア", "拠点"]:
-        for line in profile.split("\n"):
-            if keyword in line:
-                area_hint = line.strip()
-                break
-        if area_hint:
-            break
+    # Cache: reuse prior research unless the caller explicitly forces refresh.
+    cached = None
+    if not force_refresh:
+        try:
+            cached = sheets_client.get_competitor_research(company, job_category)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to read cached competitor research: {e}")
 
-    system_prompt = f"""あなたは介護・医療系の採用市場を分析する戦略コンサルタントです。
-Google検索を活用して競合情報を調査し、対象会社が「まだ気づいていない自社の強み」を発見してください。
-
-## あなたの役割
-単なる情報比較ではなく、**対象会社にとっての「隠れた強み」や「差別化の種」を見つけ出す**こと。
-プロフィールに書いてある強みを繰り返すのではなく、競合と比較して初めて見える優位性を提案する。
-
-## 対象会社
-- 会社名: {display_name}
-- 職種: {category_label}
-{f'- エリア: {area_hint}' if area_hint else ''}
-
-## 会社プロフィール
-{profile[:2000] if profile else '(未登録)'}
-
-## 調査の観点
-
-### 定量比較（同エリア・同業態・同職種）
-- 給与水準（月給/時給）
-- 勤務時間・シフト体制（夜勤、オンコール有無）
-- 福利厚生・手当
-- 施設の規模
-
-### 定性比較
-- 教育・研修体制
-- 職場の雰囲気・文化（口コミ）
-- キャリアパス
-- 特色・専門領域
-- 働き方の柔軟性
-
-### 業界動向
-- 当該エリアの求人市場状況
-- 業界トレンド
-
-## 出力形式
-
-### 競合施設一覧
-| 施設名 | 給与 | 勤務時間 | 福利厚生 | 規模 | 特色 |
-|--------|------|----------|----------|------|------|
-
-### 定性比較
-教育体制・文化・キャリアパスの比較
-
-### 🔍 隠れた強み・差別化の種（最重要）
-対象会社が**まだ気づいていない可能性がある強み**を3-5個提案。
-
-各提案:
-1. **発見**: 何が強みか（1行）
-2. **根拠**: なぜそう言えるか（競合との比較データ）
-3. **活用案**: スカウト文でどう訴求するか（具体的な表現例）
-4. **確認事項**: クライアントに裏取りすべきこと
-
-profile.mdに書いてあることをそのまま繰り返すのはNG。
-
-### 業界・エリア動向
-
-### スカウト文への活用提案
-- 推奨フック表現（5個）
-- 避けるべき訴求
-
-### 💡 ヒアリング提案
-仮説検証型: 「〇〇という仮説がありますが実態は？」形式で。
-
-### 💾 ナレッジ保存用フック（必須・最後に出力）
-上記「推奨フック表現」「活用案」から、スカウト文に転用できる具体的な表現を**必ず `- ` 始まりの箇条書きで**抽出してください。
-1行1ルール、5〜10行。短く具体的に。装飾（番号、太字、記号）は付けない。
-例:
-- 東京都指定の訪問看護教育ステーションで、行政お墨付きの教育体制
-- 大病院内サテライトで医師と密に連携できる安心感を訴求
-"""
-
-    user_prompt = f"「{display_name}」（{category_label}）の競合調査を実施してください。"
-
-    from config import GEMINI_PRO_MODEL
-    try:
-        result = await generate_personalized_text(
-            system_prompt,
-            user_prompt,
-            model_name=GEMINI_PRO_MODEL,
-            max_output_tokens=8192,
-            temperature=0.3,
+    if cached:
+        extracted_hooks = [
+            line.lstrip("-* ").strip()
+            for line in (cached.get("hooks") or "").splitlines()
+            if line.strip().lstrip("-* ").strip()
+        ]
+        analysis_md = _compose_analysis_md(
+            cached.get("conditions_table", ""),
+            cached.get("culture_narrative", ""),
+            cached.get("hidden_strengths", ""),
         )
-        analysis = result.text
+        return {
+            "status": "ok",
+            "company": display_name,
+            "company_id": company,
+            "job_category": category_label,
+            "analysis": analysis_md,
+            "extracted_hooks": extracted_hooks,
+            "conditions_table": cached.get("conditions_table", ""),
+            "culture_narrative": cached.get("culture_narrative", ""),
+            "hidden_strengths": cached.get("hidden_strengths", ""),
+            "sources": cached.get("sources", []),
+            "competitors_list": cached.get("competitors_list", []),
+            "updated_at": cached.get("updated_at", ""),
+            "from_cache": True,
+            "knowledge_count": 0,
+        }
+
+    try:
+        result = await run_research(
+            company_id=company,
+            target_company_display=display_name,
+            category_label=category_label,
+            profile=profile,
+            job_category=job_category,
+        )
     except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception("Competitor research pipeline failed")
         return {"status": "error", "detail": f"AI調査エラー: {e}"}
 
-    # Extract hook candidates (do NOT write to knowledge pool — these are
-    # one-shot inspirations for the template improvement flow, not permanent
-    # rules. See `knowledge/visiting-nurse-concerns.md` for the distinction.)
-    import re as _re
-    extracted_hooks: list[str] = []
-    seen: set[str] = set()
+    # Persist to Sheets so subsequent diagnose/improve calls can reuse it.
+    saved = False
+    save_error = ""
+    if save_to_sheet:
+        try:
+            actor = (operator or {}).get("name") or (operator or {}).get("operator_id") or ""
+            sheets_writer.upsert_competitor_research(
+                company=company,
+                job_category=job_category,
+                data=result.to_sheet_dict(),
+                actor=actor,
+            )
+            saved = True
+            # Reload cache so the next read sees fresh data.
+            try:
+                sheets_client.reload()
+            except Exception as re_err:
+                import logging
+                logging.getLogger(__name__).warning(f"sheets_client.reload() after research upsert failed: {re_err}")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("Failed to save competitor research to Sheets")
+            save_error = str(e)[:200]
 
-    def _add_hook(text: str) -> None:
-        t = text.strip().strip("「」\"'`").strip()
-        if "→" in t:
-            t = t.split("→", 1)[0].strip()
-        if not t or len(t) < 6 or t in seen:
-            return
-        seen.add(t)
-        extracted_hooks.append(t)
-
-    bullet_re = _re.compile(r"^[\-\*]\s+(.+)$")
-    numbered_re = _re.compile(r"^\d+[\.\)]\s+(.+)$")
-    heading_re = _re.compile(r"^#+\s+(.+)$")
-    katsuyo_re = _re.compile(r"活用案[：:](.+)$")
-
-    HOOK_KEYWORDS = ["スカウト文", "フック", "ナレッジ保存", "隠れた強み", "差別化"]
-    in_hook_zone = False
-    for raw in analysis.split("\n"):
-        stripped = raw.strip()
-        if not stripped:
-            continue
-        h = heading_re.match(stripped)
-        if h:
-            in_hook_zone = any(k in h.group(1) for k in HOOK_KEYWORDS)
-            continue
-        m = katsuyo_re.search(stripped)
-        if m:
-            _add_hook(m.group(1))
-            continue
-        if not in_hook_zone:
-            continue
-        m = bullet_re.match(stripped) or numbered_re.match(stripped)
-        if m:
-            _add_hook(m.group(1))
+    extracted_hooks = [
+        line.lstrip("-* ").strip()
+        for line in (result.hooks or "").splitlines()
+        if line.strip().lstrip("-* ").strip()
+    ]
+    analysis_md = _compose_analysis_md(
+        result.conditions_table, result.culture_narrative, result.hidden_strengths,
+    )
 
     return {
         "status": "ok",
         "company": display_name,
         "company_id": company,
         "job_category": category_label,
-        "analysis": analysis,
+        "analysis": analysis_md,
         "extracted_hooks": extracted_hooks,
-        # knowledge_count kept in response for backward-compat with older
-        # admin builds; always 0 now — hooks go to improvement flow, not pool.
+        "conditions_table": result.conditions_table,
+        "culture_narrative": result.culture_narrative,
+        "hidden_strengths": result.hidden_strengths,
+        "sources": result.sources,
+        "competitors_list": result.competitors_list,
+        "from_cache": False,
+        "saved_to_sheet": saved,
+        "save_error": save_error,
         "knowledge_count": 0,
-        "tokens": {
-            "prompt": result.prompt_tokens,
-            "output": result.output_tokens,
-            "model": result.model_name,
-        },
+        "tokens": {"model": result.model_used},
     }
+
+
+def _compose_analysis_md(conditions_table: str, culture_narrative: str, hidden_strengths: str) -> str:
+    """Compose a single Markdown block for legacy UI consumers."""
+    parts: list[str] = []
+    if conditions_table.strip():
+        parts.append("### 📊 求人条件比較\n\n" + conditions_table.strip())
+    if culture_narrative.strip():
+        parts.append("### 🏢 雰囲気・文化・研修\n\n" + culture_narrative.strip())
+    if hidden_strengths.strip():
+        parts.append("### 🔍 隠れた強み・差別化の種\n\n" + hidden_strengths.strip())
+    return "\n\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
