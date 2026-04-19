@@ -5509,11 +5509,19 @@ async def analyze_cycle(
 
     companies_to_scan = list(COMPANY_DISPLAY_NAMES.keys()) if is_cross_company else [company]
 
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    read_errors: list[str] = []  # 単社実行時に本当のエラー理由を返すため
     for cid in companies_to_scan:
         sheet_name = _send_data_sheet_name(cid)
         try:
             all_rows = sheets_writer.get_all_rows(sheet_name)
-        except Exception:
+        except Exception as e:
+            # 過去: 無言で continue していたため、Sheets読み込みが一時的に失敗
+            # しただけでも「データがありません」と誤報されていた。
+            _log.warning(f"analyze_cycle: failed to read {sheet_name!r} for {cid}: {e}")
+            read_errors.append(f"{cid}: {type(e).__name__}: {str(e)[:150]}")
             continue
         if len(all_rows) < 2:
             continue
@@ -5534,6 +5542,13 @@ async def analyze_cycle(
 
     if not filtered or headers is None:
         label = "全社" if is_cross_company else company
+        # 単社指定で読み込みに失敗した場合は「データなし」ではなく
+        # 本当の失敗理由を返す（quota / timeout / auth の切り分けが可能に）。
+        if not is_cross_company and read_errors:
+            return {
+                "status": "error",
+                "detail": f"{label} の送信データ読み込みに失敗: {read_errors[0]}",
+            }
         return {"status": "error", "detail": f"{label} の {date_from}〜{date_to} にデータがありません"}
 
     # For cross-company, add virtual "会社" column
