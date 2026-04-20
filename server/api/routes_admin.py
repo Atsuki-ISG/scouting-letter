@@ -2089,18 +2089,61 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         if sec.get("section_type") == "pattern_generation":
             custom_prompt += sec.get("content", "") + "\n"
 
-    # Collect station_features, education, and profile as additional context
+    # Collect all prompt sections (station_features/education/behavior_guidelines/ng_patterns/
+    # writing_style/ai_guide) + profile as additional context. Rule系 (behavior_guidelines,
+    # ng_patterns, writing_style) を注入することで、型はめ初期生成も蓄積されたトーン・
+    # NG表現・文体ルールに従うようになる。
+    PATTERN_CONTEXT_SECTION_TYPES = {
+        "station_features", "education", "ai_guide",
+        "behavior_guidelines", "ng_patterns", "writing_style",
+    }
     section_context_parts: list[str] = []
     for sec in prompt_sections:
         stype = sec.get("section_type", "")
         content = sec.get("content", "").strip()
-        if stype in ("station_features", "education") and content:
+        if stype in PATTERN_CONTEXT_SECTION_TYPES and content:
             jc = sec.get("job_category", "")
             label = f"{stype}" + (f" ({jc})" if jc else "")
             section_context_parts.append(f"### {label}\n{content}")
     company_profile = sheets_client.get_company_profile(company_id) if company_id else ""
     if company_profile:
         section_context_parts.insert(0, f"### 会社プロフィール\n{company_profile[:2000]}")
+
+    # 選択済 fix_feedback から学習用データを組み立てる。過去の修正傾向を見せることで
+    # 同じ会社（or 全社）で繰り返された表現パターン・NGを型はめ生成時に反映できる。
+    feedback_context = ""
+    try:
+        fix_rows = sheets_writer.get_all_rows(SHEET_FIX_FEEDBACK)
+        if fix_rows and len(fix_rows) >= 2:
+            fix_headers = [h.strip() for h in fix_rows[0]]
+            adopted_fixes: list[dict] = []
+            for row in fix_rows[1:]:
+                item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(fix_headers)}
+                if item.get("status", "") != "adopted":
+                    continue
+                # 対象会社の修正を優先。少なければ全社も含める
+                if company_id and item.get("company", "") != company_id:
+                    continue
+                adopted_fixes.append(item)
+                if len(adopted_fixes) >= 15:
+                    break
+            if adopted_fixes:
+                import json as _json2
+                fb_compact = [
+                    {
+                        "before": (f.get("before") or "")[:300],
+                        "after": (f.get("after") or "")[:300],
+                        "reason": (f.get("reason") or "")[:200],
+                    }
+                    for f in adopted_fixes[:15]
+                ]
+                feedback_context = (
+                    "\n\n## 過去の修正フィードバック（この会社で実際に起きた修正。同じ傾向を避けるように型文を生成すること）\n"
+                    + _json2.dumps(fb_compact, ensure_ascii=False, indent=2)
+                )
+    except Exception:
+        # fix_feedback シート未作成等は無視（既存挙動を維持）
+        feedback_context = ""
 
     # company_info が空の場合、Sheetsから自動構築
     if not company_info:
@@ -2178,6 +2221,8 @@ async def generate_patterns(data: dict, operator=Depends(verify_api_key)):
         user_parts = [f"以下の会社情報をもとに、10パターンのスカウト文を生成してください。\n\n{company_info}"]
         if section_context:
             user_parts.append(section_context)
+        if feedback_context:
+            user_parts.append(feedback_context)
         gen_result = await generate_personalized_text(
             system_prompt=system_prompt,
             user_prompt="\n\n".join(user_parts),
@@ -3488,7 +3533,17 @@ SUPPORTED_PROPOSAL_TARGETS = {
 }
 
 # プロンプトシートで会社固有に上書き可能な section_type（routes_admin.py 1029行に既出）
-PROMPT_COMPANY_SECTION_TYPES = {"station_features", "education", "ai_guide"}
+# 前3種 = 会社情報系（施設特色/教育体制/接点ガイド）
+# 後3種 = ルール系（行動指針/NGパターン/文体）。2026-04-20 追加、パーソナライズ生成と
+#         型はめ生成の両方に system_prompt 経由で自動注入される。
+PROMPT_COMPANY_SECTION_TYPES = {
+    "station_features",
+    "education",
+    "ai_guide",
+    "behavior_guidelines",
+    "ng_patterns",
+    "writing_style",
+}
 
 
 def _gen_proposal_id() -> str:
@@ -3588,15 +3643,34 @@ def _build_prompt_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
 
     system_prompt = """あなたはスカウト文生成パイプラインの「プロンプトシート」を改善するアシスタントです。
 
-ディレクターが手動で修正したスカウト文の差分から、AIが生成時に参照する「会社の特色 / 教育体制 / 経験別の接点ガイド」セクションに不足している情報を特定し、プロンプトシートへの追加提案をJSON配列で返してください。
+ディレクターが手動で修正したスカウト文の差分から、AIが生成時に参照するプロンプトの各セクションに不足している情報を特定し、プロンプトシートへの追加提案をJSON配列で返してください。
 
 # 対象 section_type（厳守、これ以外は出力しない）
+
+## 会社情報系（会社ごとの「事実」を教える）
 - station_features: 施設の特色・どんな経験が活きるか（order=2）
 - education: 教育体制・研修制度（order=3）
-- ai_guide: 経歴別の接点対応表 + NGパターン（order=8）
+- ai_guide: 経歴別の接点対応表 + 接点パターン例（order=8）
+
+## ルール系（トーンや文体の「書き方ルール」を教える）
+- behavior_guidelines: 行動指針・姿勢（例: 「丁寧で誠実なトーン」「対等でポジティブな評価」「憶測で書かない」「上から目線禁止」）
+- ng_patterns: 書いてはいけない表現・NGパターン（例: 「『安心してください』『フォローします』は禁止」「候補者の氏名に言及しない」「居住地は『横浜市内』等の広域表現に留める」）
+- writing_style: 文体ルール（例: 「ですます調で統一」「句点で終わる完成した2〜3文」「体言止め禁止」）
 
 # 判断基準
-- after や reason に出てきた「会社の強み・サービス内容・教育制度・接点パターン」のうち、既存の同 (company, section_type, job_category) 行に書かれていないものに限る
+
+## 会社情報系の追加条件
+- after や reason に出てきた「会社の強み・サービス内容・教育制度・接点パターン」のうち、既存の content に書かれていないもの
+
+## ルール系の追加条件（重要）
+- 同じ種類の修正が複数の fix_feedback で繰り返されている場合に、**ルールとして一般化**して提案する
+- 例: 「before に『安心してください』があり after で削られている」が複数あれば ng_patterns に追加
+- 例: 「after の方が一貫して『ですます調』になっている」なら writing_style に追加
+- 例: 「reason に『憶測』『押し付け』とのコメントが複数」なら behavior_guidelines に追加
+- **会社固有の話題は避け、トーン・文体・NG表現など「書き方」の一般ルール**に絞る
+- 1件だけの修正からルール化するのは慎重に。再現性があるものに限る
+
+## 共通ルール
 - 候補者個別の事情・地名・氏名などは追加しない
 - 既存 content と重複する提案はしない
 - scope_company は基本的に対象会社IDを指定する。全社共通として汎用化できる場合のみ空文字を返す
@@ -3604,14 +3678,14 @@ def _build_prompt_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
 # 出力フォーマット（厳守）
 JSON配列のみ。説明文や ``` などのマークダウンは禁止。
 各要素のキー:
-- "section_type": "station_features" | "education" | "ai_guide"
-- "job_category": "nurse" / "rehab_pt" / "rehab_st" / "rehab_ot" / "dietitian" / "counselor" / "medical_office"
+- "section_type": 上記6種のいずれか
+- "job_category": "nurse" / "rehab_pt" / "rehab_st" / "rehab_ot" / "dietitian" / "counselor" / "medical_office"（ルール系は空文字も可）
 - "scope_company": "" または対象会社ID
 - "content": 追加する markdown 箇条書き（- で始まる行を1〜3行）
 - "rationale": なぜ追加するか（30〜80文字）
 - "source_fix_ids": fix_feedback id の配列
 
-提案は最大8件まで。なければ []。"""
+提案は最大10件まで（会社情報系・ルール系の合計）。なければ []。"""
 
     fixes_for_prompt = [
         {
@@ -3823,11 +3897,25 @@ async def _generate_proposals_for_target(
             content = (s.get("content") or "").strip()
             if section_type not in PROMPT_COMPANY_SECTION_TYPES:
                 continue
-            if not job_category or not content:
+            if not content:
+                continue
+            # ルール系（behavior_guidelines/ng_patterns/writing_style）は職種横断で
+            # 適用可能なので job_category 空を許可する。会社情報系は職種別に
+            # 書くことが多いので従来通り必須。
+            rule_section_types = {"behavior_guidelines", "ng_patterns", "writing_style"}
+            if section_type not in rule_section_types and not job_category:
                 continue
             if (scope_company, section_type, job_category, content[:80]) in dedup_keys:
                 continue
-            order_default = "2" if section_type == "station_features" else ("3" if section_type == "education" else "8")
+            order_map = {
+                "station_features": "2",
+                "education": "3",
+                "behavior_guidelines": "4",
+                "ng_patterns": "5",
+                "writing_style": "6",
+                "ai_guide": "8",
+            }
+            order_default = order_map.get(section_type, "9")
             payload = {
                 "section_type": section_type,
                 "job_category": job_category,
