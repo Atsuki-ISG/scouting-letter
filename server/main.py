@@ -3,7 +3,7 @@ import logging
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -30,6 +30,24 @@ app.add_middleware(
 app.include_router(generate_router, prefix="/api/v1")
 app.include_router(companies_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
+
+
+@app.middleware("http")
+async def admin_no_cache(request: Request, call_next):
+    """Force browsers to revalidate /admin/* on every load.
+
+    Why: admin HTML/JS are SPA-style single files served from Cloud Run. When
+    we ship a label or bug fix, operators had to hard-reload to pick it up —
+    confusing for non-engineers. Admin traffic is tiny so disabling caching
+    has negligible cost.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/admin"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 
 app.mount("/admin", StaticFiles(directory="admin", html=True), name="admin")
 
