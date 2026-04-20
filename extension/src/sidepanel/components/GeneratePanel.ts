@@ -166,6 +166,12 @@ export class GeneratePanel {
     const sendType = this.modalSendType.value;
     const company = this.modalCompany.value;
 
+    if (!jobCategory) {
+      alert('職種を選択してください');
+      this.modalJobCategory.focus();
+      return;
+    }
+
     // Save settings for next time
     await storage.setGenerateSettings({
       employment_type: employment,

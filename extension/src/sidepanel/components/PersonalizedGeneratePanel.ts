@@ -4,6 +4,7 @@ import {
   PersonalizedGenerateOptions,
   PersonalizedGenerateResponse,
 } from '../../shared/api-client';
+import { configProvider } from '../../shared/config-provider';
 import { CandidateList } from './CandidateList';
 import { CandidateItem } from '../../shared/types';
 import { renderPersonalizationBar } from './PersonalizationBar';
@@ -19,6 +20,7 @@ export class PersonalizedGeneratePanel {
   private candidateList: CandidateList;
   private btn: HTMLButtonElement;
   private levelSelect: HTMLSelectElement;
+  private jobCategorySelect: HTMLSelectElement;
   private sendTypeSelect: HTMLSelectElement;
   private profileCount: HTMLElement;
   private progressSection: HTMLElement;
@@ -28,6 +30,7 @@ export class PersonalizedGeneratePanel {
   private resultsEl: HTMLElement;
   private results: PersonalizedGenerateResponse[] = [];
   private isGenerating = false;
+  private populatedCompany: string | null = null;
 
   constructor(candidateList: CandidateList) {
     this.candidateList = candidateList;
@@ -36,6 +39,9 @@ export class PersonalizedGeneratePanel {
     ) as HTMLButtonElement;
     this.levelSelect = document.getElementById(
       'personalized-level',
+    ) as HTMLSelectElement;
+    this.jobCategorySelect = document.getElementById(
+      'personalized-job-category',
     ) as HTMLSelectElement;
     this.sendTypeSelect = document.getElementById(
       'personalized-send-type',
@@ -62,11 +68,39 @@ export class PersonalizedGeneratePanel {
     this.btn.addEventListener('click', () => this.generate());
 
     this.updateProfileCount();
+    this.refreshJobCategories();
     chrome.storage.onChanged.addListener((changes) => {
       if (changes['scout_extracted_profiles']) {
         this.updateProfileCount();
       }
+      if (changes['scout_company']) {
+        this.refreshJobCategories();
+      }
     });
+  }
+
+  /** Populate job category dropdown from the active company's config. */
+  private async refreshJobCategories(): Promise<void> {
+    const company = await storage.getCompany();
+    if (!company || company === this.populatedCompany) return;
+    this.populatedCompany = company;
+    // Keep the placeholder (first option)
+    while (this.jobCategorySelect.options.length > 1) {
+      this.jobCategorySelect.remove(1);
+    }
+    try {
+      const config = await configProvider.getCompanyConfig(company);
+      if (config?.job_categories) {
+        for (const jc of config.job_categories) {
+          const opt = document.createElement('option');
+          opt.value = jc.id;
+          opt.textContent = jc.display_name;
+          this.jobCategorySelect.appendChild(opt);
+        }
+      }
+    } catch {
+      // API failure: leave placeholder only
+    }
   }
 
   private async updateProfileCount(): Promise<void> {
@@ -77,6 +111,14 @@ export class PersonalizedGeneratePanel {
 
   private async generate(): Promise<void> {
     if (this.isGenerating) return;
+
+    const jobCategory = this.jobCategorySelect.value;
+    if (!jobCategory) {
+      alert('職種を選択してください');
+      this.jobCategorySelect.focus();
+      return;
+    }
+
     this.isGenerating = true;
     this.btn.disabled = true;
     this.btn.textContent = '生成中...';
@@ -85,6 +127,7 @@ export class PersonalizedGeneratePanel {
     this.summary.classList.add('hidden');
 
     const company = await storage.getCompany();
+    await this.refreshJobCategories();
     const profiles = await storage.getExtractedProfiles();
     if (profiles.length === 0) {
       this.resultsEl.innerHTML = '<p>生成対象のプロフィールがありません</p>';
@@ -105,6 +148,7 @@ export class PersonalizedGeneratePanel {
       const opts: PersonalizedGenerateOptions = {
         level,
         is_resend: isResend,
+        job_category_filter: jobCategory,
       };
       try {
         const resp = await apiClient.generatePersonalized(company, profile, opts);

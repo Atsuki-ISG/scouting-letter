@@ -139,8 +139,8 @@
           </div>
           <div class="gen-settings-row">
             <label class="gen-settings-label">職種</label>
-            <select id="gen-setting-job-category" class="gen-settings-select">
-              <option value="">全職種（自動判定）</option>
+            <select id="gen-setting-job-category" class="gen-settings-select" required>
+              <option value="" disabled selected>-- 職種を選択 --</option>
             </select>
           </div>
           <div class="gen-settings-row">
@@ -177,6 +177,12 @@
         <select id="personalized-level" class="gen-settings-select">
           <option value="L3">L3 — 全文個別化（5ブロック）</option>
           <option value="L2">L2 — 冒頭+結びのみ</option>
+        </select>
+      </div>
+      <div class="gen-settings-row">
+        <label class="gen-settings-label">職種</label>
+        <select id="personalized-job-category" class="gen-settings-select" required>
+          <option value="" disabled selected>-- 職種を選択 --</option>
         </select>
       </div>
       <div class="gen-settings-row">
