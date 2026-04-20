@@ -5675,6 +5675,7 @@ function drawFixFeedbackTable() {
   const items = _fixFeedbackData;
   const pendingCount = items.filter(i => i.status === 'pending').length;
   const adoptedCount = items.filter(i => i.status === 'adopted').length;
+  const processedCount = items.filter(i => i.status === 'processed').length;
   const skippedCount = items.filter(i => i.status === 'skipped').length;
 
   const rowsHtml = items.length === 0
@@ -5683,9 +5684,24 @@ function drawFixFeedbackTable() {
         const expanded = _fixFeedbackExpanded.has(it.id);
         const shortBefore = (it.before || '').slice(0, 40) + ((it.before || '').length > 40 ? '…' : '');
         const shortAfter = (it.after || '').slice(0, 40) + ((it.after || '').length > 40 ? '…' : '');
-        const statusClass = it.status === 'pending' ? 'fb-pending' : it.status === 'adopted' ? 'fb-adopted' : 'fb-skipped';
-        const statusLabel = it.status === 'pending' ? '未対応' : it.status === 'adopted' ? '選択済' : it.status === 'skipped' ? 'スキップ' : it.status;
+        const statusClass = it.status === 'pending' ? 'fb-pending' : it.status === 'adopted' ? 'fb-adopted' : it.status === 'processed' ? 'fb-processed' : 'fb-skipped';
+        const statusLabel = it.status === 'pending' ? '未対応' : it.status === 'adopted' ? '選択済' : it.status === 'processed' ? '取り込み済' : it.status === 'skipped' ? 'スキップ' : it.status;
         const ts = (it.timestamp || '').replace('T', ' ').slice(0, 16);
+        // 状態ごとの操作ボタン
+        let actions;
+        if (it.status === 'pending') {
+          actions = `
+            <button class="btn btn-sm btn-primary" onclick="adoptFix('${escHtml(it.id)}')" title="AI一括生成の対象に追加（まだ生成は走りません）">選択</button>
+            <button class="btn btn-sm btn-secondary" onclick="skipFix('${escHtml(it.id)}')">スキップ</button>
+          `;
+        } else if (it.status === 'adopted') {
+          actions = `
+            <button class="btn btn-sm btn-success" onclick="markFixProcessed('${escHtml(it.id)}')" title="この修正は反映済みとしてマーク（一括生成の対象から外れる）">取り込み済にする</button>
+            <button class="btn btn-sm btn-secondary" onclick="rependFix('${escHtml(it.id)}')">差戻</button>
+          `;
+        } else {
+          actions = `<button class="btn btn-sm btn-secondary" onclick="rependFix('${escHtml(it.id)}')">差戻</button>`;
+        }
         return `
           <tr class="fix-feedback-row" data-id="${escHtml(it.id)}" onclick="toggleFixRow('${escHtml(it.id)}')">
             <td style="white-space:nowrap;font-size:11px;">${escHtml(ts)}</td>
@@ -5697,10 +5713,7 @@ function drawFixFeedbackTable() {
             <td style="font-size:11px;max-width:160px;">${escHtml(it.reason || '—')}</td>
             <td><span class="fb-status ${statusClass}">${escHtml(statusLabel)}</span></td>
             <td onclick="event.stopPropagation()">
-              ${it.status === 'pending' ? `
-                <button class="btn btn-sm btn-primary" onclick="adoptFix('${escHtml(it.id)}')" title="AI一括生成の対象に追加（まだ生成は走りません）">選択</button>
-                <button class="btn btn-sm btn-secondary" onclick="skipFix('${escHtml(it.id)}')">スキップ</button>
-              ` : `<button class="btn btn-sm btn-secondary" onclick="rependFix('${escHtml(it.id)}')">差戻</button>`}
+              ${actions}
             </td>
           </tr>
           ${expanded ? `
@@ -5733,6 +5746,7 @@ function drawFixFeedbackTable() {
       <span style="margin-left:12px;font-size:12px;">
         <span class="fb-status fb-pending">未対応 ${pendingCount}</span>
         <span class="fb-status fb-adopted" style="margin-left:6px;">選択済 ${adoptedCount}</span>
+        <span class="fb-status fb-processed" style="margin-left:6px;">取り込み済 ${processedCount}</span>
         <span class="fb-status fb-skipped" style="margin-left:6px;">スキップ ${skippedCount}</span>
       </span>
       <button class="btn btn-sm btn-primary" style="margin-left:auto;" onclick="generateAllImprovementProposals()" ${_improvementGenerating ? 'disabled' : ''}>
@@ -5764,19 +5778,24 @@ function drawFixFeedbackTable() {
       <tbody>${rowsHtml}</tbody>
     </table>
     <div style="margin-top:14px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:11px;line-height:1.6;">
+      <strong>状態遷移:</strong>
+      <div style="margin:4px 0 6px 0;color:#475569;">
+        未対応 → 選択 → <strong>選択済</strong> → 一括生成 → 提案承認で自動 → <strong>取り込み済</strong>
+      </div>
       <strong>処理の流れ:</strong>
       <ol style="margin:4px 0 0 18px;padding:0;">
-        <li><strong>選択</strong>: 反映すべき修正をマーク（まだ生成は走りません）→ <strong>一括生成</strong>: 選択済みからAIが提案を生成 → <strong>承認</strong>: Sheetsに自動反映
+        <li><strong>選択</strong>: 反映すべき修正をマーク（まだ生成は走りません）→ <strong>一括生成</strong>: 選択済みからAIが提案を生成 → <strong>承認</strong>: Sheetsに自動反映（このとき元の修正は自動で<strong>取り込み済</strong>に遷移）
           <br><span style="color:#64748b;">（職種キーワード・プロンプト・パターン特色の3種を一括処理）</span></li>
-        <li><strong>エクスポート</strong> → ローカルで <code>/integrate-feedback</code> → recipes.md・learnings.md等に反映
+        <li><strong>エクスポート</strong> → ローカルで <code>/integrate-feedback</code> → recipes.md・learnings.md等に反映 → 手動で「<strong>取り込み済にする</strong>」ボタン
           <br><span style="color:#64748b;">（Sheets以外のgit管理ファイルへの反映用）</span></li>
       </ol>
-      <div style="margin-top:6px;color:#64748b;">・行クリックで Before/After 全文を展開　・<strong>スキップ</strong>: 個別事例として無視</div>
+      <div style="margin-top:6px;color:#64748b;">・行クリックで Before/After 全文を展開　・<strong>スキップ</strong>: 個別事例として無視　・<strong>取り込み済</strong>: 一括生成の対象外（未処理のみ表示 でも非表示）</div>
     </div>
     <style>
       .fb-status { display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600; }
       .fb-pending { background:#fef3c7;color:#92400e; }
       .fb-adopted { background:#d1fae5;color:#065f46; }
+      .fb-processed { background:#dbeafe;color:#1e40af; }
       .fb-skipped { background:#e2e8f0;color:#475569; }
       .fix-feedback-row { cursor:pointer; }
       .fix-feedback-row:hover { background:#f8f9fb; }
@@ -5801,6 +5820,9 @@ async function adoptFix(id) {
 }
 async function skipFix(id) {
   await updateFixStatus(id, 'skipped');
+}
+async function markFixProcessed(id) {
+  await updateFixStatus(id, 'processed');
 }
 async function rependFix(id) {
   await updateFixStatus(id, 'pending');

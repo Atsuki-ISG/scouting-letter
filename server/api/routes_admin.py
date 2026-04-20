@@ -3463,10 +3463,10 @@ async def update_fix_status(
 ):
     """個別の修正フィードバックの status / note を更新する。"""
     new_status = (data.get("status") or "").strip()
-    if new_status not in ("pending", "adopted", "skipped"):
+    if new_status not in ("pending", "adopted", "processed", "skipped"):
         raise HTTPException(
             status_code=400,
-            detail=f"status must be one of pending/adopted/skipped (got: {new_status!r})",
+            detail=f"status must be one of pending/adopted/processed/skipped (got: {new_status!r})",
         )
 
     try:
@@ -4522,8 +4522,10 @@ async def _decide_proposal_impl(proposal_id: str, data: dict, operator: dict):
         actor=f"approve_proposal:{actor_name}",
     )
 
-    # 紐付く fix_feedback も adopted にする（best-effort）
-    adopted_fix_ids: list[str] = []
+    # 紐付く fix_feedback を processed（取り込み済）に遷移させる（best-effort）
+    # adopted→processed: 提案が承認され Sheets に反映されたので、この fix は
+    # 取り込み完了とみなす。次回の「一括生成」対象から外れるようになる。
+    processed_fix_ids: list[str] = []
     source_ids = (target_row.get("source_fix_ids") or "").split(",")
     source_ids = [s.strip() for s in source_ids if s.strip()]
     if source_ids:
@@ -4536,10 +4538,10 @@ async def _decide_proposal_impl(proposal_id: str, data: dict, operator: dict):
                     sheets_writer.update_cells_by_name(
                         SHEET_FIX_FEEDBACK,
                         i,
-                        {"status": "adopted", "note": f"Phase B 提案 {proposal_id} 経由"},
+                        {"status": "processed", "note": f"Phase B 提案 {proposal_id} 承認経由"},
                         actor=f"approve_proposal_cascade:{actor_name}",
                     )
-                    adopted_fix_ids.append(row[id_col].strip())
+                    processed_fix_ids.append(row[id_col].strip())
         except Exception:
             pass
 
@@ -4550,7 +4552,8 @@ async def _decide_proposal_impl(proposal_id: str, data: dict, operator: dict):
         "target_sheet": target_sheet,
         "appended_row": appended_row,
         "appended_keyword": appended_row,  # 後方互換: 既存テスト名
-        "adopted_fix_ids": adopted_fix_ids,
+        "processed_fix_ids": processed_fix_ids,
+        "adopted_fix_ids": processed_fix_ids,  # 後方互換（UIがまだ古い可能性）
     }
 
 
