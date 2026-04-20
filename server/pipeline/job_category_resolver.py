@@ -91,7 +91,9 @@ class ResolutionFailure:
 @dataclass
 class JobCategoryResolution:
     category: str | None
-    method: str  # "explicit" | "qualification" | "keyword" | "batch_dominant" | "company_single" | "failed"
+    # "explicit" | "qualification" | "keyword" | "batch_dominant"
+    # | "company_single" | "fallback_first_category" | "failed"
+    method: str
     warnings: list[str] = field(default_factory=list)
     debug: str = ""
     failure: ResolutionFailure | None = None
@@ -114,25 +116,31 @@ _BUILTIN_KEYWORDS: list[dict] = (
 )
 
 
-def _effective_keywords(keywords: list[dict] | None) -> list[dict]:
-    """Return the keyword list to use, falling back to built-ins if empty.
+_LEGACY_DESIRED_KEYWORDS: list[dict] = [
+    {
+        "keyword": kw,
+        "job_category": cat,
+        "source_fields": ["desired", "experience", "pr"],
+        "weight": 1,
+        "company": "",
+    }
+    for kw, cat in _LEGACY_DESIRED_FALLBACK
+]
 
-    The fallback also adds the legacy desired-job keyword set so the
-    multi-stage resolver behaves at least as well as the old resolver until
-    the Sheets-driven dictionary is populated.
+
+def _effective_keywords(keywords: list[dict] | None) -> list[dict]:
+    """Merge built-in keywords with Sheets-driven ones.
+
+    Built-ins cover stable qualification names (看護師, 作業療法士, 相談支援従事者研修
+    等) and legacy desired-job fallbacks. Sheets adds company-specific overrides
+    and synonyms (入居相談員 等). Keeping built-ins always on means the resolver
+    works out of the box — adding a single company-specific entry in Sheets
+    no longer silently disables the qualification map.
     """
+    merged = list(_BUILTIN_KEYWORDS) + list(_LEGACY_DESIRED_KEYWORDS)
     if keywords:
-        return keywords
-    return _BUILTIN_KEYWORDS + [
-        {
-            "keyword": kw,
-            "job_category": cat,
-            "source_fields": ["desired", "experience", "pr"],
-            "weight": 1,
-            "company": "",
-        }
-        for kw, cat in _LEGACY_DESIRED_FALLBACK
-    ]
+        merged.extend(keywords)
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -369,11 +377,13 @@ def _resolve(
 
     # ---------- Stage 0 sanity: company has no recruiting categories ----------
     if not company_categories:
+        # No fallback is possible when the company has nothing registered
         return _fail(
             profile=profile,
             company_categories=company_categories,
             stage_reached="company_categories_empty",
             ambiguous=[],
+            allow_fallback=False,
         )
 
     # ---------- Stage 2: Qualification keywords ----------
@@ -420,11 +430,14 @@ def _resolve(
                 ],
                 debug=f"company_single (over ambiguous {sorted(combined)}): {sole}",
             )
+        # In batch pass 1 (allow_stage_4=False), defer fallback so the
+        # batch_dominant stage gets first crack at lifting this candidate.
         return _fail(
             profile=profile,
             company_categories=company_categories,
             stage_reached="keyword",
             ambiguous=sorted(combined),
+            allow_fallback=allow_stage_4,
         )
 
     # ---------- Stage 4: Company-single fallback ----------
@@ -440,11 +453,14 @@ def _resolve(
         )
 
     # ---------- Stage 5: Failed ----------
+    # In batch pass 1 (allow_stage_4=False), defer fallback so the
+    # batch_dominant stage gets first crack at lifting this candidate.
     return _fail(
         profile=profile,
         company_categories=company_categories,
         stage_reached="keyword",
         ambiguous=[],
+        allow_fallback=allow_stage_4,
     )
 
 
@@ -488,7 +504,19 @@ def _fail(
     stage_reached: str,
     ambiguous: list[str],
     post_batch: bool = False,
+    allow_fallback: bool = True,
 ) -> JobCategoryResolution:
+    """Return a resolution for the "can't determine" case.
+
+    Policy: when allow_fallback=True (single-candidate path and post-batch
+    retry), fall back to the company's first recruiting category with a
+    warning so the candidate still gets a scout generated instead of
+    silently dropping. When allow_fallback=False (batch pass 1), return
+    None so resolve_job_category_batch's Stage 3.5 dominant-category lift
+    can take priority over the bare fallback.
+
+    Hard fail always when company_categories is empty (genuine config bug).
+    """
     missing = _missing_fields(profile)
     searched = _build_searched_text(profile)
     failure = ResolutionFailure(
@@ -500,11 +528,25 @@ def _fail(
         human_message="",  # filled in below
     )
     failure.human_message = _build_failure_message(failure, post_batch=post_batch)
+
+    if not allow_fallback or not company_categories:
+        return JobCategoryResolution(
+            category=None,
+            method="failed",
+            warnings=[],
+            debug=f"failed at {stage_reached} (post_batch={post_batch}, ambiguous={ambiguous})",
+            failure=failure,
+        )
+
+    fallback = company_categories[0]
     return JobCategoryResolution(
-        category=None,
-        method="failed",
-        warnings=[],
-        debug=f"failed at {stage_reached} (post_batch={post_batch}, ambiguous={ambiguous})",
+        category=fallback,
+        method="fallback_first_category",
+        warnings=[
+            f"[職種自動判定不能] {label_for_category(fallback)}で仮生成しました。"
+            f"職種を指定するか、オペレーターで差し替えてください ({failure.human_message})"
+        ],
+        debug=f"fallback_first_category (from failed {stage_reached}): {fallback}",
         failure=failure,
     )
 

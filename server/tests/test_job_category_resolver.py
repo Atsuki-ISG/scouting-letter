@@ -118,16 +118,17 @@ class TestStageQualification:
         assert result.category == "nurse"
         assert result.method == "qualification"
 
-    def test_multi_qualification_company_has_both_falls_to_company_single(self, keywords):
+    def test_multi_qualification_company_has_both_falls_back_to_first(self, keywords):
         # 候補者: 看護師+理学療法士、会社: nurse, rehab_pt 両方 → ambiguous
-        # 経歴も空 → company_single不可 → 失敗
+        # 経歴も空 → company_single不可 → 先頭カテゴリにフォールバック + 警告
         result = resolve_job_category(
             _profile(qualifications="看護師,理学療法士"),
             company_categories=["nurse", "rehab_pt"],
             keywords=keywords,
         )
-        assert result.category is None
-        assert result.method == "failed"
+        assert result.category == "nurse"
+        assert result.method == "fallback_first_category"
+        assert any("職種自動判定不能" in w for w in result.warnings)
         assert result.failure is not None
         assert "nurse" in result.failure.ambiguous_candidates
         assert "rehab_pt" in result.failure.ambiguous_candidates
@@ -186,14 +187,16 @@ class TestStageCompanySingle:
         assert result.method == "company_single"
         assert any("会社の募集カテゴリ" in w for w in result.warnings)
 
-    def test_empty_profile_multi_category_fails(self, keywords):
+    def test_empty_profile_multi_category_falls_back_to_first(self, keywords):
+        # 空プロフィール + 複数カテゴリ会社 → 先頭カテゴリにフォールバック + 警告
         result = resolve_job_category(
             _profile(),
             company_categories=["nurse", "rehab_pt", "rehab_ot"],
             keywords=keywords,
         )
-        assert result.category is None
-        assert result.method == "failed"
+        assert result.category == "nurse"
+        assert result.method == "fallback_first_category"
+        assert any("職種自動判定不能" in w for w in result.warnings)
         assert result.failure is not None
         assert result.failure.company_categories == ["nurse", "rehab_pt", "rehab_ot"]
 
@@ -242,7 +245,7 @@ class TestBatchResolution:
             assert r.method == "batch_dominant"
             assert any("バッチ全体" in w for w in r.warnings)
 
-    def test_batch_split_no_dominant_falls_through(self, keywords):
+    def test_batch_split_no_dominant_falls_back_to_first(self, keywords):
         # 5 nurse, 3 rehab_pt, 2 unknown — 5/8 = 62.5% < 70% → no dominant
         profiles = [
             _profile(member_id=f"N{i}", qualifications="看護師") for i in range(5)
@@ -255,10 +258,13 @@ class TestBatchResolution:
         results = resolve_job_category_batch(
             profiles, company_categories=["nurse", "rehab_pt"], keywords=keywords
         )
-        # The 2 unknowns should NOT be lifted (no dominant + multi-category company)
-        assert results[8].category is None
-        assert results[8].method == "failed"
-        assert results[9].category is None
+        # The 2 unknowns are not lifted by batch_dominant (< 70% threshold),
+        # so the post-batch path falls back to the first company category + warning.
+        assert results[8].category == "nurse"
+        assert results[8].method == "fallback_first_category"
+        assert any("職種自動判定不能" in w for w in results[8].warnings)
+        assert results[9].category == "nurse"
+        assert results[9].method == "fallback_first_category"
 
     def test_batch_unresolved_falls_to_company_single(self, keywords):
         # All unresolved, but company has only one category → all lifted to that
