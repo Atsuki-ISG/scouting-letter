@@ -3850,10 +3850,12 @@ async def _generate_proposals_for_target(
     fixes: list[dict],
     dry_run: bool,
     actor_name: str,
-) -> tuple[list[dict], str]:
+    debug: bool = False,
+) -> tuple[list[dict], str, dict]:
     """単一ターゲットに対して提案を生成する内部関数。
 
-    Returns: (proposals_list, model_name)
+    Returns: (proposals_list, model_name, debug_info)
+    debug_info has raw_response / suggestion_count / dedup_filtered etc. when debug=True.
     """
     import json
     import re as _re
@@ -3861,6 +3863,9 @@ async def _generate_proposals_for_target(
     from pipeline.ai_generator import generate_personalized_text
     from config import GEMINI_PRO_MODEL
     from db.sheets_client import SHEET_IMPROVEMENT_PROPOSALS
+    import logging as _logging
+
+    _logger = _logging.getLogger(__name__)
 
     # 1. target ごとに prompt + dedup_keys を組み立て
     if target == "job_category_keywords":
@@ -3870,7 +3875,13 @@ async def _generate_proposals_for_target(
     elif target == "patterns":
         system_prompt, user_prompt, dedup_keys = _build_pattern_proposal_inputs(fixes)
     else:
-        return [], ""
+        return [], "", {}
+
+    debug_info: dict = {}
+    if debug:
+        debug_info["system_prompt_len"] = len(system_prompt)
+        debug_info["user_prompt_len"] = len(user_prompt)
+        debug_info["fixes_count"] = len(fixes)
 
     # 2. Gemini 呼び出し
     try:
@@ -3883,16 +3894,37 @@ async def _generate_proposals_for_target(
         )
         raw = result.text or ""
     except Exception as e:
-        return [], f"error:{e}"
+        if debug:
+            debug_info["error"] = str(e)
+        return [], f"error:{e}", debug_info
 
+    raw_original = raw
     raw = _re.sub(r"^```[^\n]*\n", "", raw.strip())
     raw = _re.sub(r"\n```$", "", raw.strip())
     try:
         suggestions = json.loads(raw)
         if not isinstance(suggestions, list):
             suggestions = []
-    except Exception:
+    except Exception as parse_err:
+        if debug:
+            debug_info["parse_error"] = str(parse_err)
         suggestions = []
+
+    if debug:
+        debug_info["raw_response"] = raw_original[:3000]
+        debug_info["suggestions_raw_count"] = len(suggestions)
+        debug_info["suggestions_preview"] = suggestions[:5]
+    # Log a compact summary every call so we can diagnose from Cloud Run logs
+    _logger.info(
+        f"[improvement_proposals] target={target} fixes={len(fixes)} "
+        f"raw_chars={len(raw_original)} suggestions={len(suggestions)}"
+    )
+    if len(suggestions) == 0 and raw_original:
+        # AI responded but produced nothing parseable or the parsed list was empty
+        _logger.warning(
+            f"[improvement_proposals] target={target} empty suggestions; "
+            f"raw_preview={raw_original[:400]!r}"
+        )
 
     # 3. proposal dict を組み立て
     proposals_out: list[dict] = []
@@ -4006,7 +4038,9 @@ async def _generate_proposals_for_target(
                 [p[c] for c in IMPROVEMENT_PROPOSAL_COLUMNS],
             )
 
-    return proposals_out, model_name
+    if debug:
+        debug_info["proposals_out_count"] = len(proposals_out)
+    return proposals_out, model_name, debug_info
 
 
 @router.post("/improvement_proposals/generate")
@@ -4064,18 +4098,23 @@ async def generate_improvement_proposals(
         return {"status": "ok", "appended": 0, "proposals": [], "warning": f"no {status_filter} fixes"}
 
     actor_name = operator.get("name") or operator.get("operator_id") or "operator"
-    proposals_out, model_name = await _generate_proposals_for_target(
-        target, pending, dry_run, actor_name,
+    debug_flag = bool(data.get("debug") or False)
+    proposals_out, model_name, debug_info = await _generate_proposals_for_target(
+        target, pending, dry_run, actor_name, debug=debug_flag,
     )
 
-    return {
+    resp = {
         "status": "ok",
         "target": target,
         "appended": len(proposals_out) if not dry_run else 0,
         "proposals": proposals_out,
         "model": model_name,
         "actor": actor_name,
+        "fixes_processed": len(pending),
     }
+    if debug_flag:
+        resp["debug"] = debug_info
+    return resp
 
 
 @router.post("/improvement_proposals/generate_all")
@@ -4124,17 +4163,21 @@ async def generate_all_improvement_proposals(
     actor_name = operator.get("name") or operator.get("operator_id") or "operator"
 
     # 2. 全ターゲットに対して順次生成
+    debug_flag = bool(data.get("debug") or False)
     results: dict = {}
     total_appended = 0
     for target in SUPPORTED_PROPOSAL_TARGETS:
-        proposals, model_name = await _generate_proposals_for_target(
-            target, fixes, dry_run, actor_name,
+        proposals, model_name, debug_info = await _generate_proposals_for_target(
+            target, fixes, dry_run, actor_name, debug=debug_flag,
         )
-        results[target] = {
+        entry = {
             "appended": len(proposals) if not dry_run else 0,
             "proposals": proposals,
             "model": model_name,
         }
+        if debug_flag:
+            entry["debug"] = debug_info
+        results[target] = entry
         total_appended += len(proposals) if not dry_run else 0
 
     return {
