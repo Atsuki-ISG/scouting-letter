@@ -3858,6 +3858,53 @@ template_text書き換えの場合:
     return system_prompt, user_prompt, dedup_keys
 
 
+def _salvage_truncated_json_array(raw: str):
+    """Recover a best-effort list when AI's JSON array was cut off mid-element.
+
+    Gemini sometimes stops mid-generation (max_output_tokens hit, safety filter,
+    etc.) producing "[{...}, {...}, {...incomplete". This tries to keep the
+    complete leading elements. Returns None if no complete element was found.
+    """
+    import json as _json
+    import re as _re
+    if not raw.lstrip().startswith("["):
+        return None
+    # Find the last position where we had "    }," or "    }\n]" at the top level
+    # by stepping through and maintaining a simple depth counter.
+    depth = 0
+    in_string = False
+    escape = False
+    last_good_close = -1  # index right after a top-level-object close (the ',' or ']')
+    for i, ch in enumerate(raw):
+        if escape:
+            escape = False
+            continue
+        if in_string:
+            if ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+            continue
+        if ch in "[{":
+            depth += 1
+        elif ch in "]}":
+            depth -= 1
+            if depth == 1 and ch == "}":
+                # closing a top-level object inside the array
+                last_good_close = i
+    if last_good_close < 0:
+        return None
+    prefix = raw[: last_good_close + 1] + "\n]"
+    try:
+        parsed = _json.loads(prefix)
+        return parsed if isinstance(parsed, list) else None
+    except Exception:
+        return None
+
+
 async def _generate_proposals_for_target(
     target: str,
     fixes: list[dict],
@@ -3902,7 +3949,7 @@ async def _generate_proposals_for_target(
             system_prompt,
             user_prompt,
             model_name=GEMINI_PRO_MODEL,
-            max_output_tokens=4096,
+            max_output_tokens=8192,
             temperature=0.3,
         )
         raw = result.text or ""
@@ -3919,9 +3966,18 @@ async def _generate_proposals_for_target(
         if not isinstance(suggestions, list):
             suggestions = []
     except Exception as parse_err:
-        if debug:
-            debug_info["parse_error"] = str(parse_err)
-        suggestions = []
+        # Response may have been truncated by max_output_tokens mid-element.
+        # Try to recover complete prefix by trimming to the last complete object
+        # and closing the array. Matches "  },\n" pattern followed by any text.
+        salvaged = _salvage_truncated_json_array(raw)
+        if salvaged is not None:
+            suggestions = salvaged
+            if debug:
+                debug_info["salvaged_truncated"] = True
+        else:
+            if debug:
+                debug_info["parse_error"] = str(parse_err)
+            suggestions = []
 
     if debug:
         debug_info["raw_response"] = raw_original[:3000]
