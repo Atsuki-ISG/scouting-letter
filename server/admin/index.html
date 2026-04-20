@@ -5680,7 +5680,7 @@ function drawFixFeedbackTable() {
         const shortBefore = (it.before || '').slice(0, 40) + ((it.before || '').length > 40 ? '…' : '');
         const shortAfter = (it.after || '').slice(0, 40) + ((it.after || '').length > 40 ? '…' : '');
         const statusClass = it.status === 'pending' ? 'fb-pending' : it.status === 'adopted' ? 'fb-adopted' : 'fb-skipped';
-        const statusLabel = it.status === 'pending' ? '未対応' : it.status === 'adopted' ? '取込済' : it.status === 'skipped' ? 'スキップ' : it.status;
+        const statusLabel = it.status === 'pending' ? '未対応' : it.status === 'adopted' ? '選択済' : it.status === 'skipped' ? 'スキップ' : it.status;
         const ts = (it.timestamp || '').replace('T', ' ').slice(0, 16);
         return `
           <tr class="fix-feedback-row" data-id="${escHtml(it.id)}" onclick="toggleFixRow('${escHtml(it.id)}')">
@@ -5694,7 +5694,7 @@ function drawFixFeedbackTable() {
             <td><span class="fb-status ${statusClass}">${escHtml(statusLabel)}</span></td>
             <td onclick="event.stopPropagation()">
               ${it.status === 'pending' ? `
-                <button class="btn btn-sm btn-primary" onclick="adoptFix('${escHtml(it.id)}')">取込</button>
+                <button class="btn btn-sm btn-primary" onclick="adoptFix('${escHtml(it.id)}')" title="AI一括生成の対象に追加（まだ生成は走りません）">選択</button>
                 <button class="btn btn-sm btn-secondary" onclick="skipFix('${escHtml(it.id)}')">スキップ</button>
               ` : `<button class="btn btn-sm btn-secondary" onclick="rependFix('${escHtml(it.id)}')">差戻</button>`}
             </td>
@@ -5728,11 +5728,11 @@ function drawFixFeedbackTable() {
       <span class="toolbar-title">修正フィードバック</span>
       <span style="margin-left:12px;font-size:12px;">
         <span class="fb-status fb-pending">未対応 ${pendingCount}</span>
-        <span class="fb-status fb-adopted" style="margin-left:6px;">取込済 ${adoptedCount}</span>
+        <span class="fb-status fb-adopted" style="margin-left:6px;">選択済 ${adoptedCount}</span>
         <span class="fb-status fb-skipped" style="margin-left:6px;">スキップ ${skippedCount}</span>
       </span>
       <button class="btn btn-sm btn-primary" style="margin-left:auto;" onclick="generateAllImprovementProposals()" ${_improvementGenerating ? 'disabled' : ''}>
-        ${_improvementGenerating ? '生成中…' : '取込済みから提案を一括生成'}
+        ${_improvementGenerating ? '生成中…' : '選択済みから提案を一括生成'}
       </button>
       <button class="btn btn-sm btn-secondary" style="margin-left:4px;" onclick="exportFeedback()" title="ローカルの /integrate-feedback 用にエクスポート">
         エクスポート
@@ -5762,7 +5762,7 @@ function drawFixFeedbackTable() {
     <div style="margin-top:14px;padding:10px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:11px;line-height:1.6;">
       <strong>処理の流れ:</strong>
       <ol style="margin:4px 0 0 18px;padding:0;">
-        <li><strong>取込</strong>: 反映すべき修正をマーク → <strong>一括生成</strong>: 取込済みからAIが提案を生成 → <strong>承認</strong>: Sheetsに自動反映
+        <li><strong>選択</strong>: 反映すべき修正をマーク（まだ生成は走りません）→ <strong>一括生成</strong>: 選択済みからAIが提案を生成 → <strong>承認</strong>: Sheetsに自動反映
           <br><span style="color:#64748b;">（職種キーワード・プロンプト・パターン特色の3種を一括処理）</span></li>
         <li><strong>エクスポート</strong> → ローカルで <code>/integrate-feedback</code> → recipes.md・learnings.md等に反映
           <br><span style="color:#64748b;">（Sheets以外のgit管理ファイルへの反映用）</span></li>
@@ -5829,7 +5829,7 @@ function drawImprovementProposalsSection() {
   if (!proposals || proposals.length === 0) {
     return `
       <div style="margin-bottom:14px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;color:var(--c-text-muted);">
-        AI改善提案はまだありません。取込済みのフィードバックがあれば「取込済みから提案を一括生成」で3種の改善提案を生成できます。
+        AI改善提案はまだありません。選択済みのフィードバックがあれば「選択済みから提案を一括生成」で3種の改善提案を生成できます。
       </div>
     `;
   }
@@ -5968,11 +5968,11 @@ async function generateAllImprovementProposals() {
   if (_improvementGenerating) return;
   const adoptedCount = _fixFeedbackData.filter(i => i.status === 'adopted').length;
   if (adoptedCount === 0) {
-    alert('取込済みのフィードバックがありません。\n先に修正フィードバックを「取込」してください。');
+    alert('選択済みのフィードバックがありません。\n先に修正フィードバックを「選択」してください。');
     return;
   }
   if (!confirm(
-    `取込済み ${adoptedCount} 件のフィードバックから、以下3種の改善提案を一括生成します:\n\n`
+    `選択済み ${adoptedCount} 件のフィードバックから、以下3種の改善提案を一括生成します:\n\n`
     + `  ・職種キーワード — 職種判定の辞書を拡充\n`
     + `  ・プロンプト — AI生成時の会社情報・接点ガイドを追加\n`
     + `  ・パターン特色 — 型はめ文の特色バリエーションを追加\n\n`
