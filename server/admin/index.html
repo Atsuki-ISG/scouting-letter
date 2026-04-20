@@ -5680,6 +5680,7 @@ function drawFixFeedbackTable() {
         const shortBefore = (it.before || '').slice(0, 40) + ((it.before || '').length > 40 ? '…' : '');
         const shortAfter = (it.after || '').slice(0, 40) + ((it.after || '').length > 40 ? '…' : '');
         const statusClass = it.status === 'pending' ? 'fb-pending' : it.status === 'adopted' ? 'fb-adopted' : 'fb-skipped';
+        const statusLabel = it.status === 'pending' ? '未対応' : it.status === 'adopted' ? '取込済' : it.status === 'skipped' ? 'スキップ' : it.status;
         const ts = (it.timestamp || '').replace('T', ' ').slice(0, 16);
         return `
           <tr class="fix-feedback-row" data-id="${escHtml(it.id)}" onclick="toggleFixRow('${escHtml(it.id)}')">
@@ -5690,7 +5691,7 @@ function drawFixFeedbackTable() {
             <td style="font-size:11px;">${escHtml(shortBefore)}</td>
             <td style="font-size:11px;">${escHtml(shortAfter)}</td>
             <td style="font-size:11px;max-width:160px;">${escHtml(it.reason || '—')}</td>
-            <td><span class="fb-status ${statusClass}">${escHtml(it.status)}</span></td>
+            <td><span class="fb-status ${statusClass}">${escHtml(statusLabel)}</span></td>
             <td onclick="event.stopPropagation()">
               ${it.status === 'pending' ? `
                 <button class="btn btn-sm btn-primary" onclick="adoptFix('${escHtml(it.id)}')">取込</button>
