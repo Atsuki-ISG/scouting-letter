@@ -3625,6 +3625,8 @@ def _build_prompt_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
         prompt_rows = sheets_writer.get_all_rows("プロンプト")
     except Exception:
         prompt_rows = []
+    # pending 内の対象会社を抽出（通常1社だが念のため)
+    target_companies = {f.get("company", "") for f in pending if f.get("company")}
     existing_prompts: list[dict] = []
     if prompt_rows and len(prompt_rows) >= 2:
         ph = [h.strip() for h in prompt_rows[0]]
@@ -3633,12 +3635,17 @@ def _build_prompt_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
             section_type = item.get("section_type", "")
             if section_type not in PROMPT_COMPANY_SECTION_TYPES:
                 continue
+            row_company = item.get("company", "")
+            # 対象会社 or グローバル（company=""）のみ残す。他社のプロンプトは AI への入力に
+            # 不要なノイズで、数百行あると Gemini の応答が遅延・timeout を招く。
+            if row_company and row_company not in target_companies:
+                continue
             existing_prompts.append({
-                "company": item.get("company", ""),
+                "company": row_company,
                 "section_type": section_type,
                 "job_category": item.get("job_category", ""),
                 "order": item.get("order", ""),
-                "content_excerpt": (item.get("content", "") or "")[:200],
+                "content_excerpt": (item.get("content", "") or "")[:150],
             })
 
     system_prompt = """あなたはスカウト文生成パイプラインの「プロンプトシート」を改善するアシスタントです。
@@ -3749,6 +3756,8 @@ def _build_pattern_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
         pattern_rows = sheets_writer.get_all_rows("パターン")
     except Exception:
         pattern_rows = []
+    # pending 内の対象会社のパターンのみ取得（提案対象外の他社パターンは不要）
+    target_companies = {f.get("company", "") for f in pending if f.get("company")}
     existing_patterns: list[dict] = []
     if pattern_rows and len(pattern_rows) >= 2:
         ph = [h.strip() for h in pattern_rows[0]]
@@ -3756,14 +3765,18 @@ def _build_pattern_proposal_inputs(pending: list[dict]) -> tuple[str, str, set]:
             item = {h: (row[i].strip() if i < len(row) else "") for i, h in enumerate(ph)}
             if item.get("pattern_type", "") == "QUAL":
                 continue
+            row_company = item.get("company", "")
+            # 提案は対象会社のパターンに対してのみ出すので、他社パターンはスキップ
+            if row_company and target_companies and row_company not in target_companies:
+                continue
             features = [f.strip() for f in (item.get("feature_variations") or "").split("|") if f.strip()]
             existing_patterns.append({
-                "company": item.get("company", ""),
+                "company": row_company,
                 "job_category": item.get("job_category", ""),
                 "pattern_type": item.get("pattern_type", ""),
                 "employment_variant": item.get("employment_variant", ""),
                 "feature_variations": features,
-                "template_text_excerpt": (item.get("template_text", "") or "")[:120],
+                "template_text_excerpt": (item.get("template_text", "") or "")[:100],
             })
 
     system_prompt = """あなたはスカウト文生成パイプラインの「型はめパターン」を改善するアシスタントです。
