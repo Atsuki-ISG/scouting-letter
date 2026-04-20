@@ -156,11 +156,13 @@ hr { border: none; border-top: 2px solid #2c3e50; margin: 30px 0; }
 <tr><th>設定項目</th><th>説明</th></tr>
 <tr><td>会社</td><td>サイドパネル上部と連動（変更可）</td></tr>
 <tr><td>雇用形態</td><td>自動判定 / パート / 正社員 から選択</td></tr>
-<tr><td>職種カテゴリ</td><td>全て / 看護師 / PT / ST / OT / 医療事務 から選択</td></tr>
+<tr><td>職種カテゴリ <span class="new-badge">必須</span></td><td>看護師 / PT / ST / OT / 医療事務 / 相談支援専門員 等から選択（会社により選択肢は異なる）</td></tr>
 <tr><td>送信タイプ</td><td>初回 / 再送 から選択</td></tr>
 </table>
 
-<blockquote>前回の設定が保存されています。変更がなければそのまま生成できます。</blockquote>
+<blockquote><strong>職種カテゴリは必ず選択してください。</strong>未選択のまま「一括生成」を押すと「職種を選択してください」という警告が出て止まります。候補者リストに異なる職種が混在している場合は、職種ごとにバッチを分けて生成してください。</blockquote>
+
+<blockquote>前回の設定が保存されています。変更がなければそのまま生成できます（職種は変更の必要があるバッチでは再選択してください）。</blockquote>
 
 <ol start="3">
 <li>モーダル内の <strong>「一括生成」</strong> を押す</li>
