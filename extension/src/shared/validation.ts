@@ -79,12 +79,9 @@ const rules: ValidationRule[] = [
       if (!profile?.desired_employment_type || !candidate.template_type) return null;
       const desired = profile.desired_employment_type;
       const isSeishainTemplate = candidate.template_type.includes('正社員');
-      const isPartTemplate = candidate.template_type.includes('パート');
+      // パートテンプレを正社員希望者に送るのは登用前提の正当な運用なので警告しない
       if (isSeishainTemplate && !desired.includes('正職員')) {
         return `正社員テンプレートですが希望は「${desired}」`;
-      }
-      if (isPartTemplate && !desired.includes('パート') && !desired.includes('バイト')) {
-        return `パートテンプレートですが希望は「${desired}」`;
       }
       return null;
     },

@@ -624,7 +624,13 @@ async def _process_candidate(
                 desired_emp = "パート"
             else:
                 desired_emp = ""
-            if desired_emp and template_emp and desired_emp != template_emp:
+            # パートテンプレを正社員希望者に送るのは登用前提の正当な運用なので警告しない
+            if (
+                desired_emp
+                and template_emp
+                and desired_emp != template_emp
+                and template_emp != "パート"
+            ):
                 warnings.append(
                     f"希望雇用形態「{desired}」≠ 求人の雇用形態「{template_emp}」"
                 )
