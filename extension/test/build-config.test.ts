@@ -52,7 +52,7 @@ describe('patchManifest', () => {
     ],
   };
 
-  it('medium=welme なら welme.jp を追加', () => {
+  it('medium=welme なら kaigojob.com を追加（welme.jp も将来用に含む）', () => {
     const patched = patchManifest(baseManifest, {
       companyId: 'chigasaki-tokushukai',
       medium: 'welme',
@@ -60,8 +60,8 @@ describe('patchManifest', () => {
       builtAt: '',
     });
     const hosts = patched.host_permissions as string[];
-    expect(hosts.some((h) => h.includes('welme.jp'))).toBe(true);
-    expect(patched.content_scripts[0].matches.some((m: string) => m.includes('welme.jp'))).toBe(true);
+    expect(hosts.some((h) => h.includes('kaigojob.com'))).toBe(true);
+    expect(patched.content_scripts[0].matches.some((m: string) => m.includes('kaigojob.com'))).toBe(true);
   });
 
   it('medium=jobmedley なら job-medley.com のまま（welme は混ぜない）', () => {
@@ -73,6 +73,7 @@ describe('patchManifest', () => {
     });
     const hosts = patched.host_permissions as string[];
     expect(hosts.some((h) => h.includes('welme.jp'))).toBe(false);
+    expect(hosts.some((h) => h.includes('kaigojob.com'))).toBe(false);
     expect(hosts.some((h) => h.includes('job-medley.com'))).toBe(true);
   });
 

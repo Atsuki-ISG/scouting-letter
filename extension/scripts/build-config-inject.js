@@ -24,7 +24,14 @@
 /** @type {Record<MediumId, string[]>} */
 const HOSTS_BY_MEDIUM = {
   jobmedley: ['https://job-medley.com/*', 'https://*.job-medley.com/*'],
-  welme: ['https://welme.jp/*', 'https://*.welme.jp/*'],
+  // welme = ウェルミージョブ。実ドメインは kaigojob.com（旧カイゴジョブ）。
+  // welme.jp へ完全移行したら welme.jp だけにする。
+  welme: [
+    'https://kaigojob.com/*',
+    'https://*.kaigojob.com/*',
+    'https://welme.jp/*',
+    'https://*.welme.jp/*',
+  ],
 };
 
 /**
@@ -66,7 +73,7 @@ export const BUILD_CONFIG: BuildConfig = {
  */
 export function patchManifest(manifest, opts) {
   const mediumHosts = HOSTS_BY_MEDIUM[opts.medium];
-  const mediumHostRe = /job-medley\.com|welme\.jp/;
+  const mediumHostRe = /job-medley\.com|welme\.jp|kaigojob\.com/;
   const keepHost = (h) => {
     if (!mediumHostRe.test(h)) return true;
     return mediumHosts.some((mh) => mh === h);
