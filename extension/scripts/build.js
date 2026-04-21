@@ -108,9 +108,15 @@ async function main() {
   });
 
   // Step 2: Bundle content script as IIFE (single file, no dynamic imports)
-  console.log('=== Building content script ===');
+  // WelMe 等の「型はめ固定」媒体は jobmedley の重厚な content script を
+  // 使わず、専用の軽量エントリ (welme-entry.ts) を使う。
+  const contentEntry =
+    medium === 'welme'
+      ? 'src/content/welme-entry.ts'
+      : 'src/content/index.ts';
+  console.log(`=== Building content script (entry: ${contentEntry}) ===`);
   await esbuild({
-    entryPoints: [resolve(root, 'src/content/index.ts')],
+    entryPoints: [resolve(root, contentEntry)],
     bundle: true,
     format: 'iife',
     outfile: resolve(root, 'scout_extension/content.js'),
@@ -149,7 +155,11 @@ async function main() {
   delete manifest.background.type; // IIFE doesn't need module type
   manifest.content_scripts[0].js = ['content.js'];
   manifest.content_scripts[1].js = ['main-world.js'];
-  manifest.side_panel.default_path = 'src/sidepanel/index.html';
+  // medium ごとに異なる sidepanel を指す。welme は専用の軽量UI。
+  manifest.side_panel.default_path =
+    medium === 'welme'
+      ? 'src/sidepanel/welme/index.html'
+      : 'src/sidepanel/index.html';
 
   // Medium/company 注入（matches・host_permissions・name を差し替え）
   const patched = patchManifest(manifest, buildOpts);
