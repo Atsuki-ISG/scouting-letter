@@ -15,6 +15,7 @@ server/**/__pycache__/
 .agent/
 .claude/launch.json
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 
 # Extension build artifacts
 extension/dist/
