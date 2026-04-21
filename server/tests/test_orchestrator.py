@@ -180,6 +180,59 @@ class TestGenerateSingle:
         assert "nurse" not in result.filter_reason
 
 
+class TestForcePattern:
+    """`force_pattern=True` は他媒体（ウェルミー等）で使う。
+    候補者に自己PR・職務経歴があっても AI 生成を回さず、常に型はめで処理する。
+    型が一致しない場合は filtered_out。
+    """
+
+    @pytest.mark.asyncio
+    async def test_force_pattern_skips_ai_even_with_work_history(self, ark_config):
+        """通常は work_history があるとAI経路。force_pattern=Trueで型はめ固定。"""
+        profile = CandidateProfile(
+            member_id="001",
+            qualifications="看護師",
+            age="44歳",
+            experience_years="10年以上",
+            employment_status="就業中",
+            # AI 経路を誘発しうる work_history / self_pr を付けても、
+            # force_pattern でパターン経路に固定されることを確認
+            work_history_summary="総合病院 内科病棟 10年勤務",
+            self_pr="患者様との信頼関係を大切にしてきました",
+        )
+        request = GenerateRequest(
+            company_id="ark-visiting-nurse",
+            profile=profile,
+            options=GenerateOptions(force_pattern=True),
+        )
+        result = await generate_single(request, _mock_data_client(ark_config))
+        assert result.generation_path == "pattern"
+        assert result.pattern_type is not None
+        assert result.personalized_text != ""
+
+    @pytest.mark.asyncio
+    async def test_force_pattern_filters_out_when_no_pattern_matches(self, ark_config):
+        """force_pattern=True なのにパターンが一致しなかったら filtered_out。
+        フォールバックでAIを呼ばず、明示的に理由を返す。"""
+        cfg = dict(ark_config)
+        cfg["patterns"] = []  # パターンを空にして絶対一致しない状況にする
+        profile = CandidateProfile(
+            member_id="001",
+            qualifications="看護師",
+            age="44歳",
+            employment_status="就業中",
+        )
+        request = GenerateRequest(
+            company_id="ark-visiting-nurse",
+            profile=profile,
+            options=GenerateOptions(force_pattern=True),
+        )
+        result = await generate_single(request, _mock_data_client(cfg))
+        assert result.generation_path == "filtered_out"
+        assert result.filter_reason is not None
+        assert "型" in result.filter_reason or "pattern" in result.filter_reason.lower()
+
+
 class TestGenerateBatch:
     @pytest.mark.asyncio
     async def test_batch_summary_counts(self, ark_config):

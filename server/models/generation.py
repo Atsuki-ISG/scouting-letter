@@ -11,6 +11,11 @@ class GenerateOptions(BaseModel):
     force_employment: Optional[str] = None  # "パート" or "正社員" or "契約" or None (auto)
     job_category_filter: Optional[str] = None  # "nurse", "rehab_pt", etc. or None (all)
     mock_ai: bool = False
+    # 型はめ固定モード。他媒体（ウェルミー等、自己PR/職務経歴が取れない媒体）
+    # 用に、候補者に work_history/self_pr があっても AI を呼ばず pattern で
+    # 処理する。マッチするパターンが無ければ filtered_out（AIフォールバック
+    # しない）。
+    force_pattern: bool = False
 
 
 class GenerateRequest(BaseModel):

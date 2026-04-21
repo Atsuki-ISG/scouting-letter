@@ -516,7 +516,11 @@ async def _process_candidate(
     has_patterns = any(
         p.get("template_text", "").strip() for p in jc_patterns
     )
-    use_pattern = should_use_pattern(profile) and has_patterns
+    # force_pattern は他媒体（ウェルミー等）用。work_history/self_pr の有無に
+    # 関わらずパターン経路に固定し、マッチしなければ AI にフォールバックせず
+    # filtered_out する。
+    force_pattern = bool(options and options.force_pattern)
+    use_pattern = force_pattern or (should_use_pattern(profile) and has_patterns)
 
     token_usage = {}
 
@@ -531,7 +535,20 @@ async def _process_candidate(
             generation_path = "pattern"
             logger.info(f"[{profile.member_id}] pattern: {debug_info}")
         except ValueError:
-            # Pattern not found → fall through to AI
+            if force_pattern:
+                # AI へフォールバックしない。明示的に filtered_out。
+                return GenerateResponse(
+                    member_id=profile.member_id,
+                    template_type=template_type,
+                    generation_path="filtered_out",
+                    personalized_text="",
+                    full_scout_text="",
+                    job_offer_id=job_offer_id or "",
+                    job_category=job_category,
+                    filter_reason="[型はめ失敗] force_pattern指定ですが、候補者属性に一致する型が見つかりませんでした",
+                    validation_warnings=soft_warnings,
+                ), _empty_usage
+            # 通常経路: Pattern not found → fall through to AI
             use_pattern = False
 
     if not use_pattern:
