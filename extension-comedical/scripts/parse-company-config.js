@@ -86,7 +86,8 @@ export function parsePatternsFromRecipes(md) {
  */
 export function parseTemplatesFromTemplates(md) {
   const result = [];
-  const sectionRe = /^###\s*([^\n]+?)(初回|再送|お気に入り)テンプレート[^\n]*$/gm;
+  // H2 (##) or H3 (###) — 会社によって見出しレベルが違うので両対応
+  const sectionRe = /^#{2,3}\s*([^\n]+?)(初回|再送|お気に入り)テンプレート[^\n]*$/gm;
   const sections = [];
   let m;
   while ((m = sectionRe.exec(md)) !== null) {
