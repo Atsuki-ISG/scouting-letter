@@ -17,5 +17,6 @@ server/**/__pycache__/
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 
-# Extension build artifacts
-extension/dist/
+# Extension build artifacts (全拡張で共通)
+dist/
+

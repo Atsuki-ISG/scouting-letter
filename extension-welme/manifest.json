@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "WelMe Scout Assistant",
+  "version": "1.0.0",
+  "description": "WelMe (kaigojob.com) スカウト送信アシスタント。型はめ固定で全てローカル完結。",
+  "permissions": ["sidePanel", "storage", "activeTab"],
+  "host_permissions": [
+    "https://kaigojob.com/*",
+    "https://*.kaigojob.com/*",
+    "https://welme.jp/*",
+    "https://*.welme.jp/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://kaigojob.com/*",
+        "https://*.kaigojob.com/*",
+        "https://welme.jp/*",
+        "https://*.welme.jp/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "action": {
+    "default_title": "WelMe Scout"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
