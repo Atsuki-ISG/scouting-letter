@@ -304,15 +304,22 @@ _THINKING_MARKER_RE = re.compile(
     r"Characters?\s*[:：]|"
     r"Total\s*[:：]|"
     r"Wait[,\s]|"
-    r"One more check|"
-    r"My draft|"
-    r"Let me|"
+    r"One\s+more\s+check|"
+    r"One\s+check|"
+    r"Double\s+check|"
+    r"Triple\s+check|"
+    r"My\s+draft|"
+    r"My\s+sentence|"
+    r"Let\s+me|"
     r"Note\s*[:：]|"
     r"Refine\s*[:：]|"
     r"Polish\s*[:：]|"
     r"Check\s*[:：]|"
-    r"Final\s+version|"
+    r"Final\s+(version|text|output|answer|response)\s*[:：]?|"
     r"Thoughtful|"
+    r"Actually[,\s]|"
+    r"Hmm[,\s]|"
+    r"Okay[,\s]|"
     r"書き出し\s*[:：]"
     r")",
     re.IGNORECASE,
@@ -342,25 +349,31 @@ def _strip_thinking(text: str) -> str:
         if not stripped:
             continue
 
-        # 1. ASCII-heavy reasoning (>50% alpha, >20 chars)
-        ascii_alpha = sum(1 for c in stripped if c.isascii() and c.isalpha())
         total_chars = len(stripped.replace(" ", "").replace("\n", ""))
         if total_chars == 0:
             continue
-        if total_chars > 20 and ascii_alpha / total_chars > 0.5:
-            continue
 
-        # 2. Paragraph starts with a known thinking/draft marker
+        # Detect if this paragraph looks like leaked thinking
+        ascii_alpha = sum(1 for c in stripped if c.isascii() and c.isalpha())
         first_line = stripped.split("\n", 1)[0].lstrip()
-        if _THINKING_MARKER_RE.match(first_line):
-            continue
+        is_thinking = (
+            # 1. ASCII-heavy reasoning (>30% alpha mixed with some Japanese is still meta)
+            (total_chars > 20 and ascii_alpha / total_chars > 0.3)
+            # 2. Known thinking/draft/meta marker at start
+            or bool(_THINKING_MARKER_RE.match(first_line))
+            # 3. "(XXX characters)" length annotations anywhere
+            or bool(_CHAR_COUNT_ANNOTATION_RE.search(stripped))
+            # 4. Character-counting paragraphs: many X(N) patterns
+            or len(_COUNTED_CHAR_RE.findall(stripped)) >= 10
+        )
 
-        # 3. "(XXX characters)" length annotations anywhere
-        if _CHAR_COUNT_ANNOTATION_RE.search(stripped):
-            continue
-
-        # 4. Character-counting paragraphs: many X(N) patterns
-        if len(_COUNTED_CHAR_RE.findall(stripped)) >= 10:
+        if is_thinking:
+            # Once we have legit content and see thinking, stop — everything
+            # after is self-revision noise (Gemini's "Final Text:" / "Actually,
+            # let's refine:" pattern that re-emits duplicate drafts).
+            if kept:
+                break
+            # No legit content yet — just skip this paragraph and keep looking
             continue
 
         kept.append(stripped)
