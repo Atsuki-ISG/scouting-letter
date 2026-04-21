@@ -376,7 +376,12 @@ def _ensure_quota_sheet() -> None:
 
 
 def load_quota_snapshots(year_month: str) -> dict[str, dict[str, Any]]:
-    """Return {company_id: {remaining, snapshot_at, quota_hint}}."""
+    """Return {company_id: {remaining, snapshot_at, quota_hint}}.
+
+    Sheet 上に同一 (company, year_month) の重複行が残っていることがあるため、
+    **snapshot_at が最新のもの** を優先する。最新判定は ISO8601 文字列の
+    辞書比較でOK（'2026-04-21T09:57' > '2026-04-19T19:41'）。
+    """
     _ensure_quota_sheet()
     try:
         rows = sheets_writer.get_all_rows(QUOTA_SHEET)
@@ -399,6 +404,12 @@ def load_quota_snapshots(year_month: str) -> dict[str, dict[str, Any]]:
             continue
         if row[ym_idx].strip() != year_month:
             continue
+        company_id = row[c_idx].strip()
+        snapshot_at = row[sa_idx].strip() if sa_idx < len(row) else ""
+        # Skip older duplicates so the freshest snapshot wins
+        prev = result.get(company_id)
+        if prev and prev.get("snapshot_at", "") >= snapshot_at:
+            continue
         try:
             remaining = int(row[rem_idx].strip()) if rem_idx < len(row) and row[rem_idx].strip() else None
         except ValueError:
@@ -407,9 +418,9 @@ def load_quota_snapshots(year_month: str) -> dict[str, dict[str, Any]]:
             quota_hint = int(row[qh_idx].strip()) if qh_idx < len(row) and row[qh_idx].strip() else None
         except ValueError:
             quota_hint = None
-        result[row[c_idx].strip()] = {
+        result[company_id] = {
             "remaining": remaining,
-            "snapshot_at": row[sa_idx].strip() if sa_idx < len(row) else "",
+            "snapshot_at": snapshot_at,
             "quota_hint": quota_hint,
         }
     return result
