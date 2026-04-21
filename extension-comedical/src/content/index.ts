@@ -56,7 +56,8 @@ function buildScoutBody(personalized: string): string {
 
 /**
  * モーダルが開いたときに呼ぶ。対応カードからプロフィール抽出→型はめ→
- * textarea に本文セット→送信ボタンに履歴記録リスナーを付ける。
+ * テンプレ本文の {ここに生成した文章を挿入} に埋め込み→textarea へ→
+ * 送信ボタンに履歴記録リスナーを付ける。
  */
 function onModalOpened() {
   try {
@@ -86,8 +87,7 @@ function onModalOpened() {
       return;
     }
 
-    // コメディカルはデフォルト文が初期値として入っている。オペレータ側で
-    // 「これを残したい」ケースはまず無いので上書きする。
+    // コメディカル側のデフォルト文は上書きする（会社別テンプレ+型はめで置き換え）。
     setNativeValue(textarea, body);
     log(`自動フィル完了: pattern=${patternType}, body=${body.length}字`);
 
