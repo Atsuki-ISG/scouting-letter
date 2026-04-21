@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>あゆみんスカウト文 比較</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 40px 30px;
+    background: #faf8f3;
+    color: #222;
+    line-height: 1.9;
+    font-size: 14px;
+  }
+  h1 {
+    font-size: 26px;
+    margin: 0 0 8px;
+    color: #2d2d2d;
+  }
+  .subtitle {
+    color: #777;
+    margin-bottom: 30px;
+    font-size: 14px;
+  }
+  h2 {
+    font-size: 18px;
+    margin: 40px 0 16px;
+    padding-left: 14px;
+    border-left: 5px solid #d4a017;
+    color: #2d2d2d;
+  }
+  .legend {
+    background: white;
+    padding: 20px 24px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    border: 1px solid #e0ddd3;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px 20px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .legend-box {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 30px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 30px;
+  }
+  .panel {
+    background: white;
+    padding: 24px;
+    border-radius: 10px;
+    border: 1px solid #e0ddd3;
+    font-size: 13px;
+    white-space: pre-wrap;
+    line-height: 1.85;
+    overflow-wrap: break-word;
+  }
+  .panel.template { border-left: 4px solid #888; }
+  .panel.v-a { border-left: 4px solid #4a90d9; }
+  .panel.v-b { border-left: 4px solid #5cab7d; }
+  .panel.v-c { border-left: 4px solid #b07ec8; }
+
+  .panel-title {
+    font-weight: bold;
+    margin: -6px 0 16px;
+    font-size: 15px;
+    color: #444;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #eee;
+  }
+  .panel-sub {
+    font-size: 11px;
+    color: #888;
+    font-weight: normal;
+    margin-left: 10px;
+  }
+
+  /* highlight colors */
+  .hl-career  { background: #cce5ff; padding: 1px 4px; border-radius: 3px; }
+  .hl-empathy { background: #d4edda; padding: 1px 4px; border-radius: 3px; }
+  .hl-number  { background: #fff3b0; padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+  .hl-cta     { background: #ffddb3; padding: 1px 4px; border-radius: 3px; }
+  .hl-add     { background: #e2d4f0; padding: 1px 4px; border-radius: 3px; }
+  .hl-care    { background: #fbd5d5; padding: 1px 4px; border-radius: 3px; }
+  .hl-slot    {
+    background: #f0ede5;
+    padding: 2px 8px;
+    border-radius: 3px;
+    border: 1px dashed #aaa;
+    color: #888;
+    font-style: italic;
+  }
+  .dim { color: #999; font-size: 12px; }
+
+  @media print {
+    @page {
+      size: A4 landscape;
+      margin: 8mm;
+    }
+    html, body {
+      background: white;
+      padding: 0;
+      margin: 0;
+      font-size: 10px;
+    }
+    body { max-width: none; }
+    h1, .subtitle, h2, .panel.template {
+      display: none !important;
+    }
+    .legend {
+      display: flex !important;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      padding: 6px 10px;
+      margin: 0 0 6px;
+      background: #faf8f3;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .legend-item { font-size: 9px; gap: 5px; }
+    .legend-box { width: 12px; height: 12px; border-radius: 2px; }
+    .page-break {
+      page-break-before: auto !important;
+      break-before: auto !important;
+    }
+    .panel {
+      padding: 12px 14px;
+      font-size: 9.5px;
+      line-height: 1.65;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      border-radius: 6px;
+    }
+    .panel-title { font-size: 12px; margin-bottom: 8px; padding-bottom: 6px; }
+    .panel-sub { font-size: 9px; }
+    .grid-3 {
+      gap: 8px;
+      margin-bottom: 0;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .dim { font-size: 9px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>あゆみん作スカウト文 × テンプレ 比較</h1>
+<div class="subtitle">相談支援専門員／an訪問看護ステーション／3名のプロフィールごとの仕上がり</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-box" style="background:#cce5ff"></div>経歴・資格の具体的言及</div>
+  <div class="legend-item"><div class="legend-box" style="background:#d4edda"></div>候補者の志・姿勢への共感</div>
+  <div class="legend-item"><div class="legend-box" style="background:#fff3b0"></div>会員番号の置き方</div>
+  <div class="legend-item"><div class="legend-box" style="background:#ffddb3"></div>CTAのハードル下げ</div>
+  <div class="legend-item"><div class="legend-box" style="background:#e2d4f0"></div>補足情報の追加（正社員登用）</div>
+  <div class="legend-item"><div class="legend-box" style="background:#fbd5d5"></div>細やかな配慮（時間帯など）</div>
+</div>
+
+<h2>テンプレ（元）</h2>
+<div class="panel template">
+<span class="panel-title">テンプレート<span class="panel-sub">※パーソナライズ部分は空欄</span></span>
+🌸相談支援専門員募集🌸年間休日124日以上！完全週休2日制！9〜17時勤務！時短相談可！横浜市南区の訪問看護ステーション
+
+はじめまして。突然のご連絡大変失礼いたします、an訪問看護ステーションの梶山と申します。
+
+この度は、ご経歴を拝見し、an訪問看護ステーションの'相談支援専門員'のキャリアをご検討いただきたく、ご連絡いたしました。
+
+<span class="hl-slot">{パーソナライズされた文}</span>
+
+現在、an訪問看護ステーションでは、相談支援業務をお任せできる相談支援専門員を募集しております。
+
+当ステーションは、ワークライフバランスを重視しており、柔軟な働き方（時短勤務など）の相談を歓迎します。一人ひとりのライフステージやご家庭の状況に合わせて、無理なく長期的に活躍できる環境を提供いたします。
+
+<span class="dim">＜募集要項概要＞
+・利用者家族より支援要望のヒアリング
+・利用計画の作成
+・支援サービス業者の紹介、連絡調整
+・定期的なモニタリングの実施
+・担当者会議への出席・実施
+※相談件数：1日3件程度
+
+給与：時給 1,400円 〜 1,500円
+特徴：
+・ブランクOK！年齢不問◎
+・年間休日124日以上！完全週休2日制
+・9〜17時勤務！時短相談可◎
+・弘明寺駅徒歩3分！
+・副業OK
+勤務地：an 訪問看護ステーション（横浜市南区大岡2丁目7-15-101）
+</span>
+
+ご興味をお持ちいただけましたら、当ステーションのより詳しい情報や、働き方のご希望などについて、ぜひ一度お話する機会をいただけないでしょうか。(オンライン面談可)
+
+ご多忙のところ恐縮ですが、ご返信いただけますと幸いです。
+
+何卒よろしくお願い申し上げます。
+an訪問看護ステーション　梶山敬生
+</div>
+
+<h2 class="page-break">あゆみんが書いた3バージョン</h2>
+
+<div class="grid-3">
+
+<div class="panel v-a">
+<span class="panel-title">Version A <span class="panel-sub">会員番号 00329953</span></span>
+🌸相談支援専門員募集🌸…（省略）
+
+はじめまして。突然のご連絡大変失礼いたします。
+
+<span class="hl-number">00329953様</span>の<span class="hl-empathy">自己PRを拝見し</span>、<span class="hl-career">福祉・教育・接客という多岐にわたるご経験</span>と、何より<span class="hl-empathy">「地域に貢献し、支え合える社会を作りたい」という温かい志に深く感銘を受け</span>、ぜひ弊所の相談支援専門員としてお力をお借りしたくご連絡いたしました。
+
+<span class="hl-career">これまで培われた現場での療育経験や高いコミュニケーション能力</span>があれば、ご家族の細やかな悩みにも深く共感し最適なプランニングをしていただけるものと確信しております。
+
+<span class="hl-add">今回はパートタイマーとしての募集ではございますが、ご本人のご希望やライフスタイルに合わせて、将来的に正社員へと登用させていただく制度も整っております。</span>
+
+当ステーションは、ワークライフバランスを重視しており…
+
+<span class="dim">＜募集要項概要＞（テンプレと同じ）</span>
+
+<span class="hl-cta">当ステーションのより詳しい情報や、働き方のご希望についてなど、まずは情報交換だけでも結構ですので、一度お話しする機会をいただけないでしょうか。(オンライン可)</span>
+
+ご多忙のところ恐縮ですが、ご検討いただけますと幸いです。
+
+何卒よろしくお願い申し上げます。
+</div>
+
+
+<div class="panel v-b">
+<span class="panel-title">Version B <span class="panel-sub">会員番号 01123057</span></span>
+🌸相談支援専門員募集🌸…（省略）
+
+はじめまして。<span class="hl-care">夜分に</span>突然のご連絡大変失礼いたします。
+
+<span class="hl-career">4年にわたる児童発達支援管理責任者の経験に加え、相談支援の実務にも携わってこられたご経歴</span>に非常に強く惹かれ、ご連絡いたしました。
+
+<span class="hl-empathy">多彩なご経験を土台に、一人ひとりに寄り添われてきた</span><span class="hl-number">01123057様のような方</span>に、ぜひ弊社の中心となってご活躍いただきたいと考えております。
+
+これまでのご経験は、地域に根差した当ステーションが目指す「地域の皆様に寄り添う支援」において、重要な役割を担っていただけると感じております。
+
+現在、an訪問看護ステーションでは、相談支援業務をお任せできる相談支援専門員を募集しております。
+
+<span class="hl-add">今回はパートタイマーとしての募集ではございますが、ご本人のご希望やライフスタイルに合わせて、将来的に正社員へと登用させていただく制度も整っております。</span>
+
+<span class="dim">＜募集要項概要＞（テンプレと同じ）</span>
+
+<span class="hl-cta">まずは情報交換だけでも結構ですので、一度お話しする機会をいただけないでしょうか。(オンライン可)</span>
+
+ご多忙のところ恐縮ですが、ご返信いただけますと幸いです。
+</div>
+
+
+<div class="panel v-c">
+<span class="panel-title">Version C <span class="panel-sub">会員番号 01108601</span></span>
+🌸相談支援専門員募集🌸…（省略）
+
+はじめまして。突然のご連絡大変失礼いたします。
+
+プロフィールを拝見し、<span class="hl-career">長年の営業経験による調整力と、福祉現場でのご経験を併せ持たれている点</span>に強く惹かれ、ご連絡いたしました。
+
+<span class="hl-career">サービス管理者の資格を取得されるなど</span>、<span class="hl-empathy">向上心を持って一人ひとりのライフステージに寄り添われてきた</span><span class="hl-number">01108601様のような方</span>に、ぜひ弊社の中心となってご活躍いただきたいと考えております。
+
+<span class="hl-number">01108601様</span>の多彩なご経験は、<span class="hl-career">関係機関との連携が不可欠な当業務</span>において、利用者様へ最適な支援を繋ぐ大きな力になると確信しております。
+
+現在、an訪問看護ステーションでは、相談支援業務をお任せできる相談支援専門員を募集しております。
+
+<span class="hl-add">今回はパートタイマーとしての募集ではございますが、ご希望があれば将来的に正社員へと登用させていただく制度も整っております。</span>
+
+<span class="dim">＜募集要項概要＞（テンプレと同じ）</span>
+
+<span class="hl-cta">まずは当ステーションのことを知っていただくだけでも大歓迎です。働き方の相談など、ちょっとした事でも大丈夫ですので、是非お話しする機会を頂けませんでしょうか。（オンライン可）</span>
+
+ご多忙のところ恐縮ですが、ご返信いただけますと幸いです。
+</div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>スカウト進化検証：従来 vs 進化版（実データ）</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 40px 30px;
+    background: #faf8f3;
+    color: #222;
+    line-height: 1.85;
+    font-size: 14px;
+  }
+  h1 { font-size: 26px; margin: 0 0 8px; color: #2d2d2d; }
+  .subtitle { color: #777; margin-bottom: 30px; font-size: 14px; }
+  h2 {
+    font-size: 18px;
+    margin: 40px 0 16px;
+    padding-left: 14px;
+    border-left: 5px solid #d4a017;
+    color: #2d2d2d;
+  }
+  .note-real {
+    background: #e8f4ea;
+    border: 1px solid #b3d7bc;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #3c5d4a;
+    margin-bottom: 22px;
+  }
+  .profile-card {
+    background: #fff7e8;
+    border: 1px solid #e8d9a0;
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    font-size: 13px;
+  }
+  .profile-card .label {
+    font-weight: bold;
+    color: #b37c00;
+    margin-right: 8px;
+  }
+  .profile-card .row { margin-bottom: 4px; }
+  .profile-card .pr-real {
+    background: white;
+    padding: 10px 14px;
+    border-left: 3px solid #d4a017;
+    margin-top: 8px;
+    font-style: italic;
+    color: #444;
+    line-height: 1.7;
+  }
+  .profile-card .pr-empty {
+    background: white;
+    padding: 8px 14px;
+    border-left: 3px solid #ccc;
+    margin-top: 8px;
+    color: #999;
+    font-style: italic;
+  }
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 12px;
+  }
+  .panel {
+    background: white;
+    padding: 22px;
+    border-radius: 10px;
+    border: 1px solid #e0ddd3;
+    font-size: 13px;
+    line-height: 1.9;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+  .panel.old { border-left: 4px solid #c97575; }
+  .panel.new { border-left: 4px solid #5cab7d; }
+  .panel-title {
+    font-weight: bold;
+    font-size: 15px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #eee;
+    margin-bottom: 16px;
+    display: block;
+  }
+  .panel.old .panel-title { color: #c97575; }
+  .panel.new .panel-title { color: #5cab7d; }
+
+  .hl-career  { background: #cce5ff; padding: 1px 4px; border-radius: 3px; }
+  .hl-empathy { background: #d4edda; padding: 1px 4px; border-radius: 3px; }
+  .hl-bridge  { background: #ffe8a0; padding: 1px 4px; border-radius: 3px; }
+  .hl-care    { background: #fbd5d5; padding: 1px 4px; border-radius: 3px; }
+  .hl-number  { background: #f5c0c0; padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+  .hl-generic { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; color: #888; text-decoration: line-through; }
+
+  .legend {
+    background: white;
+    padding: 18px 22px;
+    border-radius: 10px;
+    margin-bottom: 28px;
+    border: 1px solid #e0ddd3;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px 20px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .legend-box { width: 22px; height: 22px; border-radius: 4px; flex-shrink: 0; }
+
+  .callout {
+    background: #eef7f1;
+    border-left: 3px solid #5cab7d;
+    padding: 12px 16px;
+    margin: 12px 0 24px;
+    font-size: 13px;
+    color: #3c5d4a;
+  }
+  .callout-bad {
+    background: #fbeeee;
+    border-left: 3px solid #c97575;
+    color: #7a3d3d;
+  }
+  .callout strong { color: inherit; }
+</style>
+</head>
+<body>
+
+<h1>スカウト進化検証：従来 vs 進化版</h1>
+<div class="subtitle">実プロフィール3名 × an訪問看護ステーション（相談支援専門員）テンプレ／パーソナライズ文のみを比較</div>
+
+<div class="note-real">
+  <strong>データソース:</strong> <code>profiles_2026-04-21_0226.csv</code>（全10名）から、自己PRの記載パターンが異なる3名を抽出。自己PRあり（長文／短文）と未入力の3条件で、引用技法・橋渡し技法・具体性による自己認知づくりを検証。
+</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-box" style="background:#cce5ff"></div>経歴・資格の具体的言及</div>
+  <div class="legend-item"><div class="legend-box" style="background:#d4edda"></div>志・姿勢への共感（引用）</div>
+  <div class="legend-item"><div class="legend-box" style="background:#ffe8a0"></div>経歴→業務の橋渡し</div>
+  <div class="legend-item"><div class="legend-box" style="background:#fbd5d5"></div>時間帯配慮</div>
+  <div class="legend-item"><div class="legend-box" style="background:#f5c0c0"></div>会員番号呼び（できれば避ける）</div>
+  <div class="legend-item"><div class="legend-box" style="background:#f0f0f0; color:#888; text-decoration:line-through; font-size:10px; text-align:center; line-height:22px;">汎用</div>汎用的で中身の薄い表現</div>
+</div>
+
+
+<!-- ========== HEADER SECTION ========== -->
+<h2>【追加検証】ヘッダー（1行目）も候補者別に展開する</h2>
+
+<div class="callout">
+あゆみんの3通はヘッダー（1行目）は全員共通だった。ここも候補者ごとに訴求順を組み替えると、開封後の一瞬の印象が変わる。<strong>テンプレにない内容は足さない／候補者属性を直接指す訴求（「50代活躍中！」等）は避けて包摂的に言い換える</strong>、が原則。
+</div>
+
+<div class="profile-card" style="background:#f5f5f0; border-color:#bbb;">
+  <div class="row"><span class="label">テンプレのヘッダー（固定）:</span></div>
+  <div style="background:white; padding:10px 14px; border-left:3px solid #888; margin-top:6px; font-size:12.5px;">
+  🌸相談支援専門員募集🌸年間休日124日以上！完全週休2日制！9〜17時勤務！時短相談可！横浜市南区の訪問看護ステーション
+  </div>
+  <div class="row" style="margin-top:10px; font-size:12px; color:#666;">※テンプレに含まれる訴求点: 年間休日124日以上 / 完全週休2日制 / 9〜17時勤務 / 時短相談可 / 弘明寺駅徒歩3分 / 副業OK / ブランクOK / 年齢不問 / 横浜市南区</div>
+</div>
+
+<div class="compare" style="margin-bottom:28px;">
+<div class="panel new" style="border-left-color:#4a90d9;">
+<span class="panel-title" style="color:#4a90d9;">Case A 向け<br><span style="font-size:11px; font-weight:normal; color:#666;">家庭事情で夜勤NG／50歳男性／福祉×医療のベテラン</span></span>
+🌸相談支援専門員募集🌸<span class="hl-bridge">9〜17時勤務・夜勤なし</span>／完全週休2日制／<span class="hl-bridge">経験を活かせる環境</span>／横浜市南区の訪問看護ステーション
+
+<div style="margin-top:14px; font-size:11.5px; color:#666; line-height:1.6;">
+▸ 自己PRから「夜勤不可」という転職動機 → 「9〜17時勤務・夜勤なし」を最前<br>
+▸ 医療×福祉の厚い経歴 → 「経験を活かせる環境」を添える<br>
+▸ 「時短相談可」「副業OK」は今回の候補者軸と合わないのでカット
+</div>
+</div>
+
+<div class="panel new" style="border-left-color:#5cab7d;">
+<span class="panel-title" style="color:#5cab7d;">Case B 向け<br><span style="font-size:11px; font-weight:normal; color:#666;">女性46歳／介護職ベテラン／楽しく働きたい志向</span></span>
+🌸相談支援専門員募集🌸<span class="hl-bridge">スタッフも大切にする職場</span>／9〜17時勤務・完全週休2日制／<span class="hl-bridge">副業OK</span>／横浜市南区の訪問看護ステーション
+
+<div style="margin-top:14px; font-size:11.5px; color:#666; line-height:1.6;">
+▸ 自己PRの「楽しく働きたい」志向 → 職場の雰囲気訴求を最前（テンプレ本文「働くスタッフも大切にしています」を前倒し）<br>
+▸ 多職種・正職員希望 → 「副業OK」で柔軟性もアピール<br>
+▸ 「時短相談可」「年間休日124日以上」は残すとゴチャつくのでカット
+</div>
+</div>
+
+<div class="panel new" style="border-left-color:#b07ec8;">
+<span class="panel-title" style="color:#b07ec8;">Case C 向け<br><span style="font-size:11px; font-weight:normal; color:#666;">女性56歳／サビ管9年＋管理職4年／就業中</span></span>
+🌸相談支援専門員募集🌸<span class="hl-bridge">経験を活かせる環境</span>／完全週休2日制・9〜17時勤務／年間休日124日以上／横浜市南区の訪問看護ステーション
+
+<div style="margin-top:14px; font-size:11.5px; color:#666; line-height:1.6;">
+▸ サビ管＋管理職のベテラン → 「経験を活かせる」を最前（「50代活躍中！」は避ける＝属性直指しはNG）<br>
+▸ 就業中なので休みの充実度を中盤に配置<br>
+▸ 「ブランクOK」「時短相談可」は候補者軸と合わないのでカット
+</div>
+</div>
+</div>
+
+<!-- ========== CASE A ========== -->
+<h2>CASE A：自己PR充実・志の言葉が明確（本命ケース）</h2>
+
+<div class="profile-card">
+  <div class="row"><span class="label">会員番号:</span>00296226</div>
+  <div class="row"><span class="label">属性:</span>男性 50歳／神奈川県川崎市麻生区</div>
+  <div class="row"><span class="label">現在:</span>就業中（機会があれば転職）</div>
+  <div class="row"><span class="label">経歴:</span>生活支援員 10年以上、サービス管理責任者 5年、医療ソーシャルワーカー 3年</div>
+  <div class="row"><span class="label">資格:</span>社会福祉士、社会福祉主事任用資格、サービス管理責任者研修、相談支援従事者研修</div>
+  <div class="row"><span class="label">希望職:</span>医療ソーシャルワーカー、生活支援員、サービス管理責任者</div>
+  <div class="pr-real">自己PR：「家庭の事情から夜勤ができなくなったことが転職を考えた直接の理由ですが、かつて携わっていた相談員の道に戻るよいきっかけになったと捉えています。これまでの対人支援の経験から学んだ、<strong>患者さんやご家族を含めた生活の継続性の視点</strong>を生かして、<strong>よりよい地域生活を支える担い手の一人</strong>になれればと思っています。」</div>
+</div>
+
+<div class="compare">
+<div class="panel old">
+<span class="panel-title">❌ 従来版</span><span class="hl-number">00296226様</span>、<span class="hl-generic">生活支援員として10年以上、サービス管理責任者として5年、医療ソーシャルワーカーとして3年の幅広いご経験をお持ちで、社会福祉士の資格もお持ちとのこと、魅力的な経歴と拝見しました</span>。弊所でもぜひご活躍いただきたくご連絡いたしました。
+</div>
+
+<div class="panel new">
+<span class="panel-title">⭕ 進化版</span><span class="hl-career">生活支援員として10年以上、サービス管理責任者として5年、医療ソーシャルワーカーとして3年</span>と、福祉と医療の両面から人の暮らしを支えてこられたご経歴を拝見し、ご連絡いたしました。何より<span class="hl-empathy">「生活の継続性の視点を生かして、よりよい地域生活を支える担い手の一人になれれば」</span>というお言葉に、深く共感いたします。<span class="hl-bridge">医療ソーシャルワーカーとして培われた視点と、障害福祉の現場の両方を歩んでこられた方だからこそ描ける地域生活像は、訪問看護と一体で動く当ステーションの相談支援において、まさに必要とされている軸になる</span>ものと感じております。
+</div>
+</div>
+
+<div class="callout">
+<strong>ここが効いた:</strong> 番号削除。「幅広いご経験」で終わらせず、福祉×医療の両面という意味で経歴を再構成。<em>「生活の継続性の視点」「地域生活を支える担い手」</em> という候補者自身の言葉をそのまま引用して強い共感を示し、医療SWと障害福祉の両経験が訪問看護一体型の相談支援に直結することを橋渡しで示した。3通の中で最も説得力が出せる構成。
+</div>
+
+
+<!-- ========== CASE B ========== -->
+<h2>CASE B：自己PR短め・素朴な志</h2>
+
+<div class="profile-card">
+  <div class="row"><span class="label">会員番号:</span>01333091</div>
+  <div class="row"><span class="label">属性:</span>女性 46歳／東京都大田区</div>
+  <div class="row"><span class="label">現在:</span>就業中（機会があれば転職）</div>
+  <div class="row"><span class="label">経歴:</span>介護職/ヘルパー 10年以上、生活支援員 3年、看護助手 2年、生活相談員 1年</div>
+  <div class="row"><span class="label">資格:</span>介護福祉士、介護職員実務者研修、相談支援従事者研修、強度行動障害支援者養成研修（基礎）</div>
+  <div class="row"><span class="label">希望職:</span>生活支援員、介護職、看護助手、生活相談員、サービス提供責任者、管理職（介護）</div>
+  <div class="pr-real">自己PR：「ご利用者様に寄り添った支援を目指しております。喜んで貰える、楽しんで貰うためには、嫌々仕事をするのではなく、<strong>自分が楽しく仕事をして、相手にも楽しんで貰えるよう心掛けております</strong>。」</div>
+</div>
+
+<div class="compare">
+<div class="panel old">
+<span class="panel-title">❌ 従来版</span><span class="hl-number">01333091様</span>、<span class="hl-generic">介護職として10年以上、生活支援員・看護助手・生活相談員と幅広いご経験をお持ちで、介護福祉士の資格もお持ちとのこと、魅力的な経歴と拝見しました</span>。ぜひ弊所でご活躍いただきたく、ご連絡いたしました。
+</div>
+
+<div class="panel new">
+<span class="panel-title">⭕ 進化版</span><span class="hl-career">介護職として10年以上、さらに生活支援員・看護助手・生活相談員と、現場を跨いで人に寄り添ってこられたご経歴</span>を拝見し、ご連絡いたしました。<span class="hl-empathy">「自分が楽しく仕事をして、相手にも楽しんで貰えるよう心掛けている」</span>という一貫した姿勢が、とても印象に残りました。<span class="hl-bridge">支える側が前向きであることが利用者様の笑顔に直結する、という感覚を現場で体現してこられた方の温度は、ご家族と一緒に在宅での暮らしを組み立てる当ステーションの相談支援において、何よりの力になる</span>ものと感じております。
+</div>
+</div>
+
+<div class="callout">
+<strong>ここが効いた:</strong> 短い自己PRでも、引用するに値するコアな言葉（「自分が楽しく仕事をして〜」）を抜き取れば強い共感を作れる。経歴の羅列を <em>「現場を跨いで人に寄り添ってきた」</em> という物語に変換し、候補者の"温度"を相談支援に必要な要素として位置づけた。
+</div>
+
+<div class="callout callout-bad" style="font-size:12px;">
+<strong>留意:</strong> この候補者の希望職に相談支援専門員は含まれていないため、実運用ではスカウト対象外判定される可能性あり。今回は文章生成の検証目的で採用。
+</div>
+
+
+<!-- ========== CASE C ========== -->
+<h2>CASE C：自己PR未入力・経歴だけで勝負</h2>
+
+<div class="profile-card">
+  <div class="row"><span class="label">会員番号:</span>01095963</div>
+  <div class="row"><span class="label">属性:</span>女性 56歳／神奈川県藤沢市</div>
+  <div class="row"><span class="label">現在:</span>就業中（機会があれば転職）</div>
+  <div class="row"><span class="label">経歴:</span>サービス管理責任者 9年、管理職（介護） 4年</div>
+  <div class="row"><span class="label">資格:</span>社会福祉士、精神保健福祉士、介護職員初任者研修、サービス管理責任者研修、相談支援従事者研修、訪問型職場適応援助者養成研修修了</div>
+  <div class="row"><span class="label">希望職:</span>サービス管理責任者、管理職（介護）、相談支援専門員</div>
+  <div class="pr-empty">自己PR：未入力</div>
+</div>
+
+<div class="compare">
+<div class="panel old">
+<span class="panel-title">❌ 従来版</span><span class="hl-number">01095963様</span>、<span class="hl-generic">サービス管理責任者として9年、管理職としても4年のご経験をお持ちで、社会福祉士・精神保健福祉士の資格もお持ちとのこと、非常に魅力的な経歴と拝見しました</span>。弊所でもぜひご活躍いただきたくご連絡いたしました。
+</div>
+
+<div class="panel new">
+<span class="panel-title">⭕ 進化版</span><span class="hl-career">サービス管理責任者として9年、さらに管理職として4年、現場の支援を組み立てながら事業所全体を動かしてこられたご経歴に加え、社会福祉士・精神保健福祉士の両資格</span>もお持ちであるとのこと、拝見し、ご連絡いたしました。<span class="hl-bridge">サビ管として一人ひとりの計画を練り、管理職として組織を俯瞰してこられた二つの視座は、訪問看護と相談支援が連動して動く当ステーションにおいて、利用者様の暮らしを点ではなく線で支える力として、得がたい深みを持つ</span>ものと感じております。
+</div>
+</div>
+
+<div class="callout">
+<strong>ここが効いた:</strong> 自己PRが無くても、<em>「サビ管9年＋管理職4年」を"計画と運営の二つの視座"</em> として物語化。両資格の言及は対象職（相談支援専門員）と異なる専門性なので冗長資格ルールに抵触せず、厚みとして活きる。引用素材ゼロでも、経歴の掘り下げだけで中身のある文章が作れることを確認。
+</div>
+
+
+<!-- ========== SUMMARY ========== -->
+<h2>3ケース総括</h2>
+
+<div class="callout">
+<strong>新ルールの効きどころマップ:</strong>
+<table style="width:100%; border-collapse: collapse; margin-top:10px; font-size:13px;">
+<thead>
+<tr style="background:#e8f4ea;">
+<th style="padding:8px; text-align:left; border:1px solid #b3d7bc;">技法</th>
+<th style="padding:8px; text-align:center; border:1px solid #b3d7bc;">Case A<br><span style="font-weight:normal; color:#666;">PR充実</span></th>
+<th style="padding:8px; text-align:center; border:1px solid #b3d7bc;">Case B<br><span style="font-weight:normal; color:#666;">PR短め</span></th>
+<th style="padding:8px; text-align:center; border:1px solid #b3d7bc;">Case C<br><span style="font-weight:normal; color:#666;">PR未入力</span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="padding:8px; border:1px solid #b3d7bc;">番号なしで自己認知</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">◎</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">◎</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">◎</td>
+</tr>
+<tr>
+<td style="padding:8px; border:1px solid #b3d7bc;">経歴→業務の橋渡し</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">◎</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">◎</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">◎</td>
+</tr>
+<tr>
+<td style="padding:8px; border:1px solid #b3d7bc;">志の言葉を引用</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">◎（強）</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">○（コア抽出）</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;">—（不適用）</td>
+</tr>
+<tr>
+<td style="padding:8px; border:1px solid #b3d7bc;">時間帯配慮</td>
+<td style="padding:8px; text-align:center; border:1px solid #b3d7bc;" colspan="3">送信時刻データが今回のCSVにないため未検証</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout">
+<strong>パイプラインへの示唆:</strong>
+<ul style="margin: 8px 0 0 20px;">
+  <li><strong>橋渡し具体化は全ケース共通で効く</strong> — これを生成プロンプトの必須要素に据える価値大</li>
+  <li><strong>引用技法はPR長短で使い分け</strong> — 長文なら核心フレーズを抜き、短文ならコアの1文を引く。PR未入力なら使わない（無理に引用するとバレる）</li>
+  <li><strong>番号呼びは撤廃して良い</strong> — 3ケースとも番号なしで自己認知が成立した。残すメリットが見当たらない</li>
+</ul>
+</div>
+
+</body>
+</html>
