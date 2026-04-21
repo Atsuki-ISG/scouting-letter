@@ -1,13 +1,18 @@
 import { build } from 'vite';
 import { build as esbuild } from 'esbuild';
-import { cpSync, readFileSync, writeFileSync } from 'fs';
+import { cpSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
   renderBuildConfig,
   patchManifest,
+  renderBundledCompanyConfig,
   scoutExtensionZipName,
 } from './build-config-inject.js';
+import {
+  parsePatternsFromRecipes,
+  parseTemplatesFromTemplates,
+} from './parse-company-config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -53,13 +58,47 @@ async function main() {
   console.log('=== Build options ===');
   console.log(buildOpts);
 
-  // Step 0: Inject build-config.ts with the target company/medium
+  // Step 0a: Inject build-config.ts with the target company/medium
   // Keep a copy of the committed dev default so we can restore it afterwards —
   // this keeps the working tree clean after each build.
   console.log('=== Writing build-config.ts ===');
   const buildConfigPath = resolve(root, 'src/shared/build-config.ts');
   const originalBuildConfig = readFileSync(buildConfigPath, 'utf-8');
   writeFileSync(buildConfigPath, renderBuildConfig(buildOpts));
+
+  // Step 0b: Parse companies/[companyId]/ and inject bundled-company-config.ts
+  // WelMe 等の他媒体向け拡張は全部型はめで完結するため、テンプレ・パターンを
+  // ここで同梱する。companies/ は extension/ の1階層上にある。
+  console.log('=== Parsing company config ===');
+  const companiesDir = resolve(root, '..', 'companies', companyId);
+  const bundledConfigPath = resolve(root, 'src/shared/bundled-company-config.ts');
+  const originalBundledConfig = readFileSync(bundledConfigPath, 'utf-8');
+  let bundledConfig = {
+    companyId,
+    displayName: companyLabel,
+    patterns: [],
+    templates: [],
+  };
+  const recipesPath = resolve(companiesDir, 'recipes.md');
+  const templatesPath = resolve(companiesDir, 'templates.md');
+  if (existsSync(recipesPath)) {
+    bundledConfig.patterns = parsePatternsFromRecipes(
+      readFileSync(recipesPath, 'utf-8')
+    );
+  } else {
+    console.warn(`[warn] recipes.md not found at ${recipesPath}`);
+  }
+  if (existsSync(templatesPath)) {
+    bundledConfig.templates = parseTemplatesFromTemplates(
+      readFileSync(templatesPath, 'utf-8')
+    );
+  } else {
+    console.warn(`[warn] templates.md not found at ${templatesPath}`);
+  }
+  console.log(
+    `  patterns: ${bundledConfig.patterns.length}, templates: ${bundledConfig.templates.length}`
+  );
+  writeFileSync(bundledConfigPath, renderBundledCompanyConfig(bundledConfig));
 
   // Step 1: Build HTML pages (sidepanel + popup) with Vite
   console.log('=== Building HTML pages ===');
@@ -125,8 +164,9 @@ async function main() {
     recursive: true,
   });
 
-  // Restore the committed dev default so `git status` stays clean.
+  // Restore the committed dev defaults so `git status` stays clean.
   writeFileSync(buildConfigPath, originalBuildConfig);
+  writeFileSync(bundledConfigPath, originalBundledConfig);
 
   console.log('=== Build complete ===');
   console.log('Suggested zip name:', scoutExtensionZipName(buildOpts));

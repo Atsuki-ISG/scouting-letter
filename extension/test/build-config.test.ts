@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   renderBuildConfig,
   patchManifest,
+  renderBundledCompanyConfig,
   scoutExtensionZipName,
 } from '../scripts/build-config-inject.js';
 
@@ -83,6 +84,34 @@ describe('patchManifest', () => {
       builtAt: '',
     });
     expect(patched.name).toContain('茅ヶ崎徳洲会');
+  });
+});
+
+describe('renderBundledCompanyConfig', () => {
+  it('JSON が BUNDLED_COMPANY_CONFIG export に入る', () => {
+    const src = renderBundledCompanyConfig({
+      companyId: 'chigasaki-tokushukai',
+      displayName: '茅ヶ崎徳洲会病院',
+      patterns: [
+        { pattern_type: 'A', template_text: 'x', feature_variations: ['y'] },
+      ],
+      templates: [{ type: '正社員_初回', body: 'body...' }],
+    });
+    expect(src).toContain("BUNDLED_COMPANY_CONFIG: BundledCompanyConfig");
+    expect(src).toContain('chigasaki-tokushukai');
+    expect(src).toContain('"pattern_type": "A"');
+    expect(src).toContain('正社員_初回');
+  });
+
+  it('patterns と templates が空でも有効なソース', () => {
+    const src = renderBundledCompanyConfig({
+      companyId: 'a',
+      displayName: 'a',
+      patterns: [],
+      templates: [],
+    });
+    expect(src).toMatch(/"patterns": \[\]/);
+    expect(src).toMatch(/"templates": \[\]/);
   });
 });
 
