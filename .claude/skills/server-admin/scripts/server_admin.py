@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import textwrap
+import time
 
 try:
     import requests
@@ -79,8 +80,11 @@ STANDARD_META = {
 LCC_CATEGORY_MAP = {
     "看護師": "nurse",
     "リハビリ職（PT/ST）": "rehab",
+    "リハビリ職（PT/OT）": "rehab",
     "医療事務": "medical_office",
     "管理栄養士/栄養士": "dietitian",
+    "相談支援専門員": "counselor",
+    "入居相談員": "sales",
 }
 
 
@@ -107,9 +111,30 @@ def api_put(path, data):
     if DRY_RUN:
         print(f"  [DRY RUN] PUT {path}")
         return {"status": "dry_run"}
-    resp = requests.put(f"{API_BASE}/{path}", json=data, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
+    last_err = None
+    for attempt in range(4):
+        try:
+            resp = requests.put(f"{API_BASE}/{path}", json=data, headers=HEADERS, timeout=60)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.HTTPError as e:
+            last_err = e
+            status = getattr(e.response, "status_code", None)
+            if status in (429, 500, 502, 503, 504) and attempt < 3:
+                wait = 15 * (attempt + 1)
+                print(f"    [retry {attempt+1}/3] {status} — waiting {wait}s")
+                time.sleep(wait)
+                continue
+            raise
+        except requests.exceptions.RequestException as e:
+            last_err = e
+            if attempt < 3:
+                wait = 15 * (attempt + 1)
+                print(f"    [retry {attempt+1}/3] {type(e).__name__} — waiting {wait}s")
+                time.sleep(wait)
+                continue
+            raise
+    raise last_err
 
 
 def api_delete(path):
@@ -570,6 +595,8 @@ def _sync_patterns(recipes, rows):
 
         api_put(f"patterns/{row['_row_index']}", update_data)
         updated += 1
+        if not DRY_RUN:
+            time.sleep(11)
 
     return updated
 

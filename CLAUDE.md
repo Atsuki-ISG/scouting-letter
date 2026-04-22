@@ -41,7 +41,7 @@
 
 | ディレクトリ | 役割 |
 |---|---|
-| `companies/[会社名]/` | 会社別資産（profile.md, templates.md, recipes.md, history/, meetings/） |
+| `companies/[会社名]/` | 会社別資産（profile.md, templates.md, recipes.md, hearing.md, history/, meetings/） |
 | `quality/` | スカウト品質管理（基準・スコアリング・レビュー記録） |
 | `training/` | オペレーター教育（オンボーディング・基礎・良い例） |
 | `workspace/` | 調査・分析の作業スペース |
