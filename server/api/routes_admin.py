@@ -342,6 +342,7 @@ async def send_summary(
     from datetime import datetime, timedelta, timezone
     from pipeline.orchestrator import _send_data_sheet_name, COMPANY_DISPLAY_NAMES
     from pipeline.job_category_resolver import resolve_qualification_only
+    from api._dashboard_helpers import row_field
 
     JST = timezone(timedelta(hours=9))
     now = datetime.now(JST)
@@ -357,6 +358,7 @@ async def send_summary(
         "care": "介護",
         "counselor": "相談員",
     }
+    KNOWN_CATEGORIES = set(CATEGORY_DISPLAY.keys())
 
     companies_to_scan = [company] if company else list(COMPANY_DISPLAY_NAMES.keys())
     total = 0
@@ -371,28 +373,22 @@ async def send_summary(
         if len(all_rows) < 2:
             continue
 
-        headers = all_rows[0]
-        col_map = {h.strip(): i for i, h in enumerate(headers)}
-        date_idx = col_map.get("日時", 0)
-        cat_idx = col_map.get("職種カテゴリ")
-        qual_idx = col_map.get("資格")
+        headers = [h.strip() for h in all_rows[0]]
 
         for row in all_rows[1:]:
-            if len(row) <= date_idx:
-                continue
-            row_date = row[date_idx][:7]  # YYYY-MM
+            # スキーマドリフト耐性: row_field がレガシー/正準両方を吸収する
+            row_date = row_field(row, headers, "日時")[:7]  # YYYY-MM
             if row_date != current_month:
                 continue
             total += 1
 
-            # 職種カテゴリ取得（列があれば使う、なければ資格から推定）
-            cat = ""
-            if cat_idx is not None and cat_idx < len(row):
-                cat = row[cat_idx].strip()
-            if not cat and qual_idx is not None and qual_idx < len(row):
-                cat = resolve_qualification_only(row[qual_idx]) or ""
+            # 職種カテゴリ取得（既知カテゴリのみ採用、未知文字列は資格から推定）
+            cat = row_field(row, headers, "職種カテゴリ")
+            if cat not in KNOWN_CATEGORIES:
+                qual = row_field(row, headers, "資格")
+                cat = resolve_qualification_only(qual) or ""
 
-            display = CATEGORY_DISPLAY.get(cat, cat) or "不明"
+            display = CATEGORY_DISPLAY.get(cat, "") or "不明"
             by_category[display] = by_category.get(display, 0) + 1
 
     # 件数降順でソート
