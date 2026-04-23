@@ -300,7 +300,7 @@ def _build_generation_config(
 # Patterns used by _strip_thinking() to identify leaked reasoning paragraphs.
 _THINKING_MARKER_RE = re.compile(
     r"^\s*("
-    r"Draft\s*\d+\s*[:：]|"
+    r"Draft(?:ing)?\s*\d*\s*[:：]?|"
     r"Characters?\s*[:：]|"
     r"Total\s*[:：]|"
     r"Wait[,\s]|"
@@ -327,6 +327,46 @@ _THINKING_MARKER_RE = re.compile(
 _CHAR_COUNT_ANNOTATION_RE = re.compile(r"\(\s*\d+\s*characters?\s*\)", re.IGNORECASE)
 _COUNTED_CHAR_RE = re.compile(r".\(\d+\)")
 
+# 単一行レベルで「これはメタだけの行」と判定するためのパターン。
+# `Drafting:` のように本文と同一段落内の先頭/末尾にだけ現れるメタを剥がすのに使う。
+_META_LINE_PATTERNS = [
+    re.compile(r"^\s*Drafting\s*[:：]?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*Draft\s*\d*\s*[:：]?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*It'?s\s+\d+\s+characters?\.?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*\d+\s+characters?\.?\s*$", re.IGNORECASE),
+    # 「118文字。」「118文字。これが一番事実に基づいている。」など
+    re.compile(r"^\s*\d+\s*文字[。.]?.*$"),
+    # 「これが一番事実に基づいている」「これが最も自然」などの自己検証コメント
+    re.compile(r"^\s*これが(?:一番|最も)?(?:事実|正しい|良い|自然|適切|シンプル)"),
+    re.compile(r"^\s*(?:最終版|これが最終|これでOK|Final)"),
+]
+
+
+def _is_meta_line(line: str) -> bool:
+    """その1行だけで『メタ出力』とみなせるかを判定。本文と同居している場合に前後から剥がす用。"""
+    s = line.strip()
+    if not s:
+        return True
+    # 短めの行かつ既知マーカーで始まる → メタ
+    if len(s) < 80 and _THINKING_MARKER_RE.match(s):
+        return True
+    for pat in _META_LINE_PATTERNS:
+        if pat.match(s):
+            return True
+    return False
+
+
+def _trim_meta_lines(text: str) -> str:
+    """段落内の先頭・末尾にある『メタだけの行』を剥がす。本文行が消えない限り繰り返す。"""
+    lines = text.split("\n")
+    # 先頭
+    while len(lines) > 1 and _is_meta_line(lines[0]):
+        lines.pop(0)
+    # 末尾
+    while len(lines) > 1 and _is_meta_line(lines[-1]):
+        lines.pop()
+    return "\n".join(lines).strip()
+
 
 def _strip_thinking(text: str) -> str:
     """Remove leaked thinking/reasoning blocks from Gemini output.
@@ -345,7 +385,9 @@ def _strip_thinking(text: str) -> str:
     paragraphs = re.split(r"\n\s*\n", text)
     kept: list[str] = []
     for para in paragraphs:
-        stripped = para.strip()
+        # 段落の先頭/末尾に混じったメタ行（例: "Drafting:\n本文..." の "Drafting:"）を先に剥がす。
+        # 本文と同一段落に同居しているケースはこれで救える。
+        stripped = _trim_meta_lines(para.strip())
         if not stripped:
             continue
 
@@ -367,6 +409,14 @@ def _strip_thinking(text: str) -> str:
             or len(_COUNTED_CHAR_RE.findall(stripped)) >= 10
         )
 
+        # 本文が既に採用されている後に出てくる、鍵括弧で始まる未完文は代替ドラフトの断片。
+        # 例: "本文。\n\n「訪問看護と病棟での経験は、当ステーションで活きる" ← 句点なしで切れている
+        if kept and not is_thinking:
+            opens_with_quote = stripped.startswith("「") or stripped.startswith("『")
+            ends_complete = any(stripped.rstrip().endswith(e) for e in ["。", "！", "？", "」", "』", "."])
+            if opens_with_quote and not ends_complete:
+                is_thinking = True
+
         if is_thinking:
             # Once we have legit content and see thinking, stop — everything
             # after is self-revision noise (Gemini's "Final Text:" / "Actually,
@@ -386,6 +436,12 @@ def _strip_thinking(text: str) -> str:
         if result.startswith(open_q) and result.endswith(close_q) and len(result) >= 2:
             result = result[len(open_q):-len(close_q)].strip()
             break
+
+    # 末尾に閉じ括弧だけ残っている（対応する開き括弧がない）ケースを剥がす。
+    # 例: "本文。」" → "本文。"
+    for close_q, open_q in [("」", "「"), ("』", "『"), ("\"", "\""), ("”", "“")]:
+        if result.endswith(close_q) and result.count(close_q) > result.count(open_q):
+            result = result[: -len(close_q)].rstrip()
 
     return result
 
