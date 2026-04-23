@@ -82,3 +82,72 @@ def test_counted_chars_pattern_heavy():
     """X(N)パターンが大量に並ぶ段落を除去"""
     leaked = "あ(1)い(2)う(3)え(4)お(5)か(6)き(7)く(8)け(9)こ(10)さ(11)し(12)"
     assert _strip_thinking(leaked) == ""
+
+
+# 2026-04-23 追加: 本番で観測された新しい漏洩パターン
+# （chigasaki-tokushukai D-CHI-04 / ichigo D-ICH-08 / ichigo D-ICH-03）
+
+
+def test_removes_drafting_prefix_with_japanese_body_same_paragraph():
+    """`Drafting:\\n本文...` のように単一段落内の先頭行メタを剥がす"""
+    leaked = (
+        "Drafting:\n"
+        "有料老人ホームでの5年間に加え、訪問看護でも3年の経験を積まれている点に注目しました。"
+        "施設と在宅の両面を知る実践力は、併設施設との連携や幅広い疾患への対応が求められる"
+        "当ステーションにおいて、非常に心強い存在になると期待しています。"
+        "一度見学にいらっしゃいませんか。"
+    )
+    result = _strip_thinking(leaked)
+    assert "Drafting" not in result
+    assert result.startswith("有料老人ホームでの5年間")
+    assert result.endswith("一度見学にいらっしゃいませんか。")
+
+
+def test_removes_its_n_characters_prefix():
+    """`It's 126 characters.\\n本文...` の先頭メタ行を剥がす"""
+    leaked = (
+        "It's 126 characters.\n"
+        "8年の看護師経験に加え、ケアマネジャーの資格もお持ちの点に注目しました。"
+        "地域包括ケア病棟での6年にわたるご経験は、多職種連携を重視する当院の在宅復帰支援"
+        "において大きな力になると確信しています。"
+        "その確かな実践力を、ぜひ当院で発揮してください。"
+    )
+    result = _strip_thinking(leaked)
+    assert "characters" not in result.lower()
+    assert result.startswith("8年の看護師経験")
+
+
+def test_removes_trailing_japanese_char_count_meta():
+    """本文末尾に `118文字。これが一番事実に基づいている。` のような自己検証メタが付く場合"""
+    leaked = (
+        "訪問看護で5年、病棟で3年の経験を積まれている確かな実践力に注目しました。"
+        "豊富な知見を活かし、看取りを含む幅広いケアにおいて、現場を支えていただけることを"
+        "期待しています。ぜひ一度お話しできましたら嬉しく思います。\n"
+        "    118文字。これが一番事実に基づいている。"
+    )
+    result = _strip_thinking(leaked)
+    assert "118文字" not in result
+    assert "事実に基づいている" not in result
+    assert result.endswith("ぜひ一度お話しできましたら嬉しく思います。")
+
+
+def test_removes_alternative_draft_after_kept_content():
+    """本文の後ろに「訪問」のような別ドラフト断片が続くケースを除去"""
+    leaked = (
+        "訪問看護で5年、病棟で3年の経験を積まれている確かな実践力に注目しました。"
+        "ぜひ一度お話しできましたら嬉しく思います。\n"
+        "    118文字。これが一番事実に基づいている。\n\n"
+        "「訪問看護と病棟での経験は、当ステーションで活きる"
+    )
+    result = _strip_thinking(leaked)
+    assert "118文字" not in result
+    assert "これが一番" not in result
+    # 2つ目の「訪問〜」は途切れたドラフトなので落ちるべき
+    assert result.endswith("ぜひ一度お話しできましたら嬉しく思います。")
+
+
+def test_removes_dangling_trailing_quote():
+    """本文末尾に閉じ鍵括弧だけ残っているケースを剥がす"""
+    leaked = "ぜひ一度お話しできましたら嬉しく思います。」"
+    result = _strip_thinking(leaked)
+    assert result == "ぜひ一度お話しできましたら嬉しく思います。"
