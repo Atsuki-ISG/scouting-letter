@@ -151,3 +151,28 @@ def test_removes_dangling_trailing_quote():
     leaked = "ぜひ一度お話しできましたら嬉しく思います。」"
     result = _strip_thinking(leaked)
     assert result == "ぜひ一度お話しできましたら嬉しく思います。"
+
+
+def test_removes_character_count_check_block_with_inline_quotes():
+    """『Draft N:\\n本文...\\n\\nCharacter count check (Draft N):\\n「本文」\\n-> N characters.』
+    のように、本文の後ろに自己検証ブロック（カギ括弧で再引用＋文字数カウント）が
+    続くケース。Character count check ブロックはメタなので本文とDraft先頭行のみ残す。
+    """
+    leaked = (
+        "Draft 2 (Applying constraints and refining tone):\n"
+        "    特別養護老人ホームで12年にわたり生活相談員を務めてこられた確かな実践力に注目しました。"
+        "看取りまで向き合ってこられたご経験から培われた傾聴力は、"
+        "ご入居を検討されるご家族の不安に寄り添う場面で大きな力になると確信しております。\n\n"
+        "Character count check (Draft 2):\n"
+        "    「特別養護老人ホームで12年にわたり生活相談員を務めてこられた確かな実践力に注目しました。"
+        "看取りまで向き合ってこられたご経験から培われた傾聴力は、"
+        "ご入居を検討されるご家族の不安に寄り添う場面で大きな力になると確信しております。」\n"
+        "    -> 113 characters. (Good: 80-120 range)"
+    )
+    result = _strip_thinking(leaked)
+    assert "Draft" not in result
+    assert "Character count" not in result
+    assert "113 characters" not in result
+    assert "80-120 range" not in result
+    assert result.startswith("特別養護老人ホームで12年にわたり")
+    assert result.endswith("大きな力になると確信しております。")
