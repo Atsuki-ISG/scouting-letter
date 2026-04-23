@@ -301,6 +301,8 @@ def _build_generation_config(
 _THINKING_MARKER_RE = re.compile(
     r"^\s*("
     r"Draft(?:ing)?\s*\d*\s*[:：]?|"
+    r"Characters?\s*(?:count|check)(?:\s+check)?\b|"  # Character count / Character check / Character count check
+    r"Count\s*check\b|"
     r"Characters?\s*[:：]|"
     r"Total\s*[:：]|"
     r"Wait[,\s]|"
@@ -324,7 +326,11 @@ _THINKING_MARKER_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
-_CHAR_COUNT_ANNOTATION_RE = re.compile(r"\(\s*\d+\s*characters?\s*\)", re.IGNORECASE)
+# 「(119 characters)」または独立行の「-> 113 characters.」「113 characters.」「N characters」等
+_CHAR_COUNT_ANNOTATION_RE = re.compile(
+    r"(?:\(\s*\d+\s*characters?\s*\)|(?:->|→|:)\s*\d+\s*characters?\b|^\s*\d+\s*characters?\.)",
+    re.IGNORECASE,
+)
 _COUNTED_CHAR_RE = re.compile(r".\(\d+\)")
 
 # 単一行レベルで「これはメタだけの行」と判定するためのパターン。
