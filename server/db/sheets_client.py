@@ -56,6 +56,9 @@ SHEET_IMPROVEMENT_PROPOSALS = "改善提案"
 SHEET_CONVERSATION_LOGS = "会話ログ"
 SHEET_KNOWLEDGE_POOL = "ナレッジプール"
 SHEET_COMPETITOR_RESEARCH = "競合調査"
+SHEET_TONE_INSTRUCTIONS = "トーン指示"
+SHEET_ROUTING_RULES = "振り分けルール"
+SHEET_HEADER_POOL = "ヘッダープール"
 
 _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "nurse": "看護師",
@@ -94,6 +97,9 @@ ALL_SHEETS = [
     SHEET_FIX_FEEDBACK,
     SHEET_KNOWLEDGE_POOL,
     SHEET_COMPETITOR_RESEARCH,
+    SHEET_TONE_INSTRUCTIONS,
+    SHEET_ROUTING_RULES,
+    SHEET_HEADER_POOL,
 ]
 
 # Competitor research sheet headers (kept as canonical source of truth).
@@ -448,6 +454,83 @@ class SheetsClient:
             if row.get("company") == company_id:
                 return row.get("content", "").replace("\\n", "\n")
         return ""
+
+    def get_tone_instruction(self, tone_id: str) -> str | None:
+        """Return the instruction text for a given tone_id, or None if not found.
+
+        Sheet columns: tone_id, display_name, instruction, active, updated_at
+        Only active='TRUE' rows are returned. Used by the personalized_scout
+        pipeline to inject per-candidate tone directives.
+        """
+        self._ensure_cache()
+        if not tone_id:
+            return None
+        for row in self._cache.get(SHEET_TONE_INSTRUCTIONS, []):
+            if row.get("tone_id") != tone_id:
+                continue
+            active = (row.get("active") or "").strip().upper()
+            if active in ("FALSE", "0", "NO"):
+                continue
+            instruction = (row.get("instruction") or "").replace("\\n", "\n").strip()
+            return instruction or None
+        return None
+
+    def get_routing_rules(self) -> list[dict]:
+        """Return active routing rules sorted by priority (ascending).
+
+        Sheet columns: priority, name, condition, skeleton, tone, attribute, active, updated_at
+        Only active='TRUE' rows are returned. Used by the routing engine
+        to decide (skeleton, tone, attribute) from candidate profile.
+        """
+        self._ensure_cache()
+        rows = []
+        for row in self._cache.get(SHEET_ROUTING_RULES, []):
+            active = (row.get("active") or "").strip().upper()
+            if active in ("FALSE", "0", "NO"):
+                continue
+            try:
+                priority = int(row.get("priority") or 999)
+            except ValueError:
+                priority = 999
+            rows.append({
+                "priority": priority,
+                "name": (row.get("name") or "").strip(),
+                "condition": (row.get("condition") or "").strip(),
+                "skeleton": (row.get("skeleton") or "").strip(),
+                "tone": (row.get("tone") or "").strip(),
+                "attribute": (row.get("attribute") or "").strip(),
+            })
+        return sorted(rows, key=lambda r: r["priority"])
+
+    def get_header_pool(self, company_id: str) -> list[dict]:
+        """Return active header pool rows for the company.
+
+        Sheet columns: company_id, pool_id, trigger_condition, skeleton, tone,
+                       header_text, priority, active, updated_at
+        Only active='TRUE' rows are returned. Used by the pipeline to pick
+        a header line based on candidate's special_conditions (こだわり条件).
+        """
+        self._ensure_cache()
+        result: list[dict] = []
+        for row in self._cache.get(SHEET_HEADER_POOL, []):
+            if (row.get("company_id") or "").strip() != company_id:
+                continue
+            active = (row.get("active") or "").strip().upper()
+            if active in ("FALSE", "0", "NO"):
+                continue
+            try:
+                priority = int(row.get("priority") or 999)
+            except ValueError:
+                priority = 999
+            result.append({
+                "pool_id": (row.get("pool_id") or "").strip(),
+                "trigger_condition": (row.get("trigger_condition") or "").strip(),
+                "skeleton": (row.get("skeleton") or "").strip(),
+                "tone": (row.get("tone") or "").strip(),
+                "header_text": (row.get("header_text") or "").replace("\\n", "\n").strip(),
+                "priority": priority,
+            })
+        return sorted(result, key=lambda r: r["priority"])
 
     def get_competitor_research(
         self, company_id: str, job_category: str = ""

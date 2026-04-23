@@ -15,6 +15,7 @@ from pipeline.job_category_resolver import resolve_job_category
 from pipeline.filter import filter_candidate
 from pipeline.template_resolver import resolve_template_type
 from pipeline.prompt_validator import validate_output_text
+from pipeline.routing import route as route_candidate, resolve_tone_instruction
 
 from .generator import generate_blocks
 from .text_builder import (
@@ -51,6 +52,7 @@ async def generate_personalized_scout(
     force_employment: Optional[str] = None,
     job_category_filter: Optional[str] = None,
     is_resend: bool = False,
+    tone_instruction: Optional[str] = None,
 ) -> dict:
     """Run the L2/L3 pipeline for a single candidate.
 
@@ -162,6 +164,23 @@ async def generate_personalized_scout(
     except Exception as e:
         logger.warning(f"[{profile.member_id}] knowledge pool load failed: {e}")
 
+    # 4.6. Auto-resolve tone_instruction via routing rules when not
+    # provided explicitly by the caller. This lets the extension call
+    # /generate without knowing about tones — the Sheets-managed rules
+    # decide the tone from candidate attributes.
+    routing_meta: Optional[dict] = None
+    if tone_instruction is None:
+        routing_meta = route_candidate(profile)
+        resolved = resolve_tone_instruction(routing_meta.get("tone"))
+        if resolved:
+            tone_instruction = resolved
+            logger.info(
+                f"[{profile.member_id}] routed to "
+                f"skeleton={routing_meta.get('skeleton')} tone={routing_meta.get('tone')} "
+                f"attribute={routing_meta.get('attribute')} "
+                f"rule={routing_meta.get('matched_rule')}"
+            )
+
     # 5. Call structured generation.
     try:
         blocks, meta = await generate_blocks(
@@ -172,6 +191,7 @@ async def generate_personalized_scout(
             prompt_sections_text=prompt_sections_text,
             template_body=template_body,
             knowledge_rules=knowledge_rules or None,
+            tone_instruction=tone_instruction,
         )
     except Exception as e:
         logger.exception(f"[{profile.member_id}] structured generation failed")
@@ -219,6 +239,7 @@ async def generate_personalized_scout(
         "job_category": job_category,
         "is_favorite": bool(getattr(profile, "is_favorite", False)),
         "validation_warnings": soft_warnings,
+        "routing": routing_meta,
         "token_usage": {
             "prompt_tokens": meta.prompt_tokens,
             "output_tokens": meta.output_tokens,

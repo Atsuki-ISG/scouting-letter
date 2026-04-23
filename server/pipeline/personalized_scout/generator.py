@@ -26,6 +26,7 @@ async def generate_blocks(
     prompt_sections_text: str,
     template_body: str,
     knowledge_rules: Optional[list[str]] = None,
+    tone_instruction: Optional[str] = None,
     max_output_tokens: int = 4096,
     temperature: float = 0.55,
 ) -> tuple[dict[str, str], GenerationResult]:
@@ -42,6 +43,7 @@ async def generate_blocks(
         prompt_sections_text=prompt_sections_text,
         template_body=template_body,
         knowledge_rules=knowledge_rules,
+        tone_instruction=tone_instruction,
     )
     user_prompt = build_user_prompt(profile, job_category)
 
