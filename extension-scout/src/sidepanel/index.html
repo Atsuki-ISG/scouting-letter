@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scout Assistant</title>
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main id="app" class="panel">
+    <header class="hdr">
+      <div class="hdr__logo" id="hdr-badge">S</div>
+      <div class="hdr__text">
+        <div class="hdr__title" id="hdr-title">Scout Assistant</div>
+        <div class="hdr__sub" id="hdr-sub">—</div>
+      </div>
+      <div class="hdr__chip" id="hdr-platform">未対応</div>
+    </header>
+
+    <section class="config">
+      <label class="config__row">
+        <span class="label">会社</span>
+        <select id="sel-company"></select>
+      </label>
+      <div class="config__row" id="occupation-hint">
+        <span class="label">職種自動選択</span>
+        <span class="mono value" id="occupation-summary">—</span>
+      </div>
+    </section>
+
+    <section class="status">
+      <div class="status__row">
+        <span class="label">今日の送信</span>
+        <span class="mono value" id="today-count">0</span>
+      </div>
+      <div class="status__row">
+        <span class="label">前回送信</span>
+        <span class="mono value" id="last-sent">—</span>
+      </div>
+    </section>
+
+    <section class="how">
+      <details>
+        <summary>使い方</summary>
+        <ol>
+          <li>会社を選ぶ（複数職種がある場合、候補者の資格から自動選択）</li>
+          <li>対応サイト（WelMe / コメディカル）で候補者ページを開く</li>
+          <li>本文が自動的に入る</li>
+          <li>内容確認後、サイト側の送信ボタンを押す</li>
+        </ol>
+        <p class="note">※手動編集後は自動フィル上書きしない。送信後に履歴に記録されます。</p>
+      </details>
+    </section>
+
+    <section class="history">
+      <div class="history__head">
+        <span class="label">送信履歴</span>
+        <div class="history__actions">
+          <button class="btn small" id="btn-csv">CSV出力</button>
+          <button class="btn small danger" id="btn-clear">全削除</button>
+        </div>
+      </div>
+      <ul class="history__list" id="history-list"></ul>
+      <div class="empty" id="history-empty">まだ送信履歴はありません</div>
+    </section>
+
+    <footer class="ftr">
+      <span id="ftr-build"></span>
+    </footer>
+  </main>
+  <script type="module" src="./app.ts"></script>
+</body>
+</html>

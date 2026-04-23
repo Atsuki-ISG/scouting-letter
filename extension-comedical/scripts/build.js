@@ -32,6 +32,7 @@ const outDir = resolve(root, 'scout_extension');
 const DISPLAY_NAMES = {
   'an-visiting-nurse': 'an訪問看護',
   'chigasaki-tokushukai': '茅ヶ崎徳洲会病院',
+  'nomura-hospital': '野村病院',
   // 必要に応じて追加:
   // 'ark-visiting-nurse': 'ARK訪問看護',
 };
