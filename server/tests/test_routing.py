@@ -76,6 +76,52 @@ class TestBuildContext:
         )
         assert routing.build_context(p)["management_keywords"] is True
 
+    def test_management_keywords_does_not_match_leadership(self):
+        """『リーダーシップ』は PR ワードであり、役職ではない。誤検出しないこと。"""
+        p = CandidateProfile(
+            member_id="m1",
+            experience_type="病棟看護師",
+            self_pr="私はリーダーシップを発揮できる人材です。",
+            work_history_summary="病棟経験10年、一般スタッフとして勤務。",
+        )
+        assert routing.build_context(p)["management_keywords"] is False
+
+    def test_management_keywords_matches_leader_alone(self):
+        """『リーダー』単体（シップなし）は役職として検出する"""
+        p = CandidateProfile(
+            member_id="m1",
+            experience_type="病棟看護師",
+            work_history_summary="チームリーダーとして3年、一般勤務5年。",
+        )
+        assert routing.build_context(p)["management_keywords"] is True
+
+    def test_management_keywords_matches_more_titles(self):
+        """新規追加した役職キーワードがヒットすること"""
+        for title in ("課長", "部長", "院長", "支部長", "支店長", "マネージャー"):
+            p = CandidateProfile(
+                member_id="m1",
+                work_history_summary=f"{title}として勤務",
+            )
+            assert routing.build_context(p)["management_keywords"] is True, title
+
+    def test_has_rich_pr_requires_20_chars(self):
+        """12字PR「笑顔には自信があります」は has_rich_pr=False"""
+        p_thin = CandidateProfile(
+            member_id="m1",
+            self_pr="笑顔には自信があります。",
+        )
+        ctx_thin = routing.build_context(p_thin)
+        assert ctx_thin["has_pr"] is True
+        assert ctx_thin["has_rich_pr"] is False
+
+        p_rich = CandidateProfile(
+            member_id="m2",
+            self_pr="病棟で10年勤務し、急変対応と新人指導の経験があります。",
+        )
+        ctx_rich = routing.build_context(p_rich)
+        assert ctx_rich["has_pr"] is True
+        assert ctx_rich["has_rich_pr"] is True
+
     def test_big_corp_keywords(self):
         p = CandidateProfile(
             member_id="m1",
@@ -102,12 +148,94 @@ class TestBuildContext:
         # "年収アップ" aliases to "高収入"
         assert "高収入" in conds
 
+    def test_numeric_income_pattern_alias(self):
+        """年収500万円以上可能 / 年収600万円以上可能 が 高収入 にエイリアスされる"""
+        p = CandidateProfile(
+            member_id="m1",
+            special_conditions="ボーナス・賞与あり, 年収500万円以上可能, 年収600万円以上可能",
+        )
+        conds = routing.build_context(p)["special_conditions"]
+        assert "高収入" in conds
+        # raw token も保持されていること
+        assert "年収500万円以上可能" in conds
+
+    def test_400man_not_treated_as_high_income(self):
+        """年収400万円以上可能は中央値なので 高収入 扱いしない"""
+        p = CandidateProfile(
+            member_id="m1",
+            special_conditions="年収400万円以上可能",
+        )
+        conds = routing.build_context(p)["special_conditions"]
+        assert "高収入" not in conds
+
+    def test_day_shift_only_aliases(self):
+        p = CandidateProfile(
+            member_id="m1",
+            special_conditions="日勤のみ可, 車通勤可",
+        )
+        conds = routing.build_context(p)["special_conditions"]
+        assert "日勤のみ" in conds
+        assert "車通勤可" in conds
+
+    def test_wlb_aliases(self):
+        p = CandidateProfile(
+            member_id="m1",
+            special_conditions="年間休日120日以上, 完全週休2日",
+        )
+        conds = routing.build_context(p)["special_conditions"]
+        assert "WLB" in conds
+        assert "土日休み" in conds
+
     def test_blank_years_detection(self):
         p = CandidateProfile(
             member_id="m1",
             work_history_summary="訪問看護3年、その後ブランク2年",
         )
         assert routing.build_context(p)["blank_years"] == 2
+
+    def test_blank_years_from_employment_status_離職中(self):
+        """離職中で work_history がなくても blank=1 扱い"""
+        p = CandidateProfile(
+            member_id="m1",
+            employment_status="離職中",
+        )
+        assert routing.build_context(p)["blank_years"] == 1
+
+    def test_blank_years_from_latest_end_date(self):
+        """離職中＋最新職歴終了月から期間を計算"""
+        result = routing._estimate_blank_years(
+            work_history="勤務期間: 2024年10月〜2025年7月\n職種: 看護師",
+            employment_status="離職中",
+            now_year=2026, now_month=7,  # 2025年7月終了から1年経過
+        )
+        # 12ヶ月 → 1年
+        assert result == 1
+
+    def test_blank_years_future_date_returns_0(self):
+        """最新終了月が未来なら 0（データ不整合時）"""
+        result = routing._estimate_blank_years(
+            work_history="勤務期間: 2024年10月〜2026年7月",
+            employment_status="離職中",
+            now_year=2026, now_month=4,
+        )
+        assert result == 0
+
+    def test_blank_years_employed_returns_0(self):
+        """就業中なら 0"""
+        p = CandidateProfile(
+            member_id="m1",
+            employment_status="就業中",
+            work_history_summary="勤務期間: 2020年4月〜現在",
+        )
+        assert routing.build_context(p)["blank_years"] == 0
+
+    def test_blank_years_ブランク_keyword_takes_priority(self):
+        """explicit 『ブランクX年』 が employment_status より優先"""
+        result = routing._estimate_blank_years(
+            work_history="病棟看護5年、ブランク3年、復職後訪看2年",
+            employment_status="就業中",
+        )
+        assert result == 3
 
     def test_placeholder_fields_treated_as_none(self):
         p = CandidateProfile(

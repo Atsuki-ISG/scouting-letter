@@ -89,21 +89,32 @@
 | active | bool | 有効フラグ | TRUE |
 | updated_at | datetime | 更新日時 | 2026-04-24T10:00:00 |
 
-**初期ルール（11段）**:
+**初期ルール（14段）** — Phase 0 実データ検証で見えた盲点を踏まえて改訂:
 
 | priority | name | condition | skeleton | tone | attribute |
 |---|---|---|---|---|---|
 | 1 | 経歴情報ゼロ | `nursing_years == null AND total_years == null` | alpha | casual | general |
 | 2 | ブランクあり | `blank_years >= 1` | delta | letter | blank_career |
-| 3 | 管理職経験・ベテラン | `management_keywords == true AND nursing_years >= 3` | alpha | business | nursing_veteran |
-| 4 | 大手経験・中堅以上 | `big_corp_keywords == true AND total_years >= 5` | alpha | business | nursing_veteran |
-| 5 | 高収入志向 | `"高収入" in special_conditions` | alpha | compact | nursing_veteran |
-| 6 | 訪問看護未経験 | `nursing_years == null AND total_years >= 1` | delta | casual | nursing_inexperienced |
-| 7 | 訪問看護ベテラン | `nursing_years >= 3` | alpha | casual | nursing_veteran |
-| 8 | 訪問看護経験浅 | `0 < nursing_years < 3` | delta | casual | nursing_junior |
-| 9 | 若手・自己PR豊富 | `age_group in ("20s-early", "20s-late", "30s-early") AND has_pr` | delta | casual | nursing_junior |
-| 10 | 40代以上 | `age_group == "40s+"` | alpha | casual | nursing_veteran |
-| 11 | デフォルト | `true` | alpha | casual | general |
+| 3 | 管理職経験・訪看有り | `management_keywords == true AND nursing_years >= 3` | alpha | business | nursing_veteran |
+| 4 | 管理職経験・他科ベテラン | `management_keywords == true AND total_years >= 5` | alpha | business | nursing_veteran |
+| 5 | 大手経験・中堅以上 | `big_corp_keywords == true AND total_years >= 5` | alpha | business | nursing_veteran |
+| 6 | 高収入志向 | `"高収入" in special_conditions` | alpha | compact | nursing_veteran |
+| 7 | 訪問看護未経験（他科経験あり） | `(nursing_years == null OR nursing_years == 0) AND total_years >= 1` | delta | casual | nursing_inexperienced |
+| 8 | 訪問看護ベテラン | `nursing_years >= 3` | alpha | casual | nursing_veteran |
+| 9 | 訪問看護経験浅 | `0 < nursing_years < 3` | delta | casual | nursing_junior |
+| 10 | 若手・リッチPR | `age_group in ("20s-early", "20s-late", "30s-early") AND has_rich_pr` | delta | casual | nursing_junior |
+| 11 | 30代後半・40代前半（中堅層） | `age_group in ("30s-late") AND total_years >= 5` | alpha | casual | nursing_veteran |
+| 12 | 40代以上 | `age_group == "40s+"` | alpha | casual | nursing_veteran |
+| 13 | 若手（PR薄） | `age_group in ("20s-early", "20s-late")` | alpha | casual | general |
+| 14 | デフォルト | `true` | alpha | casual | general |
+
+**改訂の根拠（Phase 0 実データ検証結果より）**:
+
+- **rule 7 拡張**: `nursing_years == null` のみだと他科経験ありの訪看未経験者（Sample 1 の 41歳HCU13年、Sample 4 の 38歳病棟16年）を拾えなかった。`nursing_years in (null, 0)` 相当に拡張
+- **rule 4 新設**: 管理職経験ありで訪看経験ゼロでも、総経験5年以上ならビジネス層扱いに
+- **rule 11 新設**: 30s-late（35-39歳）＋ 総経験5年以上のベテラン層がデフォルト行きになっていた隙間を埋める
+- **rule 10 条件強化**: `has_pr` → `has_rich_pr`（20字以上）に。「笑顔には自信があります」(12字)のような薄い PR で junior 扱いされるのを防ぐ
+- **rule 13 新設**: 若手で PR 薄の候補者は general 扱いで sparse 生成に（junior 扱いは誤導）
 
 **評価式DSL**:
 - 比較演算子: `==`, `!=`, `>=`, `<=`, `>`, `<`
