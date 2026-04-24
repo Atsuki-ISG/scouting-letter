@@ -393,3 +393,108 @@ def resolve_tone_instruction(tone_id: Optional[str]) -> Optional[str]:
     except Exception as e:
         logger.warning(f"Failed to load tone_instruction for {tone_id!r}: {e}")
         return None
+
+
+# ---------------------------------------------------------------------------
+# Header pool resolution — pick the best header text for a candidate
+# ---------------------------------------------------------------------------
+
+
+# Trigger conditions in the pool may be written as either:
+#   "高収入"                 — single token
+#   "高収入／年収アップ"      — multiple tokens joined by ／ or /
+#   "ブランク可／未経験可／教育体制"  — multiple tokens
+# We split by common separators so any matching token triggers a hit.
+_TRIGGER_TOKEN_SEPARATOR = re.compile(r"[／/・、,，\s]+")
+
+
+def _header_matches_candidate(
+    entry: dict, candidate_conds: list[str], skeleton: str, tone: str
+) -> bool:
+    """Check if a header pool entry matches the candidate & routing context."""
+    # Skeleton filter: "both" or matches current skeleton
+    pool_skeleton = (entry.get("skeleton") or "both").strip()
+    if pool_skeleton and pool_skeleton != "both" and pool_skeleton != skeleton:
+        return False
+
+    # Tone filter: empty = all tones ok; otherwise must include current tone
+    pool_tones_raw = (entry.get("tone") or "").strip()
+    if pool_tones_raw:
+        pool_tones = [t.strip() for t in pool_tones_raw.split(",") if t.strip()]
+        if pool_tones and tone and tone not in pool_tones:
+            return False
+
+    # Trigger condition: "default" always matches when reached as fallback
+    trigger = (entry.get("trigger_condition") or "").strip()
+    if trigger == "default":
+        return False  # default is handled separately, not as a regular match
+
+    # Any token in trigger_condition that appears in candidate conditions counts
+    for tok in _TRIGGER_TOKEN_SEPARATOR.split(trigger):
+        tok = tok.strip()
+        if tok and tok in candidate_conds:
+            return True
+    return False
+
+
+def resolve_header(
+    profile: CandidateProfile,
+    company_id: str,
+    skeleton: str = "alpha",
+    tone: str = "casual",
+) -> Optional[str]:
+    """Pick the best matching header text from the Sheets header pool.
+
+    Matching rules (in order):
+        1. Entries whose `skeleton` is "both" or equals the current skeleton
+        2. Entries whose `tone` list is empty or includes the current tone
+        3. Entries whose `trigger_condition` has at least one token in the
+           candidate's normalized special_conditions list
+        4. Lowest `priority` wins (get_header_pool returns sorted)
+        5. Fallback: the pool entry with trigger_condition="default"
+        6. None if neither match nor default exists
+
+    Returns the header_text string, or None if the company has no pool.
+    """
+    try:
+        pool = sheets_client.get_header_pool(company_id)
+    except Exception as e:
+        logger.warning(f"Failed to load header pool for {company_id!r}: {e}")
+        return None
+    if not pool:
+        return None
+
+    # Defensive sort by priority ascending. sheets_client already sorts,
+    # but callers with handcrafted pools (tests, other paths) may not.
+    pool = sorted(
+        pool,
+        key=lambda e: int(e.get("priority") or 999) if str(e.get("priority") or "").strip().isdigit() else 999,
+    )
+
+    candidate_conds = _parse_special_conditions(profile.special_conditions)
+
+    default_entry: Optional[dict] = None
+    for entry in pool:
+        if (entry.get("trigger_condition") or "").strip() == "default":
+            if default_entry is None:
+                default_entry = entry
+            continue
+        if _header_matches_candidate(entry, candidate_conds, skeleton, tone):
+            text = entry.get("header_text")
+            if text:
+                logger.info(
+                    f"[{profile.member_id}] header matched pool_id="
+                    f"{entry.get('pool_id')} trigger={entry.get('trigger_condition')}"
+                )
+                return text
+
+    if default_entry:
+        text = default_entry.get("header_text")
+        if text:
+            logger.info(
+                f"[{profile.member_id}] header fallback to default pool_id="
+                f"{default_entry.get('pool_id')}"
+            )
+            return text
+
+    return None

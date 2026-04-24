@@ -15,7 +15,11 @@ from pipeline.job_category_resolver import resolve_job_category
 from pipeline.filter import filter_candidate
 from pipeline.template_resolver import resolve_template_type
 from pipeline.prompt_validator import validate_output_text
-from pipeline.routing import route as route_candidate, resolve_tone_instruction
+from pipeline.routing import (
+    route as route_candidate,
+    resolve_tone_instruction,
+    resolve_header,
+)
 
 from .generator import generate_blocks
 from .text_builder import (
@@ -179,6 +183,27 @@ async def generate_personalized_scout(
                 f"skeleton={routing_meta.get('skeleton')} tone={routing_meta.get('tone')} "
                 f"attribute={routing_meta.get('attribute')} "
                 f"rule={routing_meta.get('matched_rule')}"
+            )
+
+    # 4.7. Resolve {header} placeholder if present in the template body.
+    # The header text is picked from the Sheets「ヘッダープール」based on
+    # candidate's こだわり条件 matched against the pool's trigger_conditions.
+    # This is a pre-substitution step — the resolved header becomes part
+    # of the fixed template that the AI sees, so AI generation can avoid
+    # duplicating the same訴求 in opening/bridge.
+    if "{header}" in template_body:
+        skel = (routing_meta or {}).get("skeleton", "alpha")
+        tone_key = (routing_meta or {}).get("tone", "casual")
+        header_text = resolve_header(profile, company_id, skeleton=skel, tone=tone_key)
+        if header_text:
+            template_body = template_body.replace("{header}", header_text)
+        else:
+            # No pool match and no default — strip the placeholder so the
+            # rendered scout doesn't contain a literal "{header}" string.
+            template_body = template_body.replace("{header}", "")
+            logger.warning(
+                f"[{profile.member_id}] no header pool match for "
+                f"{company_id} skeleton={skel} tone={tone_key}; stripped placeholder"
             )
 
     # 5. Call structured generation.

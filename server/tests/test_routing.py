@@ -317,3 +317,161 @@ class TestRoute:
         )
         result = routing.route(CandidateProfile(member_id="m1"))
         assert result == {**routing.DEFAULT_ROUTING}
+
+
+# ---------------------------------------------------------------------------
+# resolve_header() — header pool matching
+# ---------------------------------------------------------------------------
+
+
+class TestResolveHeader:
+    @staticmethod
+    def _stub_pool(monkeypatch, pool):
+        monkeypatch.setattr(
+            routing.sheets_client,
+            "get_header_pool",
+            lambda company_id: pool,
+        )
+
+    def test_returns_none_when_pool_empty(self, monkeypatch):
+        self._stub_pool(monkeypatch, [])
+        result = routing.resolve_header(
+            CandidateProfile(member_id="m1"), "ichigo-visiting-nurse"
+        )
+        assert result is None
+
+    def test_returns_none_on_sheets_error(self, monkeypatch):
+        def boom(_):
+            raise RuntimeError("sheets down")
+        monkeypatch.setattr(routing.sheets_client, "get_header_pool", boom)
+        result = routing.resolve_header(
+            CandidateProfile(member_id="m1"), "ichigo-visiting-nurse"
+        )
+        assert result is None
+
+    def test_matches_by_trigger_condition(self, monkeypatch):
+        self._stub_pool(monkeypatch, [
+            {
+                "pool_id": "P01", "trigger_condition": "高収入／年収アップ",
+                "skeleton": "both", "tone": "",
+                "header_text": "🌸【年収500-600万可】月給35-45万",
+                "priority": 1,
+            },
+            {
+                "pool_id": "P02", "trigger_condition": "default",
+                "skeleton": "both", "tone": "",
+                "header_text": "🌸【新規オープン】富士見台サテライト",
+                "priority": 2,
+            },
+        ])
+        # Candidate with 高収入 in special_conditions
+        p = CandidateProfile(member_id="m1", special_conditions="高収入")
+        result = routing.resolve_header(p, "ichigo")
+        assert result == "🌸【年収500-600万可】月給35-45万"
+
+    def test_fallback_to_default_when_no_match(self, monkeypatch):
+        self._stub_pool(monkeypatch, [
+            {
+                "pool_id": "P01", "trigger_condition": "高収入",
+                "skeleton": "both", "tone": "",
+                "header_text": "high income header",
+                "priority": 1,
+            },
+            {
+                "pool_id": "P02", "trigger_condition": "default",
+                "skeleton": "both", "tone": "",
+                "header_text": "default header",
+                "priority": 10,
+            },
+        ])
+        # Candidate without matching こだわり
+        p = CandidateProfile(member_id="m1", special_conditions="残業少")
+        result = routing.resolve_header(p, "ichigo")
+        assert result == "default header"
+
+    def test_returns_none_when_no_match_and_no_default(self, monkeypatch):
+        self._stub_pool(monkeypatch, [
+            {
+                "pool_id": "P01", "trigger_condition": "高収入",
+                "skeleton": "both", "tone": "",
+                "header_text": "high income",
+                "priority": 1,
+            },
+        ])
+        p = CandidateProfile(member_id="m1", special_conditions="残業少")
+        result = routing.resolve_header(p, "ichigo")
+        assert result is None
+
+    def test_skeleton_filter_excludes_mismatched(self, monkeypatch):
+        self._stub_pool(monkeypatch, [
+            {
+                "pool_id": "P01", "trigger_condition": "高収入",
+                "skeleton": "delta", "tone": "",
+                "header_text": "delta-only header",
+                "priority": 1,
+            },
+            {
+                "pool_id": "P02", "trigger_condition": "default",
+                "skeleton": "both", "tone": "",
+                "header_text": "default",
+                "priority": 10,
+            },
+        ])
+        p = CandidateProfile(member_id="m1", special_conditions="高収入")
+        # Request alpha skeleton — delta-only pool should NOT match
+        result = routing.resolve_header(p, "ichigo", skeleton="alpha")
+        assert result == "default"  # falls back to default
+
+    def test_tone_filter_excludes_mismatched(self, monkeypatch):
+        self._stub_pool(monkeypatch, [
+            {
+                "pool_id": "P01", "trigger_condition": "高収入",
+                "skeleton": "both", "tone": "compact,business",
+                "header_text": "compact header",
+                "priority": 1,
+            },
+            {
+                "pool_id": "P02", "trigger_condition": "高収入",
+                "skeleton": "both", "tone": "casual,letter",
+                "header_text": "casual header",
+                "priority": 2,
+            },
+        ])
+        p = CandidateProfile(member_id="m1", special_conditions="高収入")
+        # casual tone → P01 is excluded, P02 matches
+        result = routing.resolve_header(p, "ichigo", tone="casual")
+        assert result == "casual header"
+
+    def test_priority_order(self, monkeypatch):
+        self._stub_pool(monkeypatch, [
+            {
+                "pool_id": "P02", "trigger_condition": "高収入",
+                "skeleton": "both", "tone": "",
+                "header_text": "secondary",
+                "priority": 5,
+            },
+            {
+                "pool_id": "P01", "trigger_condition": "高収入",
+                "skeleton": "both", "tone": "",
+                "header_text": "primary",
+                "priority": 1,
+            },
+        ])
+        p = CandidateProfile(member_id="m1", special_conditions="高収入")
+        result = routing.resolve_header(p, "ichigo")
+        # Lowest priority wins
+        assert result == "primary"
+
+    def test_multi_token_trigger_condition(self, monkeypatch):
+        self._stub_pool(monkeypatch, [
+            {
+                "pool_id": "P03", "trigger_condition": "ブランク可／未経験可／教育体制",
+                "skeleton": "both", "tone": "",
+                "header_text": "for inexperienced",
+                "priority": 1,
+            },
+        ])
+        # Candidate has only one of the trigger tokens
+        p = CandidateProfile(member_id="m1", special_conditions="未経験可")
+        result = routing.resolve_header(p, "ichigo")
+        assert result == "for inexperienced"
