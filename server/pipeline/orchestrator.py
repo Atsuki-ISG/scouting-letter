@@ -65,6 +65,14 @@ DIRECT_APPLICATION_HEADERS = [
     "応募日", "会員番号", "候補者名", "年齢", "性別", "求人タイトル", "返信カテゴリ",
 ]
 
+# 未紐付けスカウト返信 — sync 時に送信データに該当行が無かった返信/応募を保存。
+# 拡張未経由で送信したスカウトに対する返信を月次集計に乗せるための受け皿。
+# 重複防止キーは (会員番号, 返信日)。
+UNMATCHED_REPLY_HEADERS = [
+    "返信日", "会員番号", "返信カテゴリ", "ステータス",
+    "応募日", "候補者名", "年齢", "性別", "求人タイトル", "取り込み日時",
+]
+
 
 COMPANY_DISPLAY_NAMES = {
     "ark-visiting-nurse": "アーク訪看",
@@ -103,6 +111,15 @@ def _direct_application_sheet_name(company_id: str) -> str:
     if send_name.startswith("送信_"):
         return "直接応募_" + send_name[len("送信_"):]
     return f"直接応募_{send_name}"
+
+
+def _unmatched_reply_sheet_name(company_id: str) -> str:
+    """未紐付けスカウト返信ログシート名。送信データと同じdisplay_nameを使う。"""
+    send_name = _send_data_sheet_name(company_id)
+    # "送信_{display}" → "未紐付け返信_{display}"
+    if send_name.startswith("送信_"):
+        return "未紐付け返信_" + send_name[len("送信_"):]
+    return f"未紐付け返信_{send_name}"
 
 
 def _write_generation_logs(

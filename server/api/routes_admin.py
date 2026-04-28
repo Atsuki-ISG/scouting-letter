@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 
 from db.sheets_writer import sheets_writer
@@ -539,6 +539,159 @@ async def list_send_data(
         item["_row_index"] = i
         items.append(item)
     return {"headers": list(EXPECTED_HEADERS), "items": items}
+
+
+@router.get("/monthly_stats/{company_id}")
+async def get_monthly_stats(
+    company_id: str,
+    from_: str = Query("", alias="from"),
+    to: str = Query(""),
+    operator: dict = Depends(verify_api_key),
+):
+    """会社の月次集計を返す。
+
+    集計内容:
+      - scout_send_tool:           送信データ "_初回" 件数（拡張経由）
+      - scout_send_manual:         手動送信数（Phase 2 で実装、今は 0 固定）
+      - scout_reply_matched:       送信データ「返信==有, 応募==空」件数
+      - scout_reply_unmatched:     未紐付け返信シート status=scout_reply 件数
+      - scout_application_matched: 送信データ「応募==有」件数
+      - scout_application_unmatched: 未紐付け返信シート status=scout_application 件数
+      - direct_application:        直接応募シート件数
+
+    パラメータ:
+      from, to: "YYYY-MM" 形式。指定なしは全期間。
+    """
+    from pipeline.orchestrator import (
+        _send_data_sheet_name,
+        _direct_application_sheet_name,
+        _unmatched_reply_sheet_name,
+    )
+    from collections import defaultdict
+
+    if company_id not in _known_company_ids():
+        raise HTTPException(404, f"Unknown company: {company_id}")
+
+    def _ym(date_str: str) -> str:
+        """'YYYY-MM-DD' / 'YYYY-MM-DD HH:MM:SS' 等から YYYY-MM を抽出。失敗時 ''。"""
+        s = (date_str or "").strip()
+        if len(s) >= 7 and s[4:5] == "-" and s[:4].isdigit() and s[5:7].isdigit():
+            return s[:7]
+        return ""
+
+    def _in_range(ym: str) -> bool:
+        if not ym:
+            return False
+        if from_ and ym < from_:
+            return False
+        if to and ym > to:
+            return False
+        return True
+
+    def _safe_get_rows(sheet_name: str) -> list[list[str]]:
+        try:
+            return sheets_writer.get_all_rows(sheet_name)
+        except Exception:
+            return []
+
+    def _col(headers: list[str], name: str) -> int:
+        try:
+            return headers.index(name)
+        except ValueError:
+            return -1
+
+    stats: dict[str, dict[str, int]] = defaultdict(lambda: {
+        "scout_send_tool": 0,
+        "scout_send_manual": 0,
+        "scout_reply_matched": 0,
+        "scout_reply_unmatched": 0,
+        "scout_application_matched": 0,
+        "scout_application_unmatched": 0,
+        "direct_application": 0,
+    })
+
+    # 1) 送信データ: ツール送信、紐付け済み返信・応募
+    rows = _safe_get_rows(_send_data_sheet_name(company_id))
+    if len(rows) >= 2:
+        h = rows[0]
+        c_dt = _col(h, "日時")
+        c_tt = _col(h, "テンプレート種別")
+        c_rd = _col(h, "返信日")
+        c_rep = _col(h, "返信")
+        c_app = _col(h, "応募")
+        for r in rows[1:]:
+            # ツール送信（_初回）
+            if c_dt >= 0 and c_tt >= 0 and len(r) > max(c_dt, c_tt):
+                ym = _ym(r[c_dt])
+                if _in_range(ym) and "_初回" in (r[c_tt] or ""):
+                    stats[ym]["scout_send_tool"] += 1
+            # 紐付け返信／応募（返信日ベースで月帰属）
+            if c_rd >= 0 and c_rep >= 0 and len(r) > max(c_rd, c_rep):
+                if (r[c_rep] or "").strip() == "有":
+                    ym = _ym(r[c_rd])
+                    if _in_range(ym):
+                        is_app = (
+                            c_app >= 0
+                            and len(r) > c_app
+                            and (r[c_app] or "").strip() == "有"
+                        )
+                        if is_app:
+                            stats[ym]["scout_application_matched"] += 1
+                        else:
+                            stats[ym]["scout_reply_matched"] += 1
+
+    # 2) 未紐付け返信シート
+    rows = _safe_get_rows(_unmatched_reply_sheet_name(company_id))
+    if len(rows) >= 2:
+        h = rows[0]
+        c_rd = _col(h, "返信日")
+        c_st = _col(h, "ステータス")
+        for r in rows[1:]:
+            if c_rd >= 0 and c_st >= 0 and len(r) > max(c_rd, c_st):
+                ym = _ym(r[c_rd])
+                if _in_range(ym):
+                    if r[c_st] == "scout_application":
+                        stats[ym]["scout_application_unmatched"] += 1
+                    else:
+                        stats[ym]["scout_reply_unmatched"] += 1
+
+    # 3) 直接応募シート
+    rows = _safe_get_rows(_direct_application_sheet_name(company_id))
+    if len(rows) >= 2:
+        h = rows[0]
+        c_ad = _col(h, "応募日")
+        if c_ad >= 0:
+            for r in rows[1:]:
+                if len(r) > c_ad:
+                    ym = _ym(r[c_ad])
+                    if _in_range(ym):
+                        stats[ym]["direct_application"] += 1
+
+    # 整形
+    result_rows = []
+    for ym in sorted(stats.keys()):
+        s = stats[ym]
+        send_total = s["scout_send_tool"] + s["scout_send_manual"]
+        reply_total = s["scout_reply_matched"] + s["scout_reply_unmatched"]
+        app_total = s["scout_application_matched"] + s["scout_application_unmatched"]
+        positive_total = reply_total + app_total  # 集計上の「返信あり」総数
+        rate = (positive_total / send_total) if send_total > 0 else 0.0
+        result_rows.append({
+            "year_month": ym,
+            "scout_send_tool": s["scout_send_tool"],
+            "scout_send_manual": s["scout_send_manual"],
+            "scout_send_total": send_total,
+            "scout_reply_matched": s["scout_reply_matched"],
+            "scout_reply_unmatched": s["scout_reply_unmatched"],
+            "scout_reply_total": reply_total,
+            "scout_application_matched": s["scout_application_matched"],
+            "scout_application_unmatched": s["scout_application_unmatched"],
+            "scout_application_total": app_total,
+            "reply_rate": round(rate, 4),
+            "direct_application": s["direct_application"],
+        })
+
+    return {"company_id": company_id, "rows": result_rows}
 
 
 @router.post("/record_manual_send")
@@ -3115,9 +3268,12 @@ async def sync_replies(
     from pipeline.orchestrator import (
         _send_data_sheet_name,
         _direct_application_sheet_name,
+        _unmatched_reply_sheet_name,
         SEND_DATA_HEADERS,
         DIRECT_APPLICATION_HEADERS,
+        UNMATCHED_REPLY_HEADERS,
     )
+    from datetime import datetime, timezone, timedelta
 
     # Split by status
     scout_replies = [r for r in replies if r.get("status") == "scout_reply"]
@@ -3133,6 +3289,52 @@ async def sync_replies(
         "scout_application": {"matched": [], "unmatched": []},
         "direct_application": {"appended": 0},
     }
+
+    # 未紐付け返信用シートの初期化（scout_replies/apps があるときだけ用意）
+    # 拡張未経由で送信されたスカウトへの返信は send_data に該当行が無いため、
+    # ここで別シートに保存して月次集計から拾えるようにする。
+    JST = timezone(timedelta(hours=9))
+    unmatched_sheet: str | None = None
+    existing_unmatched: set[tuple[str, str]] = set()
+    if scout_replies or scout_apps:
+        unmatched_sheet = _unmatched_reply_sheet_name(company)
+        sheets_writer.ensure_sheet_exists(unmatched_sheet, UNMATCHED_REPLY_HEADERS)
+        try:
+            u_rows = sheets_writer.get_all_rows(unmatched_sheet)
+        except Exception:
+            u_rows = []
+        if len(u_rows) >= 1:
+            try:
+                u_h = u_rows[0]
+                col_mid = u_h.index("会員番号")
+                col_date = u_h.index("返信日")
+                for r in u_rows[1:]:
+                    if len(r) > max(col_mid, col_date):
+                        existing_unmatched.add((r[col_mid], r[col_date]))
+            except ValueError:
+                pass
+
+    def _append_unmatched(reply: dict, status: str) -> None:
+        """未紐付けログに重複チェック付きで append。"""
+        if not unmatched_sheet:
+            return
+        mid = reply.get("member_id", "")
+        replied_at = reply.get("replied_at", "")
+        if (mid, replied_at) in existing_unmatched:
+            return
+        sheets_writer.append_row(unmatched_sheet, [
+            replied_at,
+            mid,
+            reply.get("category", ""),
+            status,
+            reply.get("applied_at", "") if status == "scout_application" else "",
+            reply.get("candidate_name", ""),
+            reply.get("candidate_age", ""),
+            reply.get("candidate_gender", ""),
+            reply.get("job_title", ""),
+            datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"),
+        ])
+        existing_unmatched.add((mid, replied_at))
 
     # --- スカウト返信 / スカウト応募: 送信データシートを更新 ---
     if scout_replies or scout_apps:
@@ -3175,6 +3377,7 @@ async def sync_replies(
                 result["scout_reply"]["matched"].append({"member_id": mid})
             else:
                 result["scout_reply"]["unmatched"].append({"member_id": mid})
+                _append_unmatched(reply, "scout_reply")
 
         # scout_application 処理（返信列と応募列を同時更新）
         for reply in scout_apps:
@@ -3195,6 +3398,7 @@ async def sync_replies(
                 result["scout_application"]["matched"].append({"member_id": mid})
             else:
                 result["scout_application"]["unmatched"].append({"member_id": mid})
+                _append_unmatched(reply, "scout_application")
 
     # --- 直接応募: 別シートに append ---
     if direct_apps:
