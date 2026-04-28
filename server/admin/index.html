@@ -2795,6 +2795,7 @@ const TABS = [
   { slug: 'logs', name: '生成ログ', readOnly: true },
   { slug: 'profiles', name: 'プロフィール' },
   { slug: 'send_data', name: '送信履歴', custom: true },
+  { slug: 'monthly_stats', name: '月次集計', custom: true },
   { slug: 'monthly_send_count', name: '月次送信数', custom: true },
   { slug: 'fix_feedback', name: '修正フィードバック', custom: true },
   { slug: 'job_category_failures', name: '職種解決失敗', custom: true },
@@ -3697,6 +3698,10 @@ async function loadData() {
     }
     if (currentTab === 'monthly_send_count') {
       await renderMonthlySendCountTab(company);
+      return;
+    }
+    if (currentTab === 'monthly_stats') {
+      await renderMonthlyStatsTab(company);
       return;
     }
     if (currentTab === 'job_category_failures') {
@@ -5413,6 +5418,219 @@ async function deleteMonthlySendCount(rowIndex, yearMonth) {
   } catch (e) {
     alert(`削除に失敗しました: ${e.message || e}`);
   }
+}
+
+
+// =============================================================
+// 月次集計タブ — 会社×月のスカウト集計（送信・返信・応募・直応募）
+// =============================================================
+let _statsCompany = null;
+let _statsRows = [];
+let _statsRangePreset = '3m'; // 'all' | '3m' | 'ytd' | 'custom'
+let _statsFrom = '';
+let _statsTo = '';
+
+function _statsComputeRange(preset) {
+  const now = new Date();
+  const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const thisYm = fmt(now);
+  if (preset === 'all') return { from: '', to: '' };
+  if (preset === '3m') {
+    const d3 = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    return { from: fmt(d3), to: thisYm };
+  }
+  if (preset === 'ytd') return { from: `${now.getFullYear()}-01`, to: thisYm };
+  return { from: _statsFrom, to: _statsTo }; // custom
+}
+
+async function renderMonthlyStatsTab(company) {
+  _statsCompany = company;
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+
+  const { from, to } = _statsComputeRange(_statsRangePreset);
+  let q = '';
+  if (from) q += `?from=${encodeURIComponent(from)}`;
+  if (to) q += (q ? '&' : '?') + `to=${encodeURIComponent(to)}`;
+
+  try {
+    const data = await api('GET', `/api/v1/admin/monthly_stats/${encodeURIComponent(company)}${q}`);
+    _statsRows = data.rows || [];
+  } catch (e) {
+    content.innerHTML = `<div class="empty-msg">読み込みに失敗しました: ${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  drawMonthlyStatsTable();
+}
+
+function drawMonthlyStatsTable() {
+  const content = document.getElementById('content');
+  const rows = [..._statsRows].sort((a, b) => (b.year_month || '').localeCompare(a.year_month || ''));
+
+  // 合計算出
+  const sum = (key) => rows.reduce((s, r) => s + (r[key] || 0), 0);
+  const totals = {
+    scout_send_tool: sum('scout_send_tool'),
+    scout_send_manual: sum('scout_send_manual'),
+    scout_send_total: sum('scout_send_total'),
+    scout_reply_matched: sum('scout_reply_matched'),
+    scout_reply_unmatched: sum('scout_reply_unmatched'),
+    scout_reply_total: sum('scout_reply_total'),
+    scout_application_matched: sum('scout_application_matched'),
+    scout_application_unmatched: sum('scout_application_unmatched'),
+    scout_application_total: sum('scout_application_total'),
+    direct_application: sum('direct_application'),
+  };
+  const totalReplyAndApp = totals.scout_reply_total + totals.scout_application_total;
+  const totalRate = totals.scout_send_total > 0
+    ? (totalReplyAndApp / totals.scout_send_total)
+    : 0;
+
+  const presetBtn = (preset, label) => `
+    <button class="btn btn-sm ${_statsRangePreset === preset ? 'btn-primary' : ''}"
+            onclick="setStatsRange('${preset}')" style="font-size:11px;">${label}</button>`;
+
+  const customForm = _statsRangePreset === 'custom' ? `
+    <span style="display:inline-flex;gap:4px;align-items:center;font-size:11px;margin-left:6px;">
+      <input id="stats_from" type="month" value="${escHtml(_statsFrom)}" style="font-size:11px;padding:2px 4px;">
+      〜
+      <input id="stats_to" type="month" value="${escHtml(_statsTo)}" style="font-size:11px;padding:2px 4px;">
+      <button class="btn btn-sm" onclick="applyCustomStatsRange()">適用</button>
+    </span>` : '';
+
+  const cellRate = (rate) => {
+    const pct = (rate * 100).toFixed(1);
+    const color = rate >= 0.05 ? '#059669' : rate >= 0.02 ? '#d97706' : '#94a3b8';
+    return `<span style="color:${color};font-weight:600;">${pct}%</span>`;
+  };
+
+  const rowHtml = (r) => {
+    const total = r.scout_send_total;
+    const replyApp = r.scout_reply_total + r.scout_application_total;
+    return `
+      <tr>
+        <td style="white-space:nowrap;font-weight:600;">${escHtml(r.year_month)}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">
+          ツール ${r.scout_send_tool} ＋ 手動 ${r.scout_send_manual}<br>
+          <strong style="font-size:13px;">= ${total}</strong>
+        </td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">
+          紐付 ${r.scout_reply_matched} ＋ 未紐付 ${r.scout_reply_unmatched}<br>
+          <strong>= ${r.scout_reply_total}</strong>
+        </td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">
+          紐付 ${r.scout_application_matched} ＋ 未紐付 ${r.scout_application_unmatched}<br>
+          <strong>= ${r.scout_application_total}</strong>
+        </td>
+        <td style="text-align:right;">${cellRate(r.reply_rate)}</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;">${r.direct_application}</td>
+      </tr>`;
+  };
+
+  const totalsRow = rows.length > 0 ? `
+    <tr style="background:#f1f5f9;font-weight:600;">
+      <td>合計</td>
+      <td style="text-align:right;">
+        ツール ${totals.scout_send_tool} ＋ 手動 ${totals.scout_send_manual}<br>
+        = ${totals.scout_send_total}
+      </td>
+      <td style="text-align:right;">
+        紐付 ${totals.scout_reply_matched} ＋ 未紐付 ${totals.scout_reply_unmatched}<br>
+        = ${totals.scout_reply_total}
+      </td>
+      <td style="text-align:right;">
+        紐付 ${totals.scout_application_matched} ＋ 未紐付 ${totals.scout_application_unmatched}<br>
+        = ${totals.scout_application_total}
+      </td>
+      <td style="text-align:right;">${cellRate(totalRate)}</td>
+      <td style="text-align:right;">${totals.direct_application}</td>
+    </tr>` : '';
+
+  content.innerHTML = `
+    <div class="toolbar" style="margin-bottom:12px;">
+      <span class="toolbar-title">月次集計 (${escHtml(_statsCompany)})</span>
+      <span style="margin-left:12px;font-size:12px;color:var(--c-text-muted);">${rows.length} ヶ月</span>
+      <span style="margin-left:auto;display:inline-flex;gap:4px;align-items:center;">
+        ${presetBtn('all', '全期間')}
+        ${presetBtn('3m', '直近3ヶ月')}
+        ${presetBtn('ytd', '年初から')}
+        ${presetBtn('custom', 'カスタム')}
+        ${customForm}
+        <button class="btn btn-sm" onclick="exportMonthlyStatsCSV()" style="font-size:11px;margin-left:6px;">CSVエクスポート</button>
+      </span>
+    </div>
+    ${rows.length === 0
+      ? '<div class="empty-msg">対象期間にデータがありません</div>'
+      : `<table class="data-table">
+          <thead>
+            <tr>
+              <th style="text-align:left;">年月</th>
+              <th style="text-align:right;">スカウト送信</th>
+              <th style="text-align:right;">スカウト返信</th>
+              <th style="text-align:right;">スカウト応募</th>
+              <th style="text-align:right;">返信率</th>
+              <th style="text-align:right;">直応募</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(rowHtml).join('')}
+            ${totalsRow}
+          </tbody>
+        </table>`
+    }
+    <p style="font-size:11px;color:var(--c-text-muted);margin-top:12px;line-height:1.6;">
+      ・<strong>送信</strong>: ツール=送信履歴 / 手動=「月次送信数」タブで入力した数<br>
+      ・<strong>返信・応募</strong>: 紐付=送信履歴に該当行あり / 未紐付=スカウト発信したが送信履歴に行が無いケース（手動送信に対する返信）<br>
+      ・<strong>返信率</strong>: (返信＋応募) ÷ 送信合計
+    </p>
+  `;
+}
+
+async function setStatsRange(preset) {
+  _statsRangePreset = preset;
+  if (preset === 'custom' && !_statsFrom) {
+    const r = _statsComputeRange('3m');
+    _statsFrom = r.from;
+    _statsTo = r.to;
+  }
+  await renderMonthlyStatsTab(_statsCompany);
+}
+
+async function applyCustomStatsRange() {
+  _statsFrom = document.getElementById('stats_from').value;
+  _statsTo = document.getElementById('stats_to').value;
+  await renderMonthlyStatsTab(_statsCompany);
+}
+
+function exportMonthlyStatsCSV() {
+  const headers = [
+    '年月','ツール送信','手動送信','送信合計',
+    '紐付け返信','未紐付け返信','返信合計',
+    '紐付け応募','未紐付け応募','応募合計',
+    '返信率','直応募'
+  ];
+  const rows = [..._statsRows].sort((a, b) => (a.year_month || '').localeCompare(b.year_month || ''));
+  const lines = [headers.join(',')];
+  for (const r of rows) {
+    lines.push([
+      r.year_month,
+      r.scout_send_tool, r.scout_send_manual, r.scout_send_total,
+      r.scout_reply_matched, r.scout_reply_unmatched, r.scout_reply_total,
+      r.scout_application_matched, r.scout_application_unmatched, r.scout_application_total,
+      (r.reply_rate * 100).toFixed(2) + '%',
+      r.direct_application,
+    ].join(','));
+  }
+  // BOM 付きで Excel が文字化けしないように
+  const blob = new Blob(['﻿' + lines.join('\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  a.href = url;
+  a.download = `monthly_stats_${_statsCompany}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 
