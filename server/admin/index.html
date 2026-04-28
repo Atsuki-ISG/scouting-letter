@@ -2795,6 +2795,7 @@ const TABS = [
   { slug: 'logs', name: '生成ログ', readOnly: true },
   { slug: 'profiles', name: 'プロフィール' },
   { slug: 'send_data', name: '送信履歴', custom: true },
+  { slug: 'monthly_send_count', name: '月次送信数', custom: true },
   { slug: 'fix_feedback', name: '修正フィードバック', custom: true },
   { slug: 'job_category_failures', name: '職種解決失敗', custom: true },
   { slug: 'knowledge_pool', name: 'ナレッジ' },
@@ -3692,6 +3693,10 @@ async function loadData() {
     }
     if (currentTab === 'send_data') {
       await renderSendDataTab(company);
+      return;
+    }
+    if (currentTab === 'monthly_send_count') {
+      await renderMonthlySendCountTab(company);
       return;
     }
     if (currentTab === 'job_category_failures') {
@@ -5274,6 +5279,142 @@ let _sendDataHeaders = [];
 let _sendDataMonthFilter = null; // null = all months
 let _sendDataCategoryFilter = ''; // '' = all
 let _sendDataCompany = '';
+
+// =============================================================
+// 月次送信数タブ — 拡張未経由の手動送信件数を会社×月で記録/編集
+// =============================================================
+let _msCompany = null;
+let _msItems = [];
+
+async function renderMonthlySendCountTab(company) {
+  _msCompany = company;
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const data = await api('GET', `/api/v1/admin/monthly_send_count?company_id=${encodeURIComponent(company)}`);
+    _msItems = data.items || [];
+  } catch (e) {
+    content.innerHTML = `<div class="empty-msg">読み込みに失敗しました: ${escHtml(e.message || String(e))}</div>`;
+    return;
+  }
+  drawMonthlySendCountTable();
+}
+
+function drawMonthlySendCountTable() {
+  const content = document.getElementById('content');
+  const items = [..._msItems].sort((a, b) => (b['年月'] || '').localeCompare(a['年月'] || ''));
+
+  // 当月をフォームのデフォルトに
+  const now = new Date();
+  const defaultYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const rowsHtml = items.length === 0
+    ? `<tr><td colspan="5" style="text-align:center;color:var(--c-text-muted);padding:24px">記録がありません。下のフォームから追加してください。</td></tr>`
+    : items.map(it => `
+        <tr>
+          <td style="white-space:nowrap;">${escHtml(it['年月'] || '')}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums;">${escHtml(it['手動送信'] || '0')}</td>
+          <td style="font-size:12px;">${escHtml(it['メモ'] || '')}</td>
+          <td style="white-space:nowrap;font-size:11px;color:var(--c-text-muted);">${escHtml(it['更新日時'] || '')}</td>
+          <td style="white-space:nowrap;">
+            <button class="btn btn-sm" onclick="editMonthlySendCount('${escHtml(it['年月'])}', '${escHtml(it['手動送信'] || '0')}', '${escHtml(it['メモ'] || '').replace(/'/g, '&#39;')}')">編集</button>
+            <button class="btn btn-sm btn-secondary" onclick="deleteMonthlySendCount(${it._row_index}, '${escHtml(it['年月'])}')">削除</button>
+          </td>
+        </tr>
+      `).join('');
+
+  content.innerHTML = `
+    <div class="toolbar" style="margin-bottom:12px;">
+      <span class="toolbar-title">月次送信数 (${escHtml(_msCompany)})</span>
+      <span style="margin-left:12px;font-size:12px;color:var(--c-text-muted);">
+        全 ${items.length} 件
+      </span>
+    </div>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:16px;">
+      <div style="font-weight:600;margin-bottom:8px;font-size:13px;">追加 / 更新（同じ年月は上書き）</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label style="font-size:12px;">年月:
+          <input id="ms_year_month" type="month" value="${defaultYm}" style="font-size:13px;padding:4px 6px;">
+        </label>
+        <label style="font-size:12px;">手動送信:
+          <input id="ms_manual" type="number" min="0" value="0" style="width:80px;font-size:13px;padding:4px 6px;text-align:right;">
+        </label>
+        <label style="font-size:12px;flex:1;min-width:200px;">メモ（任意）:
+          <input id="ms_memo" type="text" placeholder="例: 黒木さん手動分" style="width:100%;font-size:13px;padding:4px 6px;">
+        </label>
+        <button class="btn btn-primary" onclick="submitMonthlySendCount()">保存</button>
+      </div>
+    </div>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>年月</th>
+          <th style="text-align:right;">手動送信</th>
+          <th>メモ</th>
+          <th>更新日時</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+
+    <p style="font-size:11px;color:var(--c-text-muted);margin-top:12px;">
+      ・拡張未経由（JM画面で直接送ったスカウト）の月次件数を記録します<br>
+      ・「月次集計」タブの返信率の<strong>分母</strong>として使われます<br>
+      ・ツール経由の送信は send_data から自動カウントされるので入力不要
+    </p>
+  `;
+}
+
+function editMonthlySendCount(yearMonth, manual, memo) {
+  // 月種を YYYY-MM 形式から input[type=month] が受け取れる形式 にセット
+  const ym = document.getElementById('ms_year_month');
+  if (ym) ym.value = yearMonth;
+  const mn = document.getElementById('ms_manual');
+  if (mn) mn.value = manual;
+  const mm = document.getElementById('ms_memo');
+  if (mm) mm.value = memo;
+  // フォームへスクロール
+  document.getElementById('ms_year_month').scrollIntoView({behavior: 'smooth', block: 'center'});
+  document.getElementById('ms_manual').focus();
+}
+
+async function submitMonthlySendCount() {
+  const ym = document.getElementById('ms_year_month').value;
+  const manual = parseInt(document.getElementById('ms_manual').value, 10);
+  const memo = document.getElementById('ms_memo').value || '';
+  if (!ym || isNaN(manual) || manual < 0) {
+    alert('年月と手動送信（0以上の整数）を入力してください');
+    return;
+  }
+  try {
+    await api('POST', '/api/v1/admin/monthly_send_count', {
+      '年月': ym,
+      '会社ID': _msCompany,
+      '手動送信': manual,
+      'メモ': memo,
+    });
+    // 入力欄リセット & 再読み込み
+    document.getElementById('ms_manual').value = 0;
+    document.getElementById('ms_memo').value = '';
+    await renderMonthlySendCountTab(_msCompany);
+  } catch (e) {
+    alert(`保存に失敗しました: ${e.message || e}`);
+  }
+}
+
+async function deleteMonthlySendCount(rowIndex, yearMonth) {
+  if (!confirm(`${yearMonth} の記録を削除しますか？`)) return;
+  try {
+    await api('DELETE', `/api/v1/admin/monthly_send_count/${rowIndex}`);
+    await renderMonthlySendCountTab(_msCompany);
+  } catch (e) {
+    alert(`削除に失敗しました: ${e.message || e}`);
+  }
+}
+
 
 async function renderSendDataTab(company) {
   _sendDataCompany = company;
