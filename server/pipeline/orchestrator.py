@@ -73,6 +73,14 @@ UNMATCHED_REPLY_HEADERS = [
     "応募日", "候補者名", "年齢", "性別", "求人タイトル", "取り込み日時",
 ]
 
+# 月次手動送信数 — 拡張未経由（手動）で送ったスカウトの月次件数を会社×月で記録。
+# monthly_stats の scout_send_manual 列の根拠データ。1シート全社共通、ユニーク
+# キー=(年月, 会社ID)。
+MONTHLY_SEND_COUNT_SHEET = "月次送信数"
+MONTHLY_SEND_COUNT_HEADERS = [
+    "年月", "会社ID", "手動送信", "メモ", "更新日時",
+]
+
 
 COMPANY_DISPLAY_NAMES = {
     "ark-visiting-nurse": "アーク訪看",

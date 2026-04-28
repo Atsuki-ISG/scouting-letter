@@ -566,6 +566,7 @@ async def get_monthly_stats(
         _send_data_sheet_name,
         _direct_application_sheet_name,
         _unmatched_reply_sheet_name,
+        MONTHLY_SEND_COUNT_SHEET,
     )
     from collections import defaultdict
 
@@ -677,6 +678,27 @@ async def get_monthly_stats(
                     if _in_range(ym):
                         stats[ym]["direct_application"] += 1
 
+    # 4) 月次手動送信数シート（全社共通の1シート）
+    rows = _safe_get_rows(MONTHLY_SEND_COUNT_SHEET)
+    if len(rows) >= 2:
+        h = rows[0]
+        c_ym = _col(h, "年月")
+        c_co = _col(h, "会社ID")
+        c_mn = _col(h, "手動送信")
+        if c_ym >= 0 and c_co >= 0 and c_mn >= 0:
+            for r in rows[1:]:
+                if len(r) <= max(c_ym, c_co, c_mn):
+                    continue
+                if r[c_co].strip() != company_id:
+                    continue
+                ym = r[c_ym].strip()
+                if not _in_range(ym):
+                    continue
+                try:
+                    stats[ym]["scout_send_manual"] += int(r[c_mn].strip() or "0")
+                except ValueError:
+                    pass
+
     # 整形
     result_rows = []
     for ym in sorted(stats.keys()):
@@ -702,6 +724,132 @@ async def get_monthly_stats(
         })
 
     return {"company_id": company_id, "rows": result_rows}
+
+
+# ---------------------------------------------------------------------------
+# 月次手動送信数 — CRUD（拡張未経由で送信した分の月次件数を会社×月で管理）
+# ---------------------------------------------------------------------------
+
+@router.get("/monthly_send_count")
+async def list_monthly_send_count(
+    company_id: str = Query("", alias="company_id"),
+    operator: dict = Depends(verify_api_key),
+):
+    """月次送信数シートの一覧を返す。company_id 指定時は該当会社のみ。
+
+    レスポンス: { headers: [...], items: [ {年月, 会社ID, 手動送信, メモ, 更新日時, _row_index}, ... ] }
+    """
+    from pipeline.orchestrator import (
+        MONTHLY_SEND_COUNT_SHEET,
+        MONTHLY_SEND_COUNT_HEADERS,
+    )
+    sheets_writer.ensure_sheet_exists(MONTHLY_SEND_COUNT_SHEET, MONTHLY_SEND_COUNT_HEADERS)
+    try:
+        rows = sheets_writer.get_all_rows(MONTHLY_SEND_COUNT_SHEET)
+    except Exception:
+        rows = []
+    items = []
+    if len(rows) >= 2:
+        h = rows[0]
+        for i, row in enumerate(rows[1:], start=2):
+            item = {field: (row[idx].strip() if idx < len(row) else "")
+                    for idx, field in enumerate(h)}
+            item["_row_index"] = i
+            if company_id and item.get("会社ID") != company_id:
+                continue
+            items.append(item)
+    return {"headers": MONTHLY_SEND_COUNT_HEADERS, "items": items}
+
+
+@router.post("/monthly_send_count")
+async def upsert_monthly_send_count(
+    data: dict,
+    operator: dict = Depends(verify_api_key),
+):
+    """月次送信数を upsert（年月＋会社IDが一致する行があれば更新、無ければ追加）。
+
+    Body: { 年月: "YYYY-MM", 会社ID: "...", 手動送信: int, メモ: "?" }
+    """
+    from datetime import datetime, timezone, timedelta
+    from pipeline.orchestrator import (
+        MONTHLY_SEND_COUNT_SHEET,
+        MONTHLY_SEND_COUNT_HEADERS,
+    )
+
+    year_month = (data.get("年月") or "").strip()
+    company_id = (data.get("会社ID") or "").strip()
+    manual_raw = data.get("手動送信", 0)
+    memo = (data.get("メモ") or "").strip()
+
+    if not year_month or not company_id:
+        raise HTTPException(400, "年月 と 会社ID は必須です")
+    if len(year_month) != 7 or year_month[4] != "-":
+        raise HTTPException(400, "年月 は YYYY-MM 形式で指定してください")
+    try:
+        manual = int(manual_raw)
+        if manual < 0:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise HTTPException(400, "手動送信 は 0 以上の整数で指定してください")
+    if company_id not in _known_company_ids():
+        raise HTTPException(404, f"Unknown company: {company_id}")
+
+    JST = timezone(timedelta(hours=9))
+    now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
+
+    sheets_writer.ensure_sheet_exists(MONTHLY_SEND_COUNT_SHEET, MONTHLY_SEND_COUNT_HEADERS)
+    try:
+        rows = sheets_writer.get_all_rows(MONTHLY_SEND_COUNT_SHEET)
+    except Exception:
+        rows = []
+
+    # 既存行を探す
+    target_idx = -1
+    if len(rows) >= 2:
+        h = rows[0]
+        try:
+            c_ym = h.index("年月")
+            c_co = h.index("会社ID")
+            for i, row in enumerate(rows[1:], start=2):
+                if (len(row) > max(c_ym, c_co)
+                        and row[c_ym].strip() == year_month
+                        and row[c_co].strip() == company_id):
+                    target_idx = i
+                    break
+        except ValueError:
+            pass
+
+    if target_idx > 0:
+        sheets_writer.update_cells_by_name(
+            MONTHLY_SEND_COUNT_SHEET, target_idx,
+            {"手動送信": str(manual), "メモ": memo, "更新日時": now},
+            actor="upsert_monthly_send_count",
+        )
+        return {"status": "updated", "row_index": target_idx,
+                "年月": year_month, "会社ID": company_id, "手動送信": manual}
+    else:
+        sheets_writer.append_row(
+            MONTHLY_SEND_COUNT_SHEET,
+            [year_month, company_id, str(manual), memo, now],
+        )
+        return {"status": "created",
+                "年月": year_month, "会社ID": company_id, "手動送信": manual}
+
+
+@router.delete("/monthly_send_count/{row_index}")
+async def delete_monthly_send_count(
+    row_index: int,
+    operator: dict = Depends(verify_api_key),
+):
+    """月次送信数の指定行を削除。"""
+    from pipeline.orchestrator import MONTHLY_SEND_COUNT_SHEET
+    if row_index < 2:
+        raise HTTPException(400, "row_index は 2 以上（ヘッダーは消せません）")
+    sheets_writer.delete_row(
+        MONTHLY_SEND_COUNT_SHEET, row_index,
+        actor=f"delete_monthly_send_count:{operator.get('name','')}",
+    )
+    return {"status": "deleted", "row_index": row_index}
 
 
 @router.post("/record_manual_send")
