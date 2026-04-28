@@ -239,6 +239,45 @@ class TestMonthlyStats:
             for p in patches:
                 p.stop()
 
+    def test_schema_drift_legacy_header_with_new_rows(self, client):
+        """ヘッダーは旧スキーマ(15列)だが、データ行は新スキーマ(21列)のとき、
+        EXPECTED_HEADERS の正準順で集計できる（ヘッダー位置に騙されない）。"""
+        LEGACY_HEADERS = [
+            "日時", "会員番号", "テンプレート種別", "生成パス", "パターン",
+            "年齢層", "資格", "経験区分", "希望雇用形態", "就業状況",
+            "曜日", "時間帯",
+            "返信", "返信日", "返信カテゴリ",
+        ]
+        # データ行は EXPECTED_HEADERS（21列）の正準順で書かれている前提
+        send_rows = [LEGACY_HEADERS]
+        # 21列分の行を作って、日時=2026-04-01, テンプレート種別=正社員_初回, 返信=有, 返信日=2026-04-05
+        new_row_a = [""] * 21
+        new_row_a[0] = "2026-04-01 10:00:00"  # 日時
+        new_row_a[3] = "正社員_初回"           # テンプレート種別 (EXPECTED 順)
+        new_row_a[16] = "有"                   # 返信
+        new_row_a[17] = "2026-04-05"           # 返信日
+        send_rows.append(new_row_a)
+        # ヘッダーは旧で行も旧の場合のフォールバック（応募列無し）
+        old_row = [""] * 15
+        old_row[0] = "2026-04-02 10:00:00"     # 日時
+        old_row[2] = "正社員_初回"             # テンプレート種別 (LEGACY 順)
+        send_rows.append(old_row)
+
+        patches = _patch_sheet_names()
+        for p in patches:
+            p.start()
+        try:
+            with patch("api.routes_admin.sheets_writer") as mock_w:
+                mock_w.get_all_rows.side_effect = [send_rows, [UNMATCHED_HEADERS], [DIRECT_HEADERS]]
+                res = client.get("/api/v1/admin/monthly_stats/test-co")
+                rows = res.json()["rows"]
+                row_apr = next(r for r in rows if r["year_month"] == "2026-04")
+                # 21列行 + 15列行 の両方が "_初回" として拾われる（少なくとも1件以上）
+                assert row_apr["scout_send_tool"] >= 1
+        finally:
+            for p in patches:
+                p.stop()
+
     def test_manual_send_stays_zero_in_phase1(self, client):
         """Phase 1 では scout_send_manual は常に 0 を返す（Phase 2 で実装予定）。"""
         patches = _patch_sheet_names()

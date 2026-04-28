@@ -611,34 +611,44 @@ async def get_monthly_stats(
     })
 
     # 1) 送信データ: ツール送信、紐付け済み返信・応募
+    # 旧スキーマ（15列）と新スキーマ（21列）が混在するシートに対応するため
+    # _dashboard_helpers の row_field を使う（ヘッダー優先＋レガシーフォールバック）。
+    from api._dashboard_helpers import row_field, EXPECTED_HEADERS
     rows = _safe_get_rows(_send_data_sheet_name(company_id))
     if len(rows) >= 2:
-        h = rows[0]
-        c_dt = _col(h, "日時")
-        c_tt = _col(h, "テンプレート種別")
-        c_rd = _col(h, "返信日")
-        c_rep = _col(h, "返信")
-        c_app = _col(h, "応募")
+        raw_headers = [h.strip() for h in rows[0]]
+        # api/v1/admin/send_data と同じ判定: ヘッダー集合が EXPECTED と一致するか、
+        # ヘッダー列数が EXPECTED 以上なら「データ行は EXPECTED の正準順」とみなす
+        use_canonical_positional = (
+            set(raw_headers) == set(EXPECTED_HEADERS)
+            or len(raw_headers) >= len(EXPECTED_HEADERS)
+        )
+
+        def _field(row: list[str], name: str) -> str:
+            if use_canonical_positional:
+                padded = list(row) + [""] * (len(EXPECTED_HEADERS) - len(row))
+                try:
+                    idx = EXPECTED_HEADERS.index(name)
+                except ValueError:
+                    return ""
+                return padded[idx].strip() if idx < len(padded) else ""
+            return row_field(row, raw_headers, name)
+
         for r in rows[1:]:
             # ツール送信（_初回）
-            if c_dt >= 0 and c_tt >= 0 and len(r) > max(c_dt, c_tt):
-                ym = _ym(r[c_dt])
-                if _in_range(ym) and "_初回" in (r[c_tt] or ""):
-                    stats[ym]["scout_send_tool"] += 1
+            ym = _ym(_field(r, "日時"))
+            tt = _field(r, "テンプレート種別")
+            if _in_range(ym) and "_初回" in tt:
+                stats[ym]["scout_send_tool"] += 1
             # 紐付け返信／応募（返信日ベースで月帰属）
-            if c_rd >= 0 and c_rep >= 0 and len(r) > max(c_rd, c_rep):
-                if (r[c_rep] or "").strip() == "有":
-                    ym = _ym(r[c_rd])
-                    if _in_range(ym):
-                        is_app = (
-                            c_app >= 0
-                            and len(r) > c_app
-                            and (r[c_app] or "").strip() == "有"
-                        )
-                        if is_app:
-                            stats[ym]["scout_application_matched"] += 1
-                        else:
-                            stats[ym]["scout_reply_matched"] += 1
+            if _field(r, "返信").strip() == "有":
+                rym = _ym(_field(r, "返信日"))
+                if _in_range(rym):
+                    is_app = _field(r, "応募").strip() == "有"
+                    if is_app:
+                        stats[rym]["scout_application_matched"] += 1
+                    else:
+                        stats[rym]["scout_reply_matched"] += 1
 
     # 2) 未紐付け返信シート
     rows = _safe_get_rows(_unmatched_reply_sheet_name(company_id))
