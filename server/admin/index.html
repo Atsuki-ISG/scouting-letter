@@ -5506,7 +5506,11 @@ function drawMonthlyStatsTable() {
 
   const rowHtml = (r) => {
     const total = r.scout_send_total;
-    const replyApp = r.scout_reply_total + r.scout_application_total;
+    const misclick = r.scout_application_misclick || 0;
+    const realApp = r.scout_application_total - misclick;
+    const misclickHint = misclick > 0
+      ? `<br><span style="font-size:10px;color:#94a3b8;">うち誤押下 ${misclick}（実応募 ${realApp}）</span>`
+      : '';
     return `
       <tr>
         <td style="white-space:nowrap;font-weight:600;">${escHtml(r.year_month)}</td>
@@ -5520,7 +5524,7 @@ function drawMonthlyStatsTable() {
         </td>
         <td style="text-align:right;font-variant-numeric:tabular-nums;">
           紐付 ${r.scout_application_matched} ＋ 未紐付 ${r.scout_application_unmatched}<br>
-          <strong>= ${r.scout_application_total}</strong>
+          <strong>= ${r.scout_application_total}</strong>${misclickHint}
         </td>
         <td style="text-align:right;">${cellRate(r.reply_rate)}</td>
         <td style="text-align:right;font-variant-numeric:tabular-nums;">${r.direct_application}</td>
@@ -5606,17 +5610,19 @@ function exportMonthlyStatsCSV() {
   const headers = [
     '年月','ツール送信','手動送信','送信合計',
     '紐付け返信','未紐付け返信','返信合計',
-    '紐付け応募','未紐付け応募','応募合計',
+    '紐付け応募','未紐付け応募','応募合計','うち誤押下','実応募',
     '返信率','直応募'
   ];
   const rows = [..._statsRows].sort((a, b) => (a.year_month || '').localeCompare(b.year_month || ''));
   const lines = [headers.join(',')];
   for (const r of rows) {
+    const mis = r.scout_application_misclick || 0;
     lines.push([
       r.year_month,
       r.scout_send_tool, r.scout_send_manual, r.scout_send_total,
       r.scout_reply_matched, r.scout_reply_unmatched, r.scout_reply_total,
       r.scout_application_matched, r.scout_application_unmatched, r.scout_application_total,
+      mis, r.scout_application_total - mis,
       (r.reply_rate * 100).toFixed(2) + '%',
       r.direct_application,
     ].join(','));

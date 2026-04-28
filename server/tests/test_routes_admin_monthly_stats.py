@@ -278,6 +278,60 @@ class TestMonthlyStats:
             for p in patches:
                 p.stop()
 
+    def test_misclick_count_from_send_data(self, client):
+        """送信データの返信カテゴリが '誤押下' を含む応募行は scout_application_misclick に内数で計上。"""
+        patches = _patch_sheet_names()
+        for p in patches:
+            p.start()
+        try:
+            with patch("api.routes_admin.sheets_writer") as mock_w:
+                # 応募3件のうち1件が誤押下
+                send_rows = [SEND_HEADERS]
+                for i, cat in enumerate(["応募", "誤押下", "応募"]):
+                    row = [""] * 21
+                    row[SEND_HEADERS.index("日時")] = f"2026-04-{i+1:02d}"
+                    row[SEND_HEADERS.index("テンプレート種別")] = "正社員_初回"
+                    row[SEND_HEADERS.index("返信")] = "有"
+                    row[SEND_HEADERS.index("返信日")] = f"2026-04-{i+1:02d}"
+                    row[SEND_HEADERS.index("返信カテゴリ")] = cat
+                    row[SEND_HEADERS.index("応募")] = "有"
+                    row[SEND_HEADERS.index("応募日")] = f"2026-04-{i+1:02d}"
+                    send_rows.append(row)
+                mock_w.get_all_rows.side_effect = [send_rows, [UNMATCHED_HEADERS], [DIRECT_HEADERS]]
+
+                res = client.get("/api/v1/admin/monthly_stats/test-co")
+                row = res.json()["rows"][0]
+                assert row["scout_application_matched"] == 3
+                assert row["scout_application_misclick"] == 1
+        finally:
+            for p in patches:
+                p.stop()
+
+    def test_misclick_count_from_unmatched(self, client):
+        """未紐付けシートの 返信カテゴリ='誤押下' も内数で計上。"""
+        patches = _patch_sheet_names()
+        for p in patches:
+            p.start()
+        try:
+            with patch("api.routes_admin.sheets_writer") as mock_w:
+                unmatched_rows = [
+                    UNMATCHED_HEADERS,
+                    ["2026-04-05", "999", "応募", "scout_application", "2026-04-05", "A", "", "", "", "ts"],
+                    ["2026-04-06", "888", "誤押下", "scout_application", "2026-04-06", "B", "", "", "", "ts"],
+                    ["2026-04-07", "777", "興味あり", "scout_reply", "", "C", "", "", "", "ts"],
+                ]
+                mock_w.get_all_rows.side_effect = [
+                    [SEND_HEADERS], unmatched_rows, [DIRECT_HEADERS],
+                ]
+                res = client.get("/api/v1/admin/monthly_stats/test-co")
+                row = res.json()["rows"][0]
+                assert row["scout_application_unmatched"] == 2
+                assert row["scout_application_misclick"] == 1
+                assert row["scout_reply_unmatched"] == 1
+        finally:
+            for p in patches:
+                p.stop()
+
     def test_manual_send_stays_zero_in_phase1(self, client):
         """Phase 1 では scout_send_manual は常に 0 を返す（Phase 2 で実装予定）。"""
         patches = _patch_sheet_names()

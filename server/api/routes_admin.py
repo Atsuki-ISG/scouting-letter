@@ -608,6 +608,7 @@ async def get_monthly_stats(
         "scout_reply_unmatched": 0,
         "scout_application_matched": 0,
         "scout_application_unmatched": 0,
+        "scout_application_misclick": 0,  # 応募の中で誤押下と判定された数（再掲・内数）
         "direct_application": 0,
     })
 
@@ -646,8 +647,11 @@ async def get_monthly_stats(
                 rym = _ym(_field(r, "返信日"))
                 if _in_range(rym):
                     is_app = _field(r, "応募").strip() == "有"
+                    cat = _field(r, "返信カテゴリ")
                     if is_app:
                         stats[rym]["scout_application_matched"] += 1
+                        if "誤押下" in cat:
+                            stats[rym]["scout_application_misclick"] += 1
                     else:
                         stats[rym]["scout_reply_matched"] += 1
 
@@ -657,12 +661,16 @@ async def get_monthly_stats(
         h = rows[0]
         c_rd = _col(h, "返信日")
         c_st = _col(h, "ステータス")
+        c_cat = _col(h, "返信カテゴリ")
         for r in rows[1:]:
             if c_rd >= 0 and c_st >= 0 and len(r) > max(c_rd, c_st):
                 ym = _ym(r[c_rd])
                 if _in_range(ym):
                     if r[c_st] == "scout_application":
                         stats[ym]["scout_application_unmatched"] += 1
+                        cat = r[c_cat] if c_cat >= 0 and len(r) > c_cat else ""
+                        if "誤押下" in cat:
+                            stats[ym]["scout_application_misclick"] += 1
                     else:
                         stats[ym]["scout_reply_unmatched"] += 1
 
@@ -719,6 +727,7 @@ async def get_monthly_stats(
             "scout_application_matched": s["scout_application_matched"],
             "scout_application_unmatched": s["scout_application_unmatched"],
             "scout_application_total": app_total,
+            "scout_application_misclick": s["scout_application_misclick"],  # 応募の内数
             "reply_rate": round(rate, 4),
             "direct_application": s["direct_application"],
         })

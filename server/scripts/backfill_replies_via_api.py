@@ -37,6 +37,23 @@ API_KEY = os.environ.get("SCOUT_API_KEY", "anycare")
 POSITIVE_KW = ["ぜひ", "お話を伺", "興味", "嬉しい", "感謝", "魅力", "楽しみ"]
 NEGATIVE_KW = ["申し訳", "辞退", "見送", "通勤", "今回はご縁", "難しい", "お断り"]
 QUESTION_KW = ["？", "?", "教えて", "確認", "質問"]
+# 誤押下: 候補者最初が「応募」ラベルだが、後続メッセージで否定する
+MISCLICK_KW = ["応募ではありません", "応募ではない", "応募ではなく",
+               "間違え", "誤って", "押してしまい", "押し間違", "誤押"]
+
+
+def is_misclick(msgs: list) -> bool:
+    """候補者最初の応募ボタン押下 + 後続候補者メッセージで否定 → 誤押下と判定"""
+    cands = [m for m in msgs if m.get("role") == "candidate"]
+    if len(cands) < 2:
+        return False
+    if cands[0].get("label") != "応募":
+        return False
+    for m in cands[1:]:
+        text = m.get("text", "") or ""
+        if any(k in text for k in MISCLICK_KW):
+            return True
+    return False
 
 
 def classify_category(text: str) -> str:
@@ -75,11 +92,18 @@ def conversation_to_reply(d: dict) -> Optional[dict]:
     # 応募判定: 候補者の最初のメッセージのlabelが"応募"
     is_application = first_candidate.get("label") == "応募"
 
+    # 誤押下判定: 応募ボタン押下後に否定メッセージあり → カテゴリを "誤押下" にする
+    misclick = is_application and is_misclick(msgs)
+    if misclick:
+        category = "誤押下"
+    else:
+        category = classify_category(first_candidate.get("text", ""))
+
     return {
         "member_id": str(d.get("member_id", "")).strip(),
         "replied_at": str(first_candidate.get("date", "")).strip(),
         "applied_at": str(first_candidate.get("date", "")).strip() if is_application else "",
-        "category": classify_category(first_candidate.get("text", "")),
+        "category": category,
         "status": "scout_application" if is_application else "scout_reply",
         "candidate_name": d.get("candidate_name", ""),
         "candidate_age": d.get("candidate_age", ""),
