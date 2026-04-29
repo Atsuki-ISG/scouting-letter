@@ -1,0 +1,20 @@
+candidate_age: 37歳
+candidate_gender: 女性
+candidate_name: 下田 愛香
+company: an-visiting-nurse
+job_title: an訪問看護ステーション 看護師/准看護師 正職員 求人
+member_id: '02346137'
+messages:
+- date: '2024-11-19'
+  label: 応募
+  role: candidate
+  text: この度は、ジョブメドレーの求人広告を見て応募いたしました。宜しければ、面接の機会をいただけましたら幸いです。ご多忙の所恐縮ですが、どうぞよろしくお願い致します。■応募勤務形態 正職員■資格 看護師,自動車運転免許■応募職種の経験 10年以上
+- date: '2024-11-20'
+  label: 通常
+  role: company
+  text: 下田様　an訪問看護ステーションの梶山と申します。この度は、ご応募ありがとうございます。大変残念ですが、先日選考を終了しており、求人の取り下げを行うところでした。またの機会がございましたら、お願いいたします。
+- date: '2024-11-20'
+  label: 通常
+  role: candidate
+  text: 承知いたしました。 ご連絡ありがとうございます。
+started: '2024-11-19'
