@@ -326,9 +326,9 @@ _THINKING_MARKER_RE = re.compile(
     r")",
     re.IGNORECASE,
 )
-# 「(119 characters)」または独立行の「-> 113 characters.」「113 characters.」「N characters」等
+# 「(119 characters)」「(39 chars)」または独立行の「-> 113 characters.」「113 chars.」等
 _CHAR_COUNT_ANNOTATION_RE = re.compile(
-    r"(?:\(\s*\d+\s*characters?\s*\)|(?:->|→|:)\s*\d+\s*characters?\b|^\s*\d+\s*characters?\.)",
+    r"(?:\(\s*\d+\s*(?:char|character)s?\s*\)|(?:->|→|:)\s*\d+\s*(?:char|character)s?\b|^\s*\d+\s*(?:char|character)s?\.)",
     re.IGNORECASE,
 )
 _COUNTED_CHAR_RE = re.compile(r".\(\d+\)")
@@ -338,8 +338,8 @@ _COUNTED_CHAR_RE = re.compile(r".\(\d+\)")
 _META_LINE_PATTERNS = [
     re.compile(r"^\s*Drafting\s*[:：]?\s*$", re.IGNORECASE),
     re.compile(r"^\s*Draft\s*\d*\s*[:：]?\s*$", re.IGNORECASE),
-    re.compile(r"^\s*It'?s\s+\d+\s+characters?\.?\s*$", re.IGNORECASE),
-    re.compile(r"^\s*\d+\s+characters?\.?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*It'?s\s+\d+\s+(?:char|character)s?\.?\s*$", re.IGNORECASE),
+    re.compile(r"^\s*\d+\s+(?:char|character)s?\.?\s*$", re.IGNORECASE),
     # 「118文字。」「118文字。これが一番事実に基づいている。」など
     re.compile(r"^\s*\d+\s*文字[。.]?.*$"),
     # 「これが一番事実に基づいている」「これが最も自然」などの自己検証コメント

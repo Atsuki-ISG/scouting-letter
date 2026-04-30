@@ -153,6 +153,37 @@ def test_removes_dangling_trailing_quote():
     assert result == "ぜひ一度お話しできましたら嬉しく思います。"
 
 
+def test_removes_chars_abbreviation_annotations():
+    """`(39 chars)` のような略形でも文字数アノテーションを検出して除去する。
+
+    sato-hospital で観測されたケース。`characters?` ではなく `chars` の略形で
+    出力されると、従来の正規表現が一致せず、Character Count Check ブロック
+    内の本文重複が漏洩していた。
+    """
+    leaked = (
+        "Draft 2 (Applying Rules & Specifics):\n"
+        "        整形外科での臨床に加え、副主任として管理業務に携わられた8年の歩みに注目しました。"
+        "病院での多角的なリハビリ経験や運営視点は、整形外科から在宅復帰支援まで幅広く手掛ける"
+        "当院において、質の高いサービス提供を牽引いただく大きな力になると期待しております。\n\n"
+        "   Character Count Check (Draft 2):\n"
+        "        整形外科での臨床に加え、副主任として管理業務に携わられた8年の歩みに注目しました。(39 chars)\n"
+        "        病院での多角的なリハビリ経験や運営視点は、当院において、質の高いサービス提供を牽引いただく"
+        "大きな力になると期待しております。(84 chars)\n\n"
+        "   Draft 3 (Refining):\n"
+        "        整形外科での臨床に加え、副主任として管理業務に携わられた8年の歩みに注目しました。"
+        "病院での多角的なリハビリ経験や運営視点は、当院において、質の高いサービス提供をリードいただく"
+        "大きな力になると期待しております。"
+    )
+    result = _strip_thinking(leaked)
+    assert "Draft" not in result
+    assert "Character Count" not in result
+    assert "(39 chars)" not in result
+    assert "(84 chars)" not in result
+    assert "リードいただく" not in result, "Draft 3 (revision) should be discarded"
+    assert result.startswith("整形外科での臨床に加え")
+    assert result.endswith("大きな力になると期待しております。")
+
+
 def test_removes_character_count_check_block_with_inline_quotes():
     """『Draft N:\\n本文...\\n\\nCharacter count check (Draft N):\\n「本文」\\n-> N characters.』
     のように、本文の後ろに自己検証ブロック（カギ括弧で再引用＋文字数カウント）が
