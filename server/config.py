@@ -18,6 +18,10 @@ GEMINI_THINKING_BUDGET: int = int(os.environ.get("GEMINI_THINKING_BUDGET", "8192
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 MOCK_AI: bool = os.environ.get("MOCK_AI", "").lower() in ("1", "true", "yes")
 MAX_BATCH_CONCURRENCY: int = int(os.environ.get("MAX_BATCH_CONCURRENCY", "10"))
+# Per-request timeout for individual Gemini calls (seconds). When a single
+# call hangs longer than this, asyncio raises TimeoutError so the batch's
+# semaphore slot is released and the remaining candidates can proceed.
+GEMINI_REQUEST_TIMEOUT: float = float(os.environ.get("GEMINI_REQUEST_TIMEOUT", "90"))
 CORS_ORIGINS: str = os.environ.get("CORS_ORIGINS", "*")
 
 # Google Sheets

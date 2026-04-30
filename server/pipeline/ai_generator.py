@@ -13,6 +13,7 @@ from config import (
     GEMINI_FALLBACK_MODELS,
     GEMINI_API_KEY,
     GEMINI_THINKING_BUDGET,
+    GEMINI_REQUEST_TIMEOUT,
     PROJECT_ID,
     LOCATION,
     MOCK_AI,
@@ -514,11 +515,14 @@ async def generate_personalized_text(
                     tool = _build_search_tool_vertex()
                     if tool is not None:
                         vertex_tools = [tool]
-                response = await model.generate_content_async(
-                    user_prompt,
-                    generation_config=gen_config,
-                    safety_settings=_safety_settings_vertex(),
-                    tools=vertex_tools,
+                response = await asyncio.wait_for(
+                    model.generate_content_async(
+                        user_prompt,
+                        generation_config=gen_config,
+                        safety_settings=_safety_settings_vertex(),
+                        tools=vertex_tools,
+                    ),
+                    timeout=GEMINI_REQUEST_TIMEOUT,
                 )
             else:
                 gen_config = _build_generation_config(
@@ -533,14 +537,19 @@ async def generate_personalized_text(
                     if tool is not None:
                         genai_tools = [tool]
                 # google-generativeai doesn't have async, run in thread
-                # Explicitly disable retry to avoid burning quota
-                response = await asyncio.to_thread(
-                    model.generate_content,
-                    user_prompt,
-                    generation_config=gen_config,
-                    safety_settings=_safety_settings_genai(),
-                    tools=genai_tools,
-                    request_options={"retry": _NO_RETRY},
+                # Explicitly disable retry to avoid burning quota.
+                # asyncio.wait_for releases the batch semaphore slot if the
+                # underlying SDK ignores the request_options timeout.
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        model.generate_content,
+                        user_prompt,
+                        generation_config=gen_config,
+                        safety_settings=_safety_settings_genai(),
+                        tools=genai_tools,
+                        request_options={"retry": _NO_RETRY, "timeout": GEMINI_REQUEST_TIMEOUT},
+                    ),
+                    timeout=GEMINI_REQUEST_TIMEOUT,
                 )
             name = candidate
             if idx > 0:
@@ -663,10 +672,13 @@ async def generate_structured(
                 )
                 from vertexai.generative_models import GenerativeModel
                 model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
-                response = await model.generate_content_async(
-                    user_prompt,
-                    generation_config=gen_config,
-                    safety_settings=_safety_settings_vertex(),
+                response = await asyncio.wait_for(
+                    model.generate_content_async(
+                        user_prompt,
+                        generation_config=gen_config,
+                        safety_settings=_safety_settings_vertex(),
+                    ),
+                    timeout=GEMINI_REQUEST_TIMEOUT,
                 )
             else:
                 gen_config = _build_generation_config(
@@ -677,12 +689,15 @@ async def generate_structured(
                 )
                 import google.generativeai as genai
                 model = genai.GenerativeModel(model_name=candidate, system_instruction=system_prompt)
-                response = await asyncio.to_thread(
-                    model.generate_content,
-                    user_prompt,
-                    generation_config=gen_config,
-                    safety_settings=_safety_settings_genai(),
-                    request_options={"retry": _NO_RETRY},
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        model.generate_content,
+                        user_prompt,
+                        generation_config=gen_config,
+                        safety_settings=_safety_settings_genai(),
+                        request_options={"retry": _NO_RETRY, "timeout": GEMINI_REQUEST_TIMEOUT},
+                    ),
+                    timeout=GEMINI_REQUEST_TIMEOUT,
                 )
             name = candidate
             if idx > 0:
