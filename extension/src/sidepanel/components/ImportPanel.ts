@@ -45,6 +45,7 @@ export class ImportPanel {
         personalized_text: entry.personalized_text,
         full_scout_text: entry.full_scout_text,
         template_type: entry.template_type,
+        job_category: entry.job_category,
       }));
 
       await this.candidateList.setCandidates(candidates);
@@ -84,6 +85,7 @@ export class ImportPanel {
         personalized_text: entry.personalized_text,
         full_scout_text: entry.full_scout_text,
         template_type: entry.template_type,
+        job_category: entry.job_category,
       }));
 
       await this.candidateList.setCandidates(candidates);

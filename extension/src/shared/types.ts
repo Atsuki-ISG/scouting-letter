@@ -92,6 +92,8 @@ export interface ScoutEntry {
   template_type: string;
   personalized_text: string;
   full_scout_text: string;
+  /** 求人選択ドロップダウンの自動マッチに使用。CSVから渡せば看護師以外（rehab_pt等）でも正しく求人が選ばれる */
+  job_category?: string;
 }
 
 export const SCOUT_CSV_COLUMNS: (keyof ScoutEntry)[] = [
@@ -99,6 +101,7 @@ export const SCOUT_CSV_COLUMNS: (keyof ScoutEntry)[] = [
   'template_type',
   'personalized_text',
   'full_scout_text',
+  'job_category',
 ];
 
 /** デバッグログエントリ */
