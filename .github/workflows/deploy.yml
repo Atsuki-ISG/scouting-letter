@@ -32,7 +32,7 @@ jobs:
             --source . \
             --region asia-northeast1 \
             --allow-unauthenticated \
-            --update-env-vars "SPREADSHEET_ID=1A5zSAVSzxt2ouEdV8moeu_85uUXOGKyJj7OxDP2Oc18,GEMINI_MODEL=gemini-3-flash-preview,GEMINI_FALLBACK_MODELS=gemini-2.5-flash,GEMINI_THINKING_BUDGET=8192,LOCATION=asia-northeast1,GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }},GOOGLE_CHAT_WEBHOOK_URL=${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }},REPORTS_DRIVE_FOLDER_ID=1W9old6Pr6ZiFQH1ItlZiMuAr-vEnY1N7" \
+            --update-env-vars "SPREADSHEET_ID=1A5zSAVSzxt2ouEdV8moeu_85uUXOGKyJj7OxDP2Oc18,GEMINI_MODEL=gemini-3-flash-preview,GEMINI_FALLBACK_MODELS=gemini-2.5-flash,GEMINI_THINKING_BUDGET=2048,LOCATION=asia-northeast1,GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }},GOOGLE_CHAT_WEBHOOK_URL=${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }},REPORTS_DRIVE_FOLDER_ID=1W9old6Pr6ZiFQH1ItlZiMuAr-vEnY1N7" \
             --memory 1Gi \
             --timeout 300 \
             --min-instances 1 \
