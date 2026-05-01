@@ -661,6 +661,24 @@ async def generate_structured(
     response = None
     name = primary
 
+    # Vertex AI's GenerationConfig accepts dict schemas but expects type
+    # values in UPPERCASE (OBJECT, STRING, ARRAY, ...). Our schema authoring
+    # convention uses JSON-schema-lowercase. Convert recursively for Vertex.
+    def _upcase_types(node):
+        if isinstance(node, dict):
+            out = {}
+            for k, v in node.items():
+                if k == "type" and isinstance(v, str):
+                    out[k] = v.upper()
+                else:
+                    out[k] = _upcase_types(v)
+            return out
+        if isinstance(node, list):
+            return [_upcase_types(x) for x in node]
+        return node
+
+    vertex_schema = _upcase_types(response_schema) if _use_vertex else response_schema
+
     for idx, candidate in enumerate(chain):
         try:
             if _use_vertex:
@@ -668,7 +686,7 @@ async def generate_structured(
                     temperature, max_output_tokens, candidate, for_vertex=True,
                     thinking_budget=thinking_budget,
                     response_mime_type="application/json",
-                    response_schema=response_schema,
+                    response_schema=vertex_schema,
                 )
                 from vertexai.generative_models import GenerativeModel
                 model = GenerativeModel(model_name=candidate, system_instruction=system_prompt)
