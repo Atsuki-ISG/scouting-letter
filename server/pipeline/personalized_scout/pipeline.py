@@ -21,7 +21,7 @@ from pipeline.routing import (
     resolve_header,
 )
 
-from .generator import generate_blocks
+from .generator import generate_blocks, revise_blocks
 from .text_builder import (
     BLOCK_PLACEHOLDERS,
     L2_BLOCKS,
@@ -227,6 +227,18 @@ async def generate_personalized_scout(
             filter_reason=f"[AI生成エラー] {e}",
             validation_warnings=soft_warnings,
             level=level,
+        )
+
+    # 5.5. Self-critique / revision pass. Catches reflex patterns
+    # (慰め前置き・PR薄補完・「いただけます」乱用) that the first-pass
+    # prompt cannot fully suppress. Failure here is non-fatal — we
+    # ship the draft if revision blows up.
+    try:
+        revised, _ = await revise_blocks(level=level, draft_blocks=blocks)
+        blocks = revised
+    except Exception as e:
+        logger.warning(
+            f"[{profile.member_id}] revise pass failed, using draft: {e}"
         )
 
     # For L3, the template body should have all 5 placeholders. For
