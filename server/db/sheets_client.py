@@ -606,6 +606,7 @@ class SheetsClient:
                 "job_category": jc,
                 "body": row.get("body", "").replace("\\n", "\n"),
                 "version": row.get("version", "1"),
+                "_row_index": row.get("_row_index"),
             }
         return result
 
