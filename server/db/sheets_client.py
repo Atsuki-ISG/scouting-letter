@@ -119,17 +119,21 @@ COMPETITOR_RESEARCH_HEADERS = [
 
 
 def _parse_sheet(rows: list[list[str]]) -> list[dict[str, str]]:
-    """Parse sheet rows (first row = header) into list of dicts."""
+    """Parse sheet rows (first row = header) into list of dicts.
+    Each item gets a `_row_index` (1-based sheet row number) so callers
+    can look up rows by their actual position in Sheets.
+    """
     if not rows or len(rows) < 2:
         return []
     headers = [h.strip() for h in rows[0]]
     result = []
-    for row in rows[1:]:
+    for sheet_row_idx, row in enumerate(rows[1:], start=2):
         if not any(cell.strip() for cell in row):
             continue  # skip empty rows
         item = {}
         for i, header in enumerate(headers):
             item[header] = row[i].strip() if i < len(row) else ""
+        item["_row_index"] = sheet_row_idx
         result.append(item)
     return result
 
