@@ -55,6 +55,7 @@ SHEET_MAP = {
     "profiles": "プロフィール",
     "job_category_keywords": "職種キーワード",
     "knowledge_pool": "ナレッジプール",
+    "fix_feedback": "修正フィードバック",
 }
 
 # Column order for each sheet (must match header row)
