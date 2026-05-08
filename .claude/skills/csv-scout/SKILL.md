@@ -127,13 +127,24 @@ recipes.md の「AI生成パス用ガイド」に従い生成:
 
 ### 6. 出力: 元CSVを更新
 
-元のCSVファイルに以下の3列を**追加**して上書き保存する:
+元のCSVファイルに以下の4列を**追加**して上書き保存する:
 
 | 列名 | 内容 |
 |------|------|
+| `job_category` | **【必須】** `nurse` / `rehab_pt` / `rehab_ot` / `rehab_st` / `sales` / `dietitian` / `counselor` / `medical_office` 等。Chrome拡張が求人ドロップダウンの自動選択に使う。**この列がないと拡張は看護師求人をデフォルトで引いて誤送信する**（実害発生済みの不具合） |
 | `template_type` | `パート_初回` 等 |
 | `personalized_text` | パーソナライズ文 |
 | `full_scout_text` | テンプレートにパーソナライズ文を挿入した完全版 |
+
+**`job_category` は絶対に省略しないこと。** 候補者の保有資格・希望職種から判定する:
+- 看護師資格＋希望職種=看護師 → `nurse`
+- 理学療法士資格＋希望職種=理学療法士 → `rehab_pt`
+- 作業療法士資格＋希望職種=作業療法士 → `rehab_ot`
+- 言語聴覚士 → `rehab_st`
+- 営業／入居相談員 → `sales`
+- 管理栄養士 → `dietitian`
+- 相談支援専門員 → `counselor`
+- 医療事務 → `medical_office`
 
 **書き込みにはPythonのcsvモジュールを使用する**（改行・カンマのエスケープを正しく処理するため）。
 元CSVがBOM付きUTF-8の場合は `utf-8-sig` で読み書きする。
@@ -171,7 +182,9 @@ Chrome拡張の「送信アシスト」→「CSVインポート」でインポ�
 Chrome拡張の `ImportPanel` が期待するCSV列:
 
 ```
-member_id,template_type,personalized_text,full_scout_text
+member_id,template_type,personalized_text,full_scout_text,job_category
 ```
 
-元CSVにプロフィール列が含まれていても、インポート時は上記4列のみ使用される（余分な列は無視される）。
+`job_category` は拡張が求人ドロップダウンを自動選択する際のキー。**省略すると拡張は看護師求人をデフォルトで選んでしまい、PT/OT 等の候補者に対して誤送信が発生する**（実害発生済みの不具合）。
+
+元CSVにプロフィール列が含まれていても、インポート時は上記5列のみ使用される（余分な列は無視される）。

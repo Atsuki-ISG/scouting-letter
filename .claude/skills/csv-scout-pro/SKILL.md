@@ -250,14 +250,25 @@ profile.md に「給与訴求マトリクス」がない場合は、profile.md �
 
 ### 6. 出力: 元CSVを更新
 
-元のCSVファイルに以下の4列を**追加**して上書き保存する:
+元のCSVファイルに以下の5列を**追加**して上書き保存する:
 
 | 列名 | 内容 |
 |------|------|
+| `job_category` | **【必須】** `nurse` / `rehab_pt` / `rehab_ot` / `counselor` 等。Chrome拡張が求人ドロップダウンの自動選択に使う。**この列がないと拡張は看護師求人をデフォルトで引いて誤送信する** |
 | `template_type` | `パート_初回` 等 |
 | `personalized_text` | パーソナライズ文（4ブロックを連結したもの） |
 | `full_scout_text` | テンプレートにパーソナライズ文・給与調整を適用した完全版 |
 | `attributes_json` | 属性判定結果のJSON文字列（情報量・経験タイプ・トーン・対象区分・給与調整・警告） |
+
+**`job_category` は絶対に省略しないこと。** 候補者の保有資格・希望職種から判定する:
+- 看護師資格＋希望職種=看護師 → `nurse`
+- 理学療法士資格＋希望職種=理学療法士 → `rehab_pt`
+- 作業療法士資格＋希望職種=作業療法士 → `rehab_ot`
+- 言語聴覚士 → `rehab_st`
+- 営業／入居相談員 → `sales`
+- 管理栄養士 → `dietitian`
+- 相談支援専門員 → `counselor`
+- 医療事務 → `medical_office`
 
 `attributes_json` の形式例:
 ```json
@@ -275,7 +286,7 @@ with open(path, 'r', encoding='utf-8-sig') as f:
     rows = list(reader)
     fieldnames = reader.fieldnames or []
 
-new_cols = ['template_type', 'personalized_text', 'full_scout_text', 'attributes_json']
+new_cols = ['job_category', 'template_type', 'personalized_text', 'full_scout_text', 'attributes_json']
 fieldnames = list(fieldnames) + [c for c in new_cols if c not in fieldnames]
 
 with open(path, 'w', encoding='utf-8-sig', newline='') as f:
@@ -314,8 +325,10 @@ pro 版は1人あたりの判定・生成・チェック量が多いため、**1
 Chrome拡張の `ImportPanel` が期待するCSV列:
 
 ```
-member_id,template_type,personalized_text,full_scout_text
+member_id,template_type,personalized_text,full_scout_text,job_category
 ```
+
+`job_category` は拡張が求人ドロップダウンを自動選択する際のキー。**省略すると拡張は看護師求人をデフォルトで選んでしまい、PT/OT 候補者に対して誤送信が発生する**（実害発生済みの不具合）。
 
 `attributes_json` は拡張側では無視されるが、CSVに残しておけば後の分析で使える。
 
