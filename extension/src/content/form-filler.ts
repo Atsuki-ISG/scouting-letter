@@ -68,6 +68,16 @@ export function resetCompanyMismatchCheck(): void {
   companyMismatchChecked = false;
 }
 
+/** ページから施設名が出そうな箇所のテキストを集める（document.title / h1,h2 / breadcrumb / サイドナビ等） */
+function collectPageFacilityText(): string {
+  const sources: string[] = [document.title];
+  const navLinks = document.querySelectorAll('a.c-sub-side-nav__link');
+  for (const el of navLinks) sources.push(el.textContent || '');
+  const headers = document.querySelectorAll('h1, h2, .c-breadcrumb, .c-header, .c-header__title, [class*="header"] [class*="title"]');
+  for (const el of headers) sources.push(el.textContent || '');
+  return sources.join(' ');
+}
+
 /** job_category → 求人テキストのマッチングキーワード（サーバー設定がない場合のフォールバック） */
 const FALLBACK_CATEGORY_KEYWORDS: Record<string, string[]> = {
   nurse: ['看護師', '准看護師'],
@@ -148,7 +158,9 @@ export async function selectJobOffer(
   // デバッグ: 全optionのテキストを出力
   options.forEach((o, i) => console.log(`[Scout Assistant] option[${i}]:`, o.textContent?.trim().slice(0, 100)));
 
-  // 4.5. 会社検証: ドロップダウンのテキストに選択中の会社の施設名が含まれるか確認
+  // 4.5. 会社検証: ドロップダウン or ページテキストに施設名キーワードが含まれるか確認
+  // 単一施設の「原稿作成委託」型スカウト画面ではドロップダウンに施設名が出ないことがあるため、
+  // ページヘッダー/タイトル/パンくずもフォールバックとして見る
   if (!companyMismatchChecked) {
     companyMismatchChecked = true;
     try {
@@ -157,10 +169,12 @@ export async function selectJobOffer(
       const storedKw: Record<string, string[]> = result[STORAGE_KEYS.DETECTION_KEYWORDS] || {};
       const keywords: string[] | undefined = storedKw[companyId] || COMPANY_FACILITY_KEYWORDS[companyId];
       if (keywords && keywords.length > 0) {
-        const allText = Array.from(options).map(o => o.textContent || '').join(' ');
-        const found = keywords.some(kw => allText.includes(kw));
+        const dropdownText = Array.from(options).map(o => o.textContent || '').join(' ');
+        const pageText = collectPageFacilityText();
+        const combined = `${dropdownText} ${pageText}`;
+        const found = keywords.some(kw => combined.includes(kw));
         if (!found) {
-          console.warn(`[Scout Assistant] COMPANY MISMATCH: selected=${companyId}, keywords=${keywords.join(',')}, not found in dropdown`);
+          console.warn(`[Scout Assistant] COMPANY MISMATCH: selected=${companyId}, keywords=${keywords.join(',')}, not found in dropdown or page`);
           try {
             chrome.runtime.sendMessage({
               type: 'COMPANY_MISMATCH',
