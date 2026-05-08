@@ -115,7 +115,7 @@ async def generate_personalized_scout(
 
     # 3. Resolve template body.
     template_body = _load_template_body(
-        config, job_category, template_type, template_row_index
+        config, job_category, template_type, template_row_index, level=level
     )
     if template_body is None:
         return _failure_response(
@@ -342,11 +342,16 @@ def _load_template_body(
     job_category: str,
     template_type: str,
     template_row_index: Optional[int],
+    level: Optional[str] = None,
 ) -> Optional[str]:
     """Find the template body matching (job_category, template_type)
     in the company config. If `template_row_index` is given we try
     the exact row first and fall back to the normal lookup — this
     lets the UI force a specific template.
+
+    When level is L2/L3 we look for `{template_type}_L3` first so that
+    block-placeholder templates can coexist with the legacy L1 ones
+    (which keep their original key for the existing send flow).
     """
     templates = config.get("templates") or {}
 
@@ -355,12 +360,24 @@ def _load_template_body(
             if tdata.get("_row_index") == template_row_index:
                 return (tdata.get("body") or "").replace("\\n", "\n")
 
-    for key in (
+    keys: list[str] = []
+    if level in ("L2", "L3"):
+        l3_type = f"{template_type}_L3"
+        l3_initial = f"{template_type.split('_')[0]}_初回_L3"
+        keys.extend([
+            f"{job_category}:{l3_type}",
+            l3_type,
+            f"{job_category}:{l3_initial}",
+            l3_initial,
+        ])
+    keys.extend([
         f"{job_category}:{template_type}",
         template_type,
         f"{job_category}:{template_type.split('_')[0]}_初回",
         f"{template_type.split('_')[0]}_初回",
-    ):
+    ])
+
+    for key in keys:
         tdata = templates.get(key)
         if tdata and tdata.get("body"):
             return (tdata["body"] or "").replace("\\n", "\n")
