@@ -213,42 +213,40 @@ export class GeneratePanel {
     this.progressText.textContent = `生成中... 0/${profiles.length}`;
 
     try {
-      // バッチ一括ではなく順次リクエスト (並列度 CONCURRENCY) で進捗をリアルタイム表示。
-      // サーバの /generate/batch は内部で並列処理するが 1 レスポンスなので 0/N のまま固定だった。
-      // AI生成パスは Gemini API を叩くため 1件20秒前後かかる。
-      // Tier 1 (有料) では gemini-2.5-flash の RPM が 1,000 と十分余裕があるため、
-      // 10並列まで上げて体感速度を改善。RPM上限に近づいて 429 が出るようなら下げる。
-      const CONCURRENCY = 10;
+      // チャンク分割で /generate/batch を順次呼ぶ。各チャンク内はサーバ側で並列処理。
+      // 単発 /generate を高並列で叩くと Cloud Run のインスタンス数が追い付かず
+      // 503/timeout が量産される (10並列で 25件中 22件失敗を観測)。バッチ経由なら
+      // 1 HTTP リクエスト＝1 インスタンスで完結するため詰まらない。
+      // CHUNK_SIZE = サーバ内並列度の MAX_BATCH_CONCURRENCY に揃えた。
+      const CHUNK_SIZE = 10;
       const total = profiles.length;
-      const results: GenerateResponse[] = new Array(total);
+      const results: GenerateResponse[] = [];
       let done = 0;
-      let nextIndex = 0;
 
-      const worker = async () => {
-        while (true) {
-          const i = nextIndex++;
-          if (i >= total) return;
-          try {
-            results[i] = await apiClient.generate(company, profiles[i], options);
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            results[i] = {
-              member_id: profiles[i].member_id,
+      for (let i = 0; i < total; i += CHUNK_SIZE) {
+        const slice = profiles.slice(i, i + CHUNK_SIZE);
+        try {
+          const resp = await apiClient.generateBatch(company, slice, options);
+          results.push(...resp.results);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          // バッチごと失敗 → スライス内全員を「生成エラー」として記録
+          for (const p of slice) {
+            results.push({
+              member_id: p.member_id,
               template_type: '',
               generation_path: 'filtered_out',
               personalized_text: '',
               full_scout_text: '',
               validation_warnings: [],
               filter_reason: `生成エラー: ${msg}`,
-            };
+            });
           }
-          done += 1;
-          this.progressFill.style.width = `${(done / total) * 100}%`;
-          this.progressText.textContent = `生成中... ${done}/${total}`;
         }
-      };
-
-      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker()));
+        done += slice.length;
+        this.progressFill.style.width = `${(done / total) * 100}%`;
+        this.progressText.textContent = `生成中... ${done}/${total}`;
+      }
 
       // クライアント側で summary を再構築 (サーババッチと同じ形)
       const summary = {
