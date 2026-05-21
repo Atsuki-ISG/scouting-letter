@@ -162,7 +162,7 @@ zip -r shared/scout-extension-$(date +%Y%m%d).zip scout_extension/ -x "*.map"
 - **zipには `scout_extension/` ディレクトリを含めること**（中のファイルだけでなくディレクトリごと）
 - ファイル名は `scout-extension-YYYYMMDD.zip`（日付で世代管理）
 - `shared/` に配置してオペレーターに共有
-- 古いzipは削除して最新のみ残す（git履歴で辿れる）
+- 古いzipは削除して最新のみ残す（zipは `.gitignore` でgit対象外。過去版が必要ならcommit時点のソースからビルドし直す）
 
 **オペレーターへの連絡項目:**
 - 配布時は [shared/Chrome拡張_インストールガイド.pdf](../../shared/Chrome拡張_インストールガイド.pdf) の「更新手順」を案内

@@ -20,3 +20,6 @@ server/**/__pycache__/
 # Extension build artifacts (全拡張で共通)
 dist/
 
+# Chrome拡張の配布zip — オペレーター配布用。ビルド成果物なのでgit管理しない
+shared/*.zip
+
