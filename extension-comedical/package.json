@@ -8,6 +8,7 @@
     "build:an": "node scripts/build.js --company=an-visiting-nurse",
     "build:chigasaki": "node scripts/build.js --company=chigasaki-tokushukai",
     "build:nomura": "node scripts/build.js --company=nomura-hospital",
+    "build:sato": "node scripts/build.js --company=sato-hospital --job=看護師",
     "test": "vitest run",
     "test:watch": "vitest"
   },

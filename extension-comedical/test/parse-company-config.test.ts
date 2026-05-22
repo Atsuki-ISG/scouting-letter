@@ -159,3 +159,144 @@ describe('parseTemplatesFromTemplates', () => {
     expect(templates[0].body).not.toContain('お試し');
   });
 });
+
+// ---------------------------------------------------------------------------
+// 複数職種形式（佐藤病院・an訪問看護など）
+// ---------------------------------------------------------------------------
+
+const SAMPLE_RECIPES_MULTIJOB = `# レシピ
+
+## 共通ルール
+
+- 全職種共通のルール
+
+## 看護師
+
+### 当院の特色（看護師向け）
+
+- 病床数116
+
+### 型はめパターン（看護師）
+
+#### 型A: 豊富な経験
+
+対象: 経験10年+
+
+\`\`\`
+看護師として10年以上のご経歴、{特色}活かせます。
+\`\`\`
+
+特色バリエーション:
+- ケアミックスで幅広い
+- 落ち着いた急性期
+
+#### 型B1: 経験×特色
+
+対象: 経験6〜9年
+
+\`\`\`
+看護師として{N}年、{特色}活かせます。
+\`\`\`
+
+特色バリエーション:
+- 多職種連携
+
+### AI生成ガイド（看護師）
+
+| 表 |
+
+## リハビリ職（PT/OT）
+
+### 型はめパターン（リハビリ職）
+
+#### 型A: 豊富な経験
+
+\`\`\`
+PTとして10年以上のご経歴、{特色}活かせます。
+\`\`\`
+
+特色バリエーション:
+- 急性期から在宅まで
+`;
+
+describe('parsePatternsFromRecipes (複数職種形式)', () => {
+  it('jobFilter="看護師" で看護師のみ抽出', () => {
+    const patterns = parsePatternsFromRecipes(SAMPLE_RECIPES_MULTIJOB, '看護師');
+    const types = patterns.map((p) => p.pattern_type);
+    expect(types).toEqual(['A', 'B1']);
+    expect(patterns[0].template_text).toContain('看護師として10年以上');
+    expect(patterns[0].feature_variations).toEqual(['ケアミックスで幅広い', '落ち着いた急性期']);
+  });
+
+  it('jobFilter=null で全職種抽出', () => {
+    const patterns = parsePatternsFromRecipes(SAMPLE_RECIPES_MULTIJOB, null);
+    expect(patterns).toHaveLength(3);
+  });
+
+  it('jobFilter="リハビリ" でリハビリ職のみ抽出', () => {
+    const patterns = parsePatternsFromRecipes(SAMPLE_RECIPES_MULTIJOB, 'リハビリ');
+    expect(patterns).toHaveLength(1);
+    expect(patterns[0].template_text).toContain('PTとして10年以上');
+  });
+
+  it('看護師セクションがリハビリ職の型を巻き込まない', () => {
+    const patterns = parsePatternsFromRecipes(SAMPLE_RECIPES_MULTIJOB, '看護師');
+    for (const p of patterns) {
+      expect(p.template_text).not.toContain('PTとして');
+    }
+  });
+});
+
+const SAMPLE_TEMPLATES_MULTIJOB = `# テンプレート
+
+## 看護師_正社員_初回テンプレート
+
+\`\`\`
+はじめまして、佐藤病院の影山です。
+{ここに生成した文章を挿入}
+\`\`\`
+
+## 看護師_正社員_再送テンプレート
+
+\`\`\`
+度々のご連絡失礼します。
+{ここに生成した文章を挿入}
+\`\`\`
+
+## PT_正社員_初回テンプレート
+
+\`\`\`
+はじめまして、PT用テンプレート。
+{ここに生成した文章を挿入}
+\`\`\`
+
+## OT_正社員_初回テンプレート
+
+\`\`\`
+はじめまして、OT用テンプレート。
+{ここに生成した文章を挿入}
+\`\`\`
+`;
+
+describe('parseTemplatesFromTemplates (職種フィルタ)', () => {
+  it('jobFilter="看護師" で看護師のテンプレートのみ抽出', () => {
+    const templates = parseTemplatesFromTemplates(SAMPLE_TEMPLATES_MULTIJOB, '看護師');
+    expect(templates).toHaveLength(2);
+    expect(templates[0].type).toBe('正社員_初回');
+    expect(templates[0].body).toContain('佐藤病院の影山');
+    expect(templates[1].type).toBe('正社員_再送');
+  });
+
+  it('jobFilter=null だと全テンプレート抽出', () => {
+    const templates = parseTemplatesFromTemplates(SAMPLE_TEMPLATES_MULTIJOB, null);
+    expect(templates).toHaveLength(4);
+  });
+
+  it('PT/OT は jobFilter="看護師" で除外される', () => {
+    const templates = parseTemplatesFromTemplates(SAMPLE_TEMPLATES_MULTIJOB, '看護師');
+    for (const t of templates) {
+      expect(t.body).not.toContain('PT用');
+      expect(t.body).not.toContain('OT用');
+    }
+  });
+});

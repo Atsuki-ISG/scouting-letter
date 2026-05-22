@@ -3,6 +3,11 @@
  *
  * 使い方:
  *   node scripts/build.js --company=chigasaki-tokushukai
+ *   node scripts/build.js --company=sato-hospital --job=看護師
+ *
+ * --job: 複数職種を持つ会社（佐藤病院・an訪問看護など）で
+ *        recipes.md/templates.md から特定職種のみ抽出する。
+ *        未指定なら全職種を抽出（単一職種の会社向け）。
  *
  * 出力: scout_extension/ （Chrome に「パッケージ化されていない拡張機能
  * として」読み込むディレクトリ）。
@@ -24,6 +29,7 @@ import {
   parsePatternsFromRecipes,
   parseTemplatesFromTemplates,
 } from './parse-company-config.js';
+import { sanitizePatterns, sanitizeTemplates } from './sanitize-for-comedical.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -33,6 +39,7 @@ const DISPLAY_NAMES = {
   'an-visiting-nurse': 'an訪問看護',
   'chigasaki-tokushukai': '茅ヶ崎徳洲会病院',
   'nomura-hospital': '野村病院',
+  'sato-hospital': '佐藤病院',
   // 必要に応じて追加:
   // 'ark-visiting-nurse': 'ARK訪問看護',
 };
@@ -49,10 +56,12 @@ function parseArgs(argv) {
 async function main() {
   const argv = parseArgs(process.argv);
   const companyId = argv.company || 'chigasaki-tokushukai';
+  const jobFilter = argv.job || null;
   const builtAt = new Date().toISOString();
   const companyLabel = DISPLAY_NAMES[companyId] || companyId;
-  const displayName = `${companyLabel} Scout (コメディカル)`;
-  const buildOpts = { companyId, displayName, builtAt };
+  const jobSuffix = jobFilter ? ` ${jobFilter}` : '';
+  const displayName = `${companyLabel}${jobSuffix} Scout (コメディカル)`;
+  const buildOpts = { companyId, displayName, builtAt, jobFilter };
 
   console.log('=== Build options ===');
   console.log(buildOpts);
@@ -76,18 +85,38 @@ async function main() {
   const recipesPath = resolve(companiesDir, 'recipes.md');
   const templatesPath = resolve(companiesDir, 'templates.md');
   if (existsSync(recipesPath)) {
-    bundledConfig.patterns = parsePatternsFromRecipes(readFileSync(recipesPath, 'utf-8'));
+    bundledConfig.patterns = parsePatternsFromRecipes(readFileSync(recipesPath, 'utf-8'), jobFilter);
   } else {
     console.warn(`[warn] recipes.md not found at ${recipesPath}`);
   }
   if (existsSync(templatesPath)) {
-    bundledConfig.templates = parseTemplatesFromTemplates(readFileSync(templatesPath, 'utf-8'));
+    bundledConfig.templates = parseTemplatesFromTemplates(readFileSync(templatesPath, 'utf-8'), jobFilter);
   } else {
     console.warn(`[warn] templates.md not found at ${templatesPath}`);
   }
   console.log(
     `  patterns: ${bundledConfig.patterns.length}, templates: ${bundledConfig.templates.length}`
   );
+
+  // コメディカル.com 送信制約に合わせてサニタイズ
+  console.log('=== Sanitizing for co-medical.com constraints ===');
+  const sp = sanitizePatterns(bundledConfig.patterns);
+  const st = sanitizeTemplates(bundledConfig.templates);
+  bundledConfig.patterns = sp.patterns;
+  bundledConfig.templates = st.templates;
+  const totalHyphen = sp.totals.hyphen + st.totals.hyphen;
+  const totalUrl = sp.totals.url + st.totals.url;
+  const totalLongDigits = sp.totals.longDigits + st.totals.longDigits;
+  console.log(`  ハイフン削除: ${totalHyphen}件, URL削除: ${totalUrl}件, 6桁以上の数字検出: ${totalLongDigits}件`);
+  const allWarnings = [...sp.warnings, ...st.warnings];
+  if (allWarnings.length > 0) {
+    console.log('--- 警告 ---');
+    for (const w of allWarnings) console.log(`  ${w}`);
+  }
+  if (totalLongDigits > 0) {
+    console.warn(`[warn] 6桁以上の数字が ${totalLongDigits}件 残っています。コメディカル.com で送信不可のため、templates.md/recipes.md で書き直してください。`);
+  }
+
   writeFileSync(bundledConfigPath, renderBundledCompanyConfig(bundledConfig));
 
   // Step 1: HTML (sidepanel) を Vite で
