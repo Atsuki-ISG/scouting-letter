@@ -137,17 +137,17 @@
 - `09_research_sns_media.md` 追加R3: 看護師SNS・OM勝ちパターン
 - `10_ceo_orientation_analysis.md` 医療21分析・代表志向プロファイル
 
-### Polish（5枚スライド完成版）
-- `polish/01_retention.md` ① 定着支援（88点）
-- `polish/02_shinma.md` ② シンママ（91点）
-- `polish/04_curated.md` ④ 医療版Findy v1（90点）
-- `polish/04_curated_v1.md` ④v1 バックアップ
-- `polish/04_curated_v2.md` ④v2 全看護師×闇批判ピボット（87点・参考）
-- `polish/08_mental_care.md` 案8 メンタルケア（88点）
-- `polish/A_integrated_constraint.md` 統合案A（92点）
-- `polish/AB_morrow_integrated.md` AB統合版（93点・現トップ）
-- `polish/B_morrow_inspired.md` 案B 菩薩エージェント単独（81点）
-- `polish/C_rpo_full.md` 案C 採用代行包括RPO（90点）
+### Polish（5枚スライド完成版・ファイル名末尾はスコア）
+- `polish/AB_morrow_integrated_93.md` AB統合版（**93点・現トップ**）
+- `polish/A_integrated_constraint_92.md` 統合案A（92点）
+- `polish/02_shinma_91.md` ② シンママ（91点）
+- `polish/04_curated_90.md` ④ 医療版Findy v1（90点）
+- `polish/C_rpo_full_90.md` 案C 採用代行包括RPO（90点）
+- `polish/01_retention_88.md` ① 定着支援（88点）
+- `polish/08_mental_care_88.md` 案8 メンタルケア（88点）
+- `polish/04_curated_v2_87.md` ④v2 全看護師×闇批判ピボット（87点・参考）
+- `polish/B_morrow_inspired_81.md` 案B 菩薩エージェント単独（81点）
+- `polish/04_curated_v1_90.md` ④v1 バックアップ（90点）
 
 ---
 

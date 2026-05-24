@@ -240,11 +240,16 @@
 - `06_brainstorm_other_industries.md` 他業界の看護師版12案ブレスト
 
 ### Polish（5案）
-- `polish/01_retention.md` ① 5枚スライド完成版
-- `polish/02_shinma.md` ② 5枚スライド完成版（軌道修正反映）
-- `polish/04_curated.md` ④ 5枚スライド完成版（医療版Findy）
-- `polish/A_integrated_constraint.md` 統合案A 5枚スライド完成版
-- `polish/08_mental_care.md` 案8 メンタルケアサブスク 5枚スライド完成版
+- `polish/AB_morrow_integrated_93.md` AB統合版 5枚スライド完成版（**93点・現トップ**）
+- `polish/A_integrated_constraint_92.md` 統合案A 5枚スライド完成版（92点）
+- `polish/02_shinma_91.md` ② シンママ 5枚スライド完成版（軌道修正反映、91点）
+- `polish/04_curated_90.md` ④ 医療版Findy 5枚スライド完成版（90点）
+- `polish/C_rpo_full_90.md` 案C 採用代行包括RPO 5枚スライド完成版（90点）
+- `polish/01_retention_88.md` ① 定着支援 5枚スライド完成版（88点）
+- `polish/08_mental_care_88.md` 案8 メンタルケアサブスク 5枚スライド完成版（88点）
+- `polish/04_curated_v2_87.md` ④v2 全看護師×闇批判ピボット（87点・参考）
+- `polish/B_morrow_inspired_81.md` 案B 菩薩エージェント単独 5枚スライド完成版（81点）
+- `polish/04_curated_v1_90.md` ④v1 バックアップ
 
 ### 追加リサーチ
 - `07_research_integrated_a.md` 統合案A TAM精緻化・規制対応
