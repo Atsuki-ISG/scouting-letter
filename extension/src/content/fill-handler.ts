@@ -72,10 +72,11 @@ async function trySelectJobOffer(
   jobCategory: string,
   employmentType: string,
   memberId?: string,
-  categoryKeywords?: string[]
+  categoryKeywords?: string[],
+  jobOfferId?: string
 ): Promise<{ success: boolean; error?: string }> {
   debugLog('求人選択', 'pending');
-  const jobResult = await selectJobOffer(searchTerm, jobCategory, employmentType, categoryKeywords);
+  const jobResult = await selectJobOffer(searchTerm, jobCategory, employmentType, categoryKeywords, jobOfferId);
   debugLog('求人選択', jobResult.success ? 'success' : 'error', jobResult.success ? `${jobCategory}/${employmentType}` : jobResult.error);
 
   if (!jobResult.success) {
@@ -91,19 +92,20 @@ export async function handleFillJobOffer(
   searchTerm: string,
   jobCategory: string,
   employmentType: string,
-  memberId?: string
+  memberId?: string,
+  jobOfferId?: string
 ): Promise<{ success: boolean; error?: string }> {
   // overlayが既に開いていればそのまま求人選択
   const existingOverlay = document.querySelector(SELECTORS.overlay);
   if (existingOverlay && !existingOverlay.classList.contains('u-is-hidden')) {
     await waitForFormElements();
-    return trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId);
+    return trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId, undefined, jobOfferId);
   }
 
   if (memberId) {
     const openResult = await openOverlayForMember(memberId);
     if (!openResult.success) return openResult;
-    return trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId);
+    return trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId, undefined, jobOfferId);
   }
 
   return { success: false, error: 'スカウト画面が開いていません' };
@@ -117,14 +119,15 @@ export async function handleFillForm(
   jobCategory?: string,
   employmentType?: string,
   skipJobOffer?: boolean,
-  categoryKeywords?: string[]
+  categoryKeywords?: string[],
+  jobOfferId?: string
 ): Promise<{ success: boolean; error?: string; jobOfferFailed?: boolean }> {
   // overlayが既に開いていればそのまま入力
   const existingOverlay = document.querySelector(SELECTORS.overlay);
   if (existingOverlay && !existingOverlay.classList.contains('u-is-hidden')) {
     let jobOfferFailed = false;
     if (searchTerm && jobCategory && employmentType && !skipJobOffer) {
-      const jobResult = await trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId, categoryKeywords);
+      const jobResult = await trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId, categoryKeywords, jobOfferId);
       jobOfferFailed = !jobResult.success;
       // 求人選択後のReact再レンダリングを待つ（揺らぎ付き）
       await randomSleep(250, 600);
@@ -151,7 +154,7 @@ export async function handleFillForm(
     // 求人を自動選択
     let jobOfferFailed = false;
     if (searchTerm && jobCategory && employmentType && !skipJobOffer) {
-      const jobResult = await trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId, categoryKeywords);
+      const jobResult = await trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId, categoryKeywords, jobOfferId);
       jobOfferFailed = !jobResult.success;
       // 求人選択後のReact再レンダリングを待つ（揺らぎ付き）
       await randomSleep(250, 600);

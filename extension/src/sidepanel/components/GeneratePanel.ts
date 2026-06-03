@@ -297,6 +297,7 @@ export class GeneratePanel {
           full_scout_text: r.full_scout_text,
           template_type: r.template_type,
           job_category: r.job_category,
+          job_offer_id: r.job_offer_id,
           is_favorite: r.is_favorite,
           validationResults: apiWarnings.length > 0 ? apiWarnings : undefined,
         };

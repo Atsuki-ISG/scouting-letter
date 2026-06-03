@@ -108,6 +108,7 @@ export async function selectJobOffer(
   jobCategory: string,
   employmentType: string,
   categoryKeywords?: string[],
+  jobOfferId?: string,
 ): Promise<{ success: boolean; error?: string; selectedJobId?: string }> {
   const suggestInput = document.querySelector(SELECTORS.jobOfferSuggestInput) as HTMLInputElement | null;
   if (!suggestInput) {
@@ -193,14 +194,34 @@ export async function selectJobOffer(
 
   let targetIndex = -1;
 
-  // 両方マッチする求人を探す
-  for (let i = 0; i < options.length; i++) {
-    const text = options[i].textContent?.trim() || '';
-    const categoryMatch = effectiveCategoryKeywords.some((kw) => text.includes(kw));
-    const empMatch = empKeywords.length === 0 || empKeywords.some((kw) => text.includes(kw));
-    if (categoryMatch && empMatch) {
-      targetIndex = i;
-      break;
+  // 5.0 求人ID優先: サーバが返した job_offer_id と先頭IDが一致する求人を最優先で選択する。
+  //     同一カテゴリ×雇用形態の求人が複数掲載されていても（例: いちご看護師正社員が
+  //     石神井/富士見台/介護の3件）、指定された求人を確実に当てるための分岐。
+  if (jobOfferId && jobOfferId.trim()) {
+    const wantId = jobOfferId.trim();
+    for (let i = 0; i < options.length; i++) {
+      const idMatch = (options[i].textContent?.trim() || '').match(/^(\d+)/);
+      if (idMatch && idMatch[1] === wantId) {
+        targetIndex = i;
+        console.log('[Scout Assistant] Job offer matched by ID %s at option[%d]', wantId, i);
+        break;
+      }
+    }
+    if (targetIndex === -1) {
+      console.warn(`[Scout Assistant] job_offer_id ${wantId} がドロップダウンに見つかりません。キーワード一致にフォールバックします`);
+    }
+  }
+
+  // 両方マッチする求人を探す（IDで特定できなかった場合のフォールバック）
+  if (targetIndex === -1) {
+    for (let i = 0; i < options.length; i++) {
+      const text = options[i].textContent?.trim() || '';
+      const categoryMatch = effectiveCategoryKeywords.some((kw) => text.includes(kw));
+      const empMatch = empKeywords.length === 0 || empKeywords.some((kw) => text.includes(kw));
+      if (categoryMatch && empMatch) {
+        targetIndex = i;
+        break;
+      }
     }
   }
 

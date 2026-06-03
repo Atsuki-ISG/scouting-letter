@@ -122,7 +122,7 @@ function waitForOverlayCloseOrSkip(timeoutMs: number): Promise<'closed' | 'skipp
 }
 
 /** サイドパネルから次の候補者を取得 */
-function getNextCandidate(): Promise<{ memberId: string; text: string; personalizedText: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[] } | null> {
+function getNextCandidate(): Promise<{ memberId: string; text: string; personalizedText: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[]; jobOfferId?: string } | null> {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'GET_NEXT_CANDIDATE' } satisfies Message, (response) => {
       if (response?.type === 'NEXT_CANDIDATE') {
@@ -192,14 +192,14 @@ export async function start(): Promise<void> {
 
     console.log(`[Scout Assistant] Processing candidate: ${next.memberId}`);
 
-    const { searchTerm, jobCategory, employmentType, categoryKeywords } = next;
+    const { searchTerm, jobCategory, employmentType, categoryKeywords, jobOfferId } = next;
 
     // 求人自動選択の設定を確認
     const autoJobOfferResult = await chrome.storage.local.get(STORAGE_KEYS.AUTO_JOB_OFFER);
     const skipJobOffer = autoJobOfferResult[STORAGE_KEYS.AUTO_JOB_OFFER] === false;
 
     console.log(`[Scout Assistant] Calling handleFillForm for ${next.memberId}, jobCategory:`, jobCategory, employmentType, 'skipJobOffer:', skipJobOffer);
-    const result = await handleFillForm(next.text, next.memberId, searchTerm, jobCategory, employmentType, skipJobOffer, categoryKeywords);
+    const result = await handleFillForm(next.text, next.memberId, searchTerm, jobCategory, employmentType, skipJobOffer, categoryKeywords, jobOfferId);
     console.log(`[Scout Assistant] handleFillForm result:`, result);
 
     if (!result.success) {

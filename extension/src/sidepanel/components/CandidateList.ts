@@ -89,7 +89,7 @@ export class CandidateList {
     this.restore();
   }
 
-  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; personalizedText: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[] } | null> {
+  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; personalizedText: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[]; jobOfferId?: string } | null> {
     const candidate = this.candidates.find((c) => c.status === 'ready');
     if (!candidate) return null;
 
@@ -108,6 +108,7 @@ export class CandidateList {
       jobCategory,
       employmentType,
       categoryKeywords,
+      jobOfferId: candidate.job_offer_id,
     };
   }
 
@@ -397,6 +398,7 @@ export class CandidateList {
         employmentType,
         skipJobOffer: !autoJobOffer,
         categoryKeywords,
+        jobOfferId: candidate.job_offer_id,
       } satisfies Message,
       async (response) => {
         if (response && !response.success) {
