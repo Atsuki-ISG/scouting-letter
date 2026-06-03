@@ -181,6 +181,8 @@ export interface CandidateItem {
   full_scout_text: string;
   template_type: string;
   job_category?: string;
+  /** サーバが解決した送付求人ID（拡張の求人選択を確定させる。APIパス生成時に付与） */
+  job_offer_id?: string;
   validationResults?: ValidationResult[];
   is_favorite?: boolean;
   /** developer-mode の L2/L3 生成時にのみ存在する */
@@ -254,9 +256,9 @@ export type Message =
   | { type: 'EXTRACTION_ERROR'; error: string }
   | { type: 'GET_OVERLAY_MEMBER_ID' }
   | { type: 'OVERLAY_MEMBER_ID'; memberId: string | null }
-  | { type: 'FILL_FORM'; text: string; memberId?: string; searchTerm?: string; jobCategory?: string; employmentType?: string; skipJobOffer?: boolean; categoryKeywords?: string[] }
+  | { type: 'FILL_FORM'; text: string; memberId?: string; searchTerm?: string; jobCategory?: string; employmentType?: string; skipJobOffer?: boolean; categoryKeywords?: string[]; jobOfferId?: string }
   | { type: 'FILL_FORM_RESULT'; success: boolean; error?: string }
-  | { type: 'FILL_JOB_OFFER'; searchTerm: string; jobCategory: string; employmentType: string; memberId?: string }
+  | { type: 'FILL_JOB_OFFER'; searchTerm: string; jobCategory: string; employmentType: string; memberId?: string; jobOfferId?: string }
   | { type: 'OPEN_SIDE_PANEL' }
   | { type: 'EXTRACT_CONVERSATION' }
   | { type: 'EXTRACT_ALL_CONVERSATIONS'; limit?: number }
@@ -267,7 +269,7 @@ export type Message =
   | { type: 'START_CONTINUOUS_SEND' }
   | { type: 'STOP_CONTINUOUS_SEND' }
   | { type: 'GET_NEXT_CANDIDATE' }
-  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string } | null }
+  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string; jobOfferId?: string } | null }
   | {
       type: 'CANDIDATE_SENT';
       memberId: string;

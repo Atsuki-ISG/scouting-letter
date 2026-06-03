@@ -37,12 +37,12 @@ chrome.runtime.onMessage.addListener(
       }
 
       case 'FILL_FORM': {
-        handleFillForm(message.text, message.memberId, message.searchTerm, message.jobCategory, message.employmentType, message.skipJobOffer, message.categoryKeywords).then(sendResponse);
+        handleFillForm(message.text, message.memberId, message.searchTerm, message.jobCategory, message.employmentType, message.skipJobOffer, message.categoryKeywords, message.jobOfferId).then(sendResponse);
         return true;
       }
 
       case 'FILL_JOB_OFFER': {
-        handleFillJobOffer(message.searchTerm, message.jobCategory, message.employmentType, message.memberId).then(sendResponse);
+        handleFillJobOffer(message.searchTerm, message.jobCategory, message.employmentType, message.memberId, message.jobOfferId).then(sendResponse);
         return true;
       }
 
