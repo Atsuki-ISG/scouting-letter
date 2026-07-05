@@ -429,6 +429,7 @@ body {
 .candidate-color-bar.ready { background: var(--c-primary); }
 .candidate-color-bar.sent { background: var(--c-success); }
 .candidate-color-bar.skipped { background: var(--c-border); }
+.candidate-color-bar.error { background: var(--color-danger); }
 
 /* Card content area */
 .candidate-body {
@@ -548,6 +549,12 @@ body {
   background: var(--color-surface-3);
   color: var(--color-text-3);
   border-color: var(--color-border);
+}
+
+.candidate-status.error {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: #fecdd3;
 }
 
 /* Preview */

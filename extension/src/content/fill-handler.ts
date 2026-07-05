@@ -1,8 +1,30 @@
 import { randomSleep } from '../shared/utils';
 import { SELECTORS, queryAllElements } from './selectors';
-import { waitForOverlay, waitForOverlayClose } from './scraper';
+import { waitForOverlay, waitForOverlayClose, getOverlayMemberId } from './scraper';
 import { fillScoutText, selectJobOffer } from './form-filler';
 import { debugLog, safeSendMessage } from './helpers';
+
+/** 会員番号の先頭ゼロを無視して比較するための正規化 */
+function normalizeMemberId(id: string): string {
+  return id.replace(/^0+/, '');
+}
+
+/**
+ * 既に開いているoverlayが対象候補者のものか照合する。
+ * 会員番号が判定できない場合は従来通り通す（誤ブロックを避ける）。
+ * 明確に別人の場合のみ ok=false を返し、誤送信を防ぐ。
+ */
+function verifyOpenOverlayMember(memberId?: string): { ok: boolean; error?: string } {
+  if (!memberId) return { ok: true };
+  const overlayId = getOverlayMemberId();
+  if (!overlayId) return { ok: true };
+  if (normalizeMemberId(overlayId) !== normalizeMemberId(memberId)) {
+    const error = `開いているスカウト画面（会員番号 ${overlayId}）が対象候補者（${memberId}）と一致しません。誤送信防止のため中断しました。対象候補者のスカウト画面を開き直してください。`;
+    debugLog('本人照合', 'error', error);
+    return { ok: false, error };
+  }
+  return { ok: true };
+}
 
 /** overlay内のフォーム要素（求人input・テキストエリア）が出現するまで待機 */
 function waitForFormElements(timeoutMs = 5000): Promise<void> {
@@ -98,6 +120,8 @@ export async function handleFillJobOffer(
   // overlayが既に開いていればそのまま求人選択
   const existingOverlay = document.querySelector(SELECTORS.overlay);
   if (existingOverlay && !existingOverlay.classList.contains('u-is-hidden')) {
+    const verify = verifyOpenOverlayMember(memberId);
+    if (!verify.ok) return { success: false, error: verify.error };
     await waitForFormElements();
     return trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId, undefined, jobOfferId);
   }
@@ -125,6 +149,9 @@ export async function handleFillForm(
   // overlayが既に開いていればそのまま入力
   const existingOverlay = document.querySelector(SELECTORS.overlay);
   if (existingOverlay && !existingOverlay.classList.contains('u-is-hidden')) {
+    // 開いているoverlayが対象候補者本人か照合（別人の画面への誤充填を防ぐ）
+    const verify = verifyOpenOverlayMember(memberId);
+    if (!verify.ok) return { success: false, error: verify.error };
     let jobOfferFailed = false;
     if (searchTerm && jobCategory && employmentType && !skipJobOffer) {
       const jobResult = await trySelectJobOffer(searchTerm, jobCategory, employmentType, memberId, categoryKeywords, jobOfferId);

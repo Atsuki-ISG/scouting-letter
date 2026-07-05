@@ -158,8 +158,8 @@ export interface ConfirmResult {
   editReason?: string;
 }
 
-/** 候補者の送信ステータス */
-export type CandidateStatus = 'ready' | 'sent' | 'skipped';
+/** 候補者の送信ステータス。'error' = 充填失敗等で未送信のまま処理を離脱した状態 */
+export type CandidateStatus = 'ready' | 'sent' | 'skipped' | 'error';
 
 /** パーソナライズ率計測（developer mode の新パーソナライズ生成が返す） */
 export interface PersonalizationStats {
@@ -284,6 +284,10 @@ export type Message =
       } | null;
       sentAt?: string;
     }
+  // 連続送信中に本文充填が失敗した候補者。'sent' ではなく 'error' として記録し、取りこぼしを可視化する
+  | { type: 'CANDIDATE_FILL_FAILED'; memberId: string; error?: string }
+  // 連続送信中にNG判定・スキップされた候補者。'sent' ではなく 'skipped' として記録する
+  | { type: 'CANDIDATE_SKIPPED'; memberId: string }
   | { type: 'SKIP_CURRENT_CANDIDATE' }
   | { type: 'DEBUG_LOG'; entry: DebugLogEntry }
   | { type: 'DRY_RUN_COMPLETE'; memberId: string }

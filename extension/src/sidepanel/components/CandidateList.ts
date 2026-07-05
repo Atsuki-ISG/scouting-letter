@@ -64,6 +64,11 @@ export class CandidateList {
           sendResponse({ type: 'NEXT_CANDIDATE', candidate: next });
         });
         return true; // async response
+      } else if (msg.type === 'CANDIDATE_FILL_FAILED') {
+        // 充填失敗 → 'error'（未送信・要対応）。'ready' に戻すと連続送信が同じ候補で無限ループするため終端ステータスにする
+        this.updateStatus(msg.memberId, 'error');
+      } else if (msg.type === 'CANDIDATE_SKIPPED') {
+        this.updateStatus(msg.memberId, 'skipped');
       } else if (msg.type === 'CANDIDATE_SENT') {
         // skipped状態にすでに更新済みならsentに上書きしない
         const c = this.candidates.find((c) => c.member_id === msg.memberId);
@@ -607,6 +612,7 @@ export class CandidateList {
     const ready = this.candidates.filter((c) => c.status === 'ready').length;
     const sent = this.candidates.filter((c) => c.status === 'sent').length;
     const skipped = this.candidates.filter((c) => c.status === 'skipped').length;
+    const errored = this.candidates.filter((c) => c.status === 'error').length;
     const total = this.candidates.length;
 
     const bar = document.createElement('div');
@@ -616,6 +622,7 @@ export class CandidateList {
       <span class="summary-item summary-label-ready"><span class="summary-count">${ready}</span>未送信</span>
       <span class="summary-item summary-label-sent"><span class="summary-count">${sent}</span>送信済</span>
       <span class="summary-item summary-label-skipped"><span class="summary-count">${skipped}</span>スキップ</span>
+      ${errored > 0 ? `<span class="summary-item summary-label-error"><span class="summary-count">${errored}</span>失敗</span>` : ''}
     `;
     this.listEl.parentElement?.insertBefore(bar, this.listEl);
   }
@@ -634,6 +641,7 @@ export class CandidateList {
     switch (status) {
       case 'sent': return '送信済';
       case 'skipped': return 'スキップ';
+      case 'error': return '失敗';
       default: return '未送信';
     }
   }

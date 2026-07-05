@@ -204,7 +204,9 @@ export async function start(): Promise<void> {
 
     if (!result.success) {
       console.error('[Scout Assistant] Fill form failed:', result.error);
-      safeSendMessage({ type: 'CANDIDATE_SENT', memberId: next.memberId });
+      // 充填失敗は「送信済」ではなく「失敗」として記録する。
+      // 'sent' にすると未送信の取りこぼしがオペレーターに気づかれないため。
+      safeSendMessage({ type: 'CANDIDATE_FILL_FAILED', memberId: next.memberId, error: result.error });
       await randomSleep(200, 600);
       continue;
     }
@@ -267,7 +269,8 @@ export async function start(): Promise<void> {
       debugLog('確認ポップアップ', 'success', 'スキップ');
       closeOverlay();
       await waitForOverlayClose();
-      safeSendMessage({ type: 'CANDIDATE_SENT', memberId: next.memberId });
+      // NG判定は「送信済」ではなく「スキップ」として記録する（GASの送信ログ汚染も防ぐ）
+      safeSendMessage({ type: 'CANDIDATE_SKIPPED', memberId: next.memberId });
       await randomSleep(300, 800);
       continue;
     }
