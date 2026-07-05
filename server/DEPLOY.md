@@ -1,261 +1,176 @@
-# デプロイ手順書
+# デプロイ手順書（scout-api / Cloud Run）
 
-## 前提
+> このドキュメントは **実運用の現状** を記述する。手順が実態と食い違うと本番を壊すため、
+> deploy.yml・config.py を変更したら必ずここも更新すること。
 
-- Googleアカウント（Google Workspace）を持っている
-- `gcloud` CLIがインストール済み（未インストールなら https://cloud.google.com/sdk/docs/install）
+## 概要
 
----
+| 項目 | 値 |
+|------|----|
+| サービス名 | `scout-api`（Cloud Run） |
+| リージョン | `asia-northeast1`（東京） |
+| GCPプロジェクト | `scout-generation-490709` |
+| デプロイ方法 | **GitHub Actions 自動**（`server/**` を main に push） |
+| 認証（API） | `X-API-Key` ヘッダー = `ADMIN_PASSWORD` 1本（GitHub Secret） |
+| データソース | Google スプレッドシート（6シート、ID は deploy.yml に記載） |
+| 生成AI | Vertex AI 経由の Gemini（本番は `GEMINI_API_KEY` を使わず、ランタイムSAのADC認証） |
+| インスタンス | min-instances 2 / メモリ 1Gi / リクエストtimeout 300s |
+| 設定キャッシュ | `CACHE_TTL_SECONDS=300`（最大5分で全インスタンス自動反映） |
 
-## Step 1: GCPプロジェクト作成
-
-### 1-1. Google Cloud Consoleにアクセス
-
-https://console.cloud.google.com/ にアクセスしてログイン。
-
-### 1-2. プロジェクト作成
-
-1. 画面上部のプロジェクト選択メニュー → 「新しいプロジェクト」
-2. プロジェクト名: `scout-generation`（任意）
-3. 「作成」をクリック
-4. 作成されたプロジェクトに切り替わったことを確認
-
-### 1-3. 課金を有効化
-
-1. ナビゲーションメニュー → 「お支払い」
-2. 請求先アカウントをリンク（初回は無料トライアル$300あり）
-
-### 1-4. gcloud CLIの設定
-
-```bash
-gcloud auth login
-gcloud config set project scout-generation
-```
+真実のソースは 2 ファイル:
+- インフラ設定（env・リージョン・インスタンス）→ [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml)
+- アプリの既定値 → [config.py](config.py)
 
 ---
 
-## Step 2: 必要なAPIの有効化
+## 通常のデプロイ（自動）
 
-Google Cloud Consoleの「APIとサービス」→「ライブラリ」から以下を有効化。
-またはコマンドで一括有効化:
+**`server/` 配下を変更して main に push するだけ**。GitHub Actions が Cloud Run にデプロイする。
 
 ```bash
-gcloud services enable \
-  run.googleapis.com \
-  artifactregistry.googleapis.com \
-  aiplatform.googleapis.com \
-  sheets.googleapis.com
+git add server/...
+git commit -m "..."
+git push origin main   # → .github/workflows/deploy.yml が起動
 ```
 
-| API | 用途 |
-|-----|------|
-| Cloud Run Admin API | Cloud Runデプロイ |
-| Artifact Registry API | Dockerイメージ保存 |
-| Vertex AI API | Gemini Pro呼び出し |
-| Google Sheets API | スプレッドシートからの設定読み込み |
+- トリガー: `server/**` または `.github/workflows/deploy.yml` の変更を main に push。手動起動は GitHub の Actions 画面から `workflow_dispatch` でも可。
+- ワークフローは Workload Identity Federation（`WIF_PROVIDER` / `WIF_SERVICE_ACCOUNT`）で GCP 認証し、`gcloud run deploy scout-api --source .` を実行する。
+- ビルドは `server/Dockerfile`。`server/.dockerignore` で `sa-key.json` 等を除外している。
+- 進捗・失敗は GitHub の **Actions** タブで確認。`gcloud` をローカルで叩く必要は通常ない。
 
 ---
 
-## Step 3: サービスアカウント作成
+## 環境変数（deploy.yml で管理）
 
-Cloud Runのサービスアカウントに必要な権限を付与する。
+env は deploy.yml の `--update-env-vars` に列挙されている。**`--update-env-vars` はマージ更新**（既存を消さない）なので、手でデプロイするときも既存 env は保持される。
 
-### 3-1. サービスアカウント作成
+| 変数 | 値 / 出所 | 用途 |
+|------|-----------|------|
+| `SPREADSHEET_ID` | deploy.yml に直書き | 設定シートのID |
+| `PROJECT_ID` | `scout-generation-490709` | Vertex AI プロジェクト |
+| `LOCATION` | `global` | Vertex AI のロケーション（Cloud Run リージョンとは別物） |
+| `GEMINI_MODEL` | `gemini-3-flash-preview` | 生成モデル |
+| `GEMINI_FALLBACK_MODELS` | `gemini-2.5-flash` | 429時のフォールバック |
+| `GEMINI_THINKING_BUDGET` | `2048` | thinking トークン上限 |
+| `ADMIN_PASSWORD` | **GitHub Secret** | API/管理画面の認証キー |
+| `GOOGLE_CHAT_WEBHOOK_URL` | **GitHub Secret** | コストアラート通知先 |
+| `REPORTS_DRIVE_FOLDER_ID` | deploy.yml に直書き | レポート出力先 Drive フォルダ |
+| `CACHE_TTL_SECONDS` | `300` | 設定キャッシュの有効期間（秒） |
 
-```bash
-gcloud iam service-accounts create scout-api \
-  --display-name="Scout Generation API"
-```
+- `GEMINI_API_KEY` は本番では **削除**（`--remove-env-vars`）。これにより ai_generator が Vertex AI 経路（ADC 認証）になる。ローカルで Developer API を使いたいときだけ設定する。
+- `LATEST_EXTENSION_VERSION` は未設定なら config.py の既定（拡張の現行版）を使う。拡張を更新配布したら config.py かこの env を合わせて上げる。
 
-### 3-2. 権限付与
-
-```bash
-PROJECT_ID=$(gcloud config get-value project)
-
-# Vertex AI（Gemini呼び出し）
-gcloud projects add-iam-policy-binding $PROJECT_ID \
-  --member="serviceAccount:scout-api@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role="roles/aiplatform.user"
-```
-
-### 3-3. サービスアカウントキー作成（ローカルテスト用）
-
-```bash
-gcloud iam service-accounts keys create server/sa-key.json \
-  --iam-account=scout-api@${PROJECT_ID}.iam.gserviceaccount.com
-```
-
-> ⚠️ `sa-key.json` は `.gitignore` に追加すること。Cloud Run上では不要（自動認証される）。
+GitHub Secrets（Settings → Secrets and variables → Actions）:
+`ADMIN_PASSWORD`, `GOOGLE_CHAT_WEBHOOK_URL`, `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`。
 
 ---
 
-## Step 4: Google スプレッドシートの準備
+## 認証（現状）
 
-### 4-1. スプレッドシート作成
-
-Google スプレッドシートで新規作成し、以下の6シートを作る:
-
-| シート名 | 列（1行目にヘッダー） |
-|---------|----------------------|
-| テンプレート | company, job_category, type, body |
-| パターン | company, job_category, pattern_type, employment_variant, template_text, feature_variations |
-| 資格修飾 | company, qualification_combo, replacement_text |
-| プロンプト | company, section_type, job_category, order, content |
-| 求人 | company, job_category, id, name, label, employment_type, active |
-| バリデーション | company, age_min, age_max, qualification_rules |
-
-### 4-2. データ入力のポイント
-
-- **body / template_text / content**: 改行は `\n` で表記
-- **feature_variations**: `|` 区切り（例: `特色A|特色B|特色C`）
-- **qualification_combo**: カンマ区切り（例: `看護師,保健師`）
-- **qualification_rules**: JSON形式（例: `[{"jobOfferId":"1550716","required":["看護師","准看護師"],"excluded":[]}]`）
-- **active**: `TRUE` または `FALSE`
-
-### 4-3. サービスアカウントにスプレッドシートを共有
-
-1. スプレッドシートの「共有」ボタンをクリック
-2. サービスアカウントのメールアドレスを入力:
-   `scout-api@{PROJECT_ID}.iam.gserviceaccount.com`
-3. 権限: **閲覧者**（読み取りのみで十分）
-4. 「送信」
-
-### 4-4. スプレッドシートIDをメモ
-
-スプレッドシートのURL:
-`https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit`
-
-`{SPREADSHEET_ID}` の部分をメモする。
+- API も管理画面も、認証は `X-API-Key: <ADMIN_PASSWORD>` の **1本のみ**（[auth/api_key.py](auth/api_key.py)）。
+- オペレーター（拡張）と管理者（管理画面）が同じキーを共有する。**このキーで管理系CRUD・破壊的操作まで全部叩ける**点は認識しておくこと（生成用と管理用の分離は現状していない）。
+- キーを変えるときは GitHub Secret `ADMIN_PASSWORD` を更新 → 再デプロイ → 拡張・管理画面の設定にも新キーを配布。
 
 ---
 
-## Step 5: Cloud Runにデプロイ
+## 設定（スプレッドシート）変更の反映
 
-### 5-1. 環境変数を準備
+コードの再デプロイは不要。
+
+- **自動**: `CACHE_TTL_SECONDS=300` のため、シート変更・新規行は **最大5分で全インスタンスに自動反映**される。
+- **即時**: すぐ反映したいときは reload を叩く。ただし min-instances 2 なので **1回のreloadは1インスタンスにしか当たらない**。確実に全台へ効かせたいなら数回叩くか、5分待って自動反映に任せる。
 
 ```bash
-export PROJECT_ID=$(gcloud config get-value project)
-export SPREADSHEET_ID="ここにスプレッドシートID"
-export API_KEY_DEV="開発用の任意の文字列"
-export API_KEYS="オペレーター用キー1,オペレーター用キー2"
+curl -X POST -H "X-API-Key: <ADMIN_PASSWORD>" \
+  https://<service-url>/api/v1/reload
 ```
 
-### 5-2. ソースからデプロイ（Dockerfileあり）
+管理画面からの編集は Sheets に直接書き込まれる。反映は上記と同じ（TTLで自動 or リロード）。
+
+---
+
+## 緊急時の手動デプロイ
+
+GitHub Actions が使えないときのみ。**deploy.yml と同じフラグを使うこと**（env を落とさないため `--update-env-vars`。`--set-env-vars` は全置換になり ADMIN_PASSWORD 等が消えるので使わない）。
 
 ```bash
-cd server/
-
+cd server
 gcloud run deploy scout-api \
   --source . \
   --region asia-northeast1 \
-  --service-account scout-api@${PROJECT_ID}.iam.gserviceaccount.com \
-  --set-env-vars "PROJECT_ID=${PROJECT_ID},SPREADSHEET_ID=${SPREADSHEET_ID},API_KEY_DEV=${API_KEY_DEV},API_KEYS=${API_KEYS},LOCATION=asia-northeast1" \
   --allow-unauthenticated \
-  --memory 512Mi \
-  --timeout 120 \
-  --min-instances 0 \
-  --max-instances 5
+  --update-env-vars "CACHE_TTL_SECONDS=300"   # 変えたい env だけをマージ指定 \
+  --memory 1Gi --timeout 300 --min-instances 2 --quiet
 ```
 
-- `--allow-unauthenticated`: Chrome拡張からAPIキー認証で呼ぶため、IAM認証は不要
-- `--region asia-northeast1`: 東京リージョン
-- 初回はArtifact Registry APIの有効化を聞かれるので `y` で承認
+ADMIN_PASSWORD 等の Secret 由来 env は既に Cloud Run 側に載っているので、マージ更新なら再指定不要。
 
-### 5-3. デプロイ完了確認
+---
 
-デプロイ完了後、URLが表示される:
-```
-Service URL: https://scout-api-xxxxx-an.a.run.app
-```
+## 初回セットアップ（一度きり・参照用）
 
-### 5-4. 動作確認
+新しい GCP プロジェクトで一から立てる場合のみ。既存の本番では不要。
+
+1. GCP プロジェクト作成 + 課金有効化
+2. API 有効化: `run` / `artifactregistry` / `aiplatform` / `sheets`
+   ```bash
+   gcloud services enable run.googleapis.com artifactregistry.googleapis.com aiplatform.googleapis.com sheets.googleapis.com
+   ```
+3. Cloud Run のランタイムSA（deploy.yml では未指定＝デフォルトの Compute SA）に権限付与:
+   - `roles/aiplatform.user`（Gemini 呼び出し）
+   - スプレッドシートを **そのSAのメールに閲覧者共有**（Sheets API はIAMではなく共有設定で読む）
+4. スプレッドシート作成（6シート）。列見本:
+   | シート | 主な列 |
+   |--------|--------|
+   | テンプレート | company, job_category, type, body, version |
+   | パターン | company, job_category, pattern_type, employment_variant, template_text, feature_variations |
+   | プロンプト | company, section_type, job_category, order, content |
+   | 求人 | company, job_category, id, name, label, employment_type, active |
+   | バリデーション | company, age_min, age_max, qualification_rules, category_config |
+   | プロフィール | company, content, detection_keywords, display_name ほか |
+5. GitHub Secrets（`ADMIN_PASSWORD` / `GOOGLE_CHAT_WEBHOOK_URL` / `WIF_PROVIDER` / `WIF_SERVICE_ACCOUNT`）を設定
+6. deploy.yml の `SPREADSHEET_ID` / `PROJECT_ID` を新環境に合わせる
+7. main に push → 自動デプロイ
+
+> ローカルテスト用のSA鍵（`sa-key.json`）は `.gitignore` 済み・`.dockerignore` 済み。**本番イメージには含めない**（Cloud Run はランタイムSAで自動認証）。
+
+---
+
+## ローカル開発
 
 ```bash
-# ヘルスチェック
-curl https://scout-api-xxxxx-an.a.run.app/health
-
-# 設定読み込み確認（API_KEY_DEVで認証）
-curl -H "X-API-Key: ${API_KEY_DEV}" \
-  https://scout-api-xxxxx-an.a.run.app/api/v1/companies/ark-visiting-nurse/config
-
-# 設定リロード
-curl -X POST -H "X-API-Key: ${API_KEY_DEV}" \
-  https://scout-api-xxxxx-an.a.run.app/api/v1/reload
-```
-
----
-
-## Step 6: 管理画面の確認
-
-デプロイ後、ブラウザで以下にアクセス:
-
-```
-https://scout-api-xxxxx-an.a.run.app/admin/
-```
-
-1. 初回アクセス時にAPIキーの入力を求められる → Step 5で設定したキーを入力
-2. 会社を選択
-3. 各タブ（テンプレート、パターン、求人等）でデータを確認・編集可能
-
-管理画面からの編集はGoogleスプレッドシートに直接反映される。
-スプレッドシートを直接編集した場合は「キャッシュ更新」ボタンを押す。
-
----
-
-## Step 7: Chrome拡張の設定
-
-1. Chrome拡張のアイコンをクリック → ポップアップ
-2. **API設定**セクション:
-   - APIエンドポイント: `https://scout-api-xxxxx-an.a.run.app`
-   - APIキー: Step 5で設定したキー
-3. 「接続テスト」で成功を確認
-
----
-
-## Step 8: ローカルテスト（任意）
-
-Cloud Runにデプロイする前にローカルで動作確認したい場合:
-
-```bash
-cd server/
-
-# 環境変数設定
-export GOOGLE_APPLICATION_CREDENTIALS=sa-key.json
-export PROJECT_ID=scout-generation
-export SPREADSHEET_ID=ここにスプレッドシートID
-export API_KEY_DEV=test-key
-
-# 依存インストール
+cd server
+export GOOGLE_APPLICATION_CREDENTIALS=sa-key.json   # ローカルはSA鍵でADC
+export PROJECT_ID=scout-generation-490709
+export SPREADSHEET_ID=<スプレッドシートID>
+export ADMIN_PASSWORD=dev-test-key                   # ローカルの認証キー
+# 生成もローカルで試すなら Developer API を使う:
+# export GEMINI_API_KEY=<キー>
 pip install -r requirements.txt
-
-# 起動
 uvicorn main:app --reload --port 8080
 ```
 
-ブラウザで http://localhost:8080/docs にアクセスするとSwagger UIでAPI仕様を確認・テストできる。
+http://localhost:8080/docs で Swagger UI。テスト実行は `python3 -m pytest`。
 
 ---
 
-## 設定変更時の反映方法
+## Cloud Scheduler（残数鮮度チェック通知）
 
-### スプレッドシートのデータを変更した場合
-
-コードの再デプロイ不要。以下のいずれかで反映:
+毎朝 9:00 JST に残数スナップショットの鮮度を確認して通知:
 
 ```bash
-# 方法1: reload APIを叩く
-curl -X POST -H "X-API-Key: ${API_KEY_DEV}" \
-  https://scout-api-xxxxx-an.a.run.app/api/v1/reload
-
-# 方法2: CACHE_TTL_SECONDSを設定（例: 300秒）している場合は自動反映
+SERVICE_URL=$(gcloud run services describe scout-api --region asia-northeast1 --format='value(status.url)')
+gcloud scheduler jobs create http daily-stale-quota \
+    --schedule="0 9 * * *" --time-zone="Asia/Tokyo" \
+    --http-method=POST \
+    --uri="${SERVICE_URL}/api/v1/admin/cron/stale-quota" \
+    --headers="X-API-Key=<ADMIN_PASSWORD>" \
+    --location="asia-northeast1"
 ```
 
-### コードを変更した場合
-
-```bash
-cd server/
-gcloud run deploy scout-api --source . --region asia-northeast1
-```
+- 該当会社がゼロなら通知しない（朝のノイズ防止）
+- 閾値変更: `?max_hours=48`
+- 手動実行: `gcloud scheduler jobs run daily-stale-quota --location=asia-northeast1`
 
 ---
 
@@ -263,50 +178,32 @@ gcloud run deploy scout-api --source . --region asia-northeast1
 
 | サービス | 月額目安 |
 |---------|---------|
-| Cloud Run | 無料枠内（月200万リクエストまで無料） |
-| Vertex AI (Gemini 2.0 Flash) | ~$0.5/月（3,000件AI生成想定） |
-| Google Sheets API | 無料 |
-| Artifact Registry | ~$0.1/月（イメージ保存） |
-| **合計** | **~$1/月** |
+| Cloud Run（min-instances 2 常時起動） | 数百円〜（常時2台のアイドル課金あり） |
+| Vertex AI (Gemini Flash) | ~$0.5/月（3,000件生成想定） |
+| Google Sheets / Drive API | 無料 |
+| **合計** | **数百円〜/月** |
+
+> min-instances 2 はコールドスタート回避のため。コスト削減より応答安定を優先している。
 
 ---
 
 ## トラブルシューティング
 
-## Cloud Scheduler 登録
-
-毎朝 9:00 JST に残数スナップショットの鮮度チェック通知を送る設定:
-
-```bash
-SERVICE_URL=$(gcloud run services describe scout-api --region asia-northeast1 --format='value(status.url)')
-API_KEY=<admin API-Key>  # routes の verify_api_key が受けるキー
-
-gcloud scheduler jobs create http daily-stale-quota \
-    --schedule="0 9 * * *" \
-    --time-zone="Asia/Tokyo" \
-    --http-method=POST \
-    --uri="${SERVICE_URL}/api/v1/admin/cron/stale-quota" \
-    --headers="X-API-Key=${API_KEY}" \
-    --location="asia-northeast1"
-```
-
-- 該当会社がゼロなら通知は送らない（朝のノイズ防止）
-- 閾値変更は `?max_hours=48` でクエリ指定可
-- 手動実行: `gcloud scheduler jobs run daily-stale-quota --location=asia-northeast1`
-
-### Cloud Runのログを見る
-
+**Cloud Run のログ**
 ```bash
 gcloud run services logs read scout-api --region asia-northeast1 --limit 50
 ```
+- 旧版拡張の警告 `Outdated extension: version=...` もここに出る。
 
-### スプレッドシートの読み込みエラー
+**設定を変えたのに反映されない**
+- min-instances 2 のため reload は1台にしか効かない。5分待つ（自動反映）か複数回 reload。
 
-- サービスアカウントのメールアドレスがスプレッドシートに共有されているか確認
-- SPREADSHEET_ID が正しいか確認
+**スプレッドシート読み込みエラー**
+- ランタイムSAのメールにスプレッドシートが共有されているか / `SPREADSHEET_ID` が正しいか。
 
-### Gemini APIのエラー
+**Gemini エラー**
+- Vertex AI API 有効化 / ランタイムSAに `roles/aiplatform.user` / `LOCATION` と `PROJECT_ID` が正しいか。
+- 本番で `GEMINI_API_KEY` が残っていると Developer API 経路に落ちる。deploy.yml の `--remove-env-vars` を確認。
 
-- Vertex AI APIが有効化されているか確認
-- サービスアカウントに `roles/aiplatform.user` が付与されているか確認
-- リージョン（LOCATION）が正しいか確認
+**デプロイが動かない**
+- GitHub Actions タブで失敗ログを確認。`WIF_PROVIDER`/`WIF_SERVICE_ACCOUNT` Secret とパス条件（`server/**`）を確認。

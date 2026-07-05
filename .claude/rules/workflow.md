@@ -152,6 +152,10 @@ Chrome拡張で抽出したプロフィールCSVから一括でスカウト文�
 
 **ビルド & zip作成手順:**
 ```bash
+# 0. バージョンを上げる（重要）: extension/manifest.json と extension/package.json の
+#    "version" を上げ、server/config.py の LATEST_EXTENSION_VERSION（または
+#    deploy.yml の同env）も同じ値にする。これで旧版利用者にサーバが更新バナーを出せる。
+#    上げ忘れると「誰が古い版を使っているか」を検知できなくなる。
 cd extension && npm run build
 cd ..
 zip -r shared/scout-extension-$(date +%Y%m%d).zip scout_extension/ -x "*.map"

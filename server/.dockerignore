@@ -1,0 +1,24 @@
+# Cloud Run のビルドコンテキスト(server/)から不要・危険なものを除外する。
+# Dockerfile が `COPY . .` するため、これが無いと下記までイメージに入る。
+
+# サービスアカウント鍵の実体（絶対にイメージに含めない）。
+# 本番は Cloud Run のランタイムSAで認証するため鍵ファイルは不要。
+sa-key.json
+*.json.key
+.env
+.env.*
+
+# Python のキャッシュ・テスト成果物（実行時に不要）
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# テスト・デプロイ補助ファイル（実行時に不要）
+tests/
+_trigger_deploy.txt
+
+# エディタ/OS ノイズ
+.DS_Store
