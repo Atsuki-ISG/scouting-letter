@@ -8,9 +8,10 @@ import { DebugPanel } from './components/DebugPanel';
 import { ConfirmationPopup } from './components/ConfirmationPopup';
 import { storage } from '../shared/storage';
 import { CandidateItem, CandidateProfile, FacilityInfo, FacilityListItem, FixRecord, Message } from '../shared/types';
-import { configProvider } from '../shared/config-provider';
+import { configProvider, onConfigStatus, ConfigStatus } from '../shared/config-provider';
 import { apiClient } from '../shared/api-client';
 import { gasClient } from '../shared/gas-client';
+import { escapeHtml } from '../shared/utils';
 
 /** タブ切替 */
 function setupTabs(): void {
@@ -383,6 +384,71 @@ function showCompanyMismatchWarning(companyId: string): void {
   const sendPanel = document.getElementById('panel-send');
   const extractPanel = document.getElementById('panel-extract');
   const target = sendPanel || extractPanel;
+  if (target) {
+    target.insertBefore(warning, target.firstChild);
+  }
+}
+
+/** 設定の降格状態に応じて警告バナーを出し入れする */
+function handleConfigStatus(status: ConfigStatus): void {
+  if (!status.degraded) {
+    document.getElementById('config-degraded-warning')?.remove();
+    return;
+  }
+  // 既に同じ警告が出ていれば重複表示しない
+  if (document.getElementById('config-degraded-warning')) return;
+
+  const noConfig = status.reason === 'no-config';
+  const warning = document.createElement('div');
+  warning.id = 'config-degraded-warning';
+  warning.style.cssText = 'background:#fff1f2;border:2px solid #e11d48;border-radius:6px;padding:12px;margin:8px 0;';
+  warning.innerHTML = `
+    <div style="color:#be123c;font-weight:bold;font-size:14px;margin-bottom:6px;">⚠ サーバに接続できません（簡易設定で動作中）</div>
+    <div style="color:#9f1239;font-size:12px;">
+      「<b>${escapeHtml(status.companyId)}</b>」の設定をサーバから取得できませんでした。${
+        noConfig
+          ? '資格チェックなどのバリデーションが<b>無効</b>の状態です。誤送信を避けるため、送信は控えるかネットワーク回復後に再開してください。'
+          : '古いキャッシュ設定で動作しています。最新のテンプレート・バリデーションが反映されていない可能性があります。'
+      }
+    </div>
+    <button onclick="this.parentElement.remove()" style="background:#e11d48;color:white;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;margin-top:8px;">閉じる</button>
+  `;
+
+  const target = document.getElementById('panel-send') || document.getElementById('panel-extract');
+  if (target) {
+    target.insertBefore(warning, target.firstChild);
+  }
+}
+
+/** 拡張が旧版ならサーバに確認して更新バナーを表示 */
+async function checkExtensionVersion(): Promise<void> {
+  const result = await apiClient.checkExtensionVersion();
+  if (result?.outdated) {
+    showExtensionUpdateWarning(result.latest);
+  }
+}
+
+/** 拡張の更新を促すバナー（旧版利用者の取りこぼし・既知バグ再発を防ぐ） */
+function showExtensionUpdateWarning(latestVersion: string): void {
+  document.getElementById('extension-update-warning')?.remove();
+
+  const current = (() => {
+    try { return chrome.runtime.getManifest().version; } catch { return '不明'; }
+  })();
+
+  const warning = document.createElement('div');
+  warning.id = 'extension-update-warning';
+  warning.style.cssText = 'background:#fff1f2;border:2px solid #e11d48;border-radius:6px;padding:12px;margin:8px 0;';
+  warning.innerHTML = `
+    <div style="color:#be123c;font-weight:bold;font-size:14px;margin-bottom:6px;">⚠ 拡張機能の更新があります</div>
+    <div style="color:#9f1239;font-size:12px;">
+      お使いの拡張（v${escapeHtml(current)}）は古い版です。最新版（v${escapeHtml(latestVersion)}）に更新してください。<br>
+      古い版のままだと不具合が直っていない場合があります。配布された最新のzipで更新後、拡張を再読み込みしてください。
+    </div>
+    <button onclick="this.parentElement.remove()" style="background:#e11d48;color:white;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;margin-top:8px;">閉じる</button>
+  `;
+
+  const target = document.getElementById('panel-send') || document.getElementById('panel-extract');
   if (target) {
     target.insertBefore(warning, target.firstChild);
   }
@@ -868,6 +934,12 @@ async function init(): Promise<void> {
 
   // サイドパネル起動時に会社自動検出をリクエスト
   chrome.runtime.sendMessage({ type: 'DETECT_COMPANY' } satisfies Message);
+
+  // 拡張が旧版ならサーバに問い合わせて更新バナーを出す（裏で実行・UIブロックなし）
+  void checkExtensionVersion();
+
+  // 設定がAPI不通でフォールバック降格したら警告バナーを出す（無音でバリデーションが消えるのを防ぐ）
+  onConfigStatus(handleConfigStatus);
 
   // 残数が 4h 以上古ければ裏で自動取得（UI ブロックなし）
   void fetchQuotaIfStale();

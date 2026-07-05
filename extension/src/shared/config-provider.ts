@@ -12,6 +12,29 @@ export interface CompanyListEntry {
   display_name: string;
 }
 
+/** 設定の取得状態。degraded=API不通で古いキャッシュ/フォールバックで動作中 */
+export type ConfigStatus =
+  | { degraded: false }
+  | { degraded: true; companyId: string; reason: 'stale-cache' | 'no-config' };
+
+let configStatusListener: ((status: ConfigStatus) => void) | null = null;
+
+/**
+ * 設定が降格（API不通でフォールバック動作）したときに通知を受け取る。
+ * 無音降格でバリデーションが黙って消える事故を、UIで可視化するために使う。
+ */
+export function onConfigStatus(cb: (status: ConfigStatus) => void): void {
+  configStatusListener = cb;
+}
+
+function reportConfigStatus(status: ConfigStatus): void {
+  try {
+    configStatusListener?.(status);
+  } catch {
+    /* リスナー例外で設定取得を巻き込まない */
+  }
+}
+
 /** 会社リストキャッシュの鮮度しきい値（ミリ秒）。
  *  これ未満なら API を叩かずキャッシュを返す（「フレッシュ」扱い）。
  *  storage 側の TTL(1時間) より短い: こちらは「無通信で返していい期間」、
@@ -109,17 +132,21 @@ export const configProvider = {
         companies: cache?.companies || [],
         configs,
       });
+      reportConfigStatus({ degraded: false });
       return config;
     } catch {
       // API失敗
     }
 
-    // 2. キャッシュから取得
+    // 2. キャッシュから取得（古い可能性あり → 降格を通知）
     const cache = await storage.getConfigCache();
     if (cache?.configs[companyId]) {
+      reportConfigStatus({ degraded: true, companyId, reason: 'stale-cache' });
       return cache.configs[companyId];
     }
 
+    // 3. 設定が全く取れない → バリデーションが無効になる。最も強い警告を通知
+    reportConfigStatus({ degraded: true, companyId, reason: 'no-config' });
     return null;
   },
 

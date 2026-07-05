@@ -73,9 +73,21 @@ export interface CompanyConfig {
   };
 }
 
-/** Default timeout for API calls (ms) */
-const API_TIMEOUT_MS = 180_000; // 3 minutes (Cloud Run timeout is 300s)
+/** Default timeout for API calls (ms).
+ *  Cloud Run のリクエストタイムアウト(300s)より少し長く待つ。これより短いと、
+ *  サーバがまだ生成中なのにクライアントが打ち切り、再実行で二重生成・二重課金に
+ *  つながる（生成系はリトライしない設計なので、ここで十分待つことが重要）。 */
+const API_TIMEOUT_MS = 310_000;
 const HEALTH_TIMEOUT_MS = 10_000;
+
+/** 拡張のバージョン（manifest.json）。旧版利用者をサーバ側で検知するために送る。 */
+function getExtensionVersion(): string {
+  try {
+    return chrome.runtime.getManifest().version;
+  } catch {
+    return 'unknown';
+  }
+}
 
 function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
@@ -83,40 +95,10 @@ function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Pr
   return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
-/**
- * Fetch with retry for transient 5xx errors (Cloud Run cold starts, gateway hiccups).
- * Retries on 502/503/504 and network errors with exponential backoff.
- * 4xx (including 429) are returned immediately — caller decides how to surface them.
- */
-async function fetchWithRetry(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-  maxRetries = 2,
-): Promise<Response> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const res = await fetchWithTimeout(url, init, timeoutMs);
-      // Retry on transient server errors
-      if ((res.status === 502 || res.status === 503 || res.status === 504) && attempt < maxRetries) {
-        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt))); // 1s, 2s
-        continue;
-      }
-      return res;
-    } catch (e) {
-      // Network error / abort — retry unless we're out of attempts
-      lastError = e;
-      if (attempt < maxRetries) {
-        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        continue;
-      }
-      throw e;
-    }
-  }
-  // Should be unreachable, but TypeScript needs a return
-  throw lastError ?? new Error('fetchWithRetry: exhausted retries');
-}
+// 注: 生成系(POST /generate, /generate/batch)は非冪等（Sheets記録＋Gemini課金が発生する）
+// ため、abort・ネットワークエラー・5xx でも自動リトライしない。リトライすると、
+// サーバが実際には処理済みだった場合に二重生成・二重課金・送信データ二重記録が起きる。
+// 失敗時はオペレーターが手動で再実行する（結果を見て判断できる）。
 
 function formatApiError(status: number, text: string): string {
   if (status === 429) return 'API枠超過（レート制限）。しばらく待ってから再試行してください';
@@ -135,6 +117,7 @@ export const apiClient = {
     return {
       'Content-Type': 'application/json',
       'X-API-Key': apiKey,
+      'X-Extension-Version': getExtensionVersion(),
     };
   },
 
@@ -145,7 +128,8 @@ export const apiClient = {
   ): Promise<GenerateResponse> {
     const endpoint = await this.getEndpoint();
     const headers = await this.getHeaders();
-    const res = await fetchWithRetry(`${endpoint}/api/v1/generate`, {
+    // 非冪等のためリトライしない（fetchWithTimeout）。理由は上部コメント参照。
+    const res = await fetchWithTimeout(`${endpoint}/api/v1/generate`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ company_id: companyId, profile, options }),
@@ -164,7 +148,8 @@ export const apiClient = {
   ): Promise<BatchGenerateResponse> {
     const endpoint = await this.getEndpoint();
     const headers = await this.getHeaders();
-    const res = await fetchWithRetry(`${endpoint}/api/v1/generate/batch`, {
+    // 非冪等のためリトライしない（fetchWithTimeout）。バッチ全体の二重生成を避ける。
+    const res = await fetchWithTimeout(`${endpoint}/api/v1/generate/batch`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -355,6 +340,25 @@ export const apiClient = {
       throw new Error(formatApiError(res.status, text));
     }
     return res.json();
+  },
+
+  /**
+   * 拡張のバージョンがサーバ想定より古いかを確認する。
+   * /health を叩き、サーバがレスポンスヘッダーで返す判定を読むだけ（軽量）。
+   * エラー時は null（＝判定不能なので警告は出さない）。
+   */
+  async checkExtensionVersion(): Promise<{ outdated: boolean; latest: string } | null> {
+    try {
+      const endpoint = await this.getEndpoint();
+      if (!endpoint) return null;
+      const headers = await this.getHeaders();
+      const res = await fetchWithTimeout(`${endpoint}/health`, { headers }, HEALTH_TIMEOUT_MS);
+      const outdated = res.headers.get('X-Extension-Outdated') === 'true';
+      const latest = res.headers.get('X-Latest-Extension-Version') || '';
+      return { outdated, latest };
+    } catch {
+      return null;
+    }
   },
 
   async testConnection(): Promise<{ success: boolean; error?: string }> {
