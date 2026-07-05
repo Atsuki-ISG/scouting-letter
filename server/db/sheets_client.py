@@ -184,8 +184,11 @@ class SheetsClient:
         if missing:
             logger.warning(f"Sheets not found (skipped): {missing}")
 
-        for name in ALL_SHEETS:
-            self._cache[name] = []  # default empty
+        # ローカルの新キャッシュに組み立て、全取得が成功したときだけ self._cache に
+        # 差し替える（アトミックスワップ）。途中で Sheets API が失敗しても既存の正常な
+        # キャッシュが空/部分状態で残らず、読み手が空設定でスカウト生成する事故を防ぐ。
+        # TTL を有効化すると reload 頻度が上がるため、この安全化がセットで必要。
+        new_cache: dict[str, list[dict[str, str]]] = {name: [] for name in ALL_SHEETS}
 
         if sheets_to_load:
             ranges = [f"'{name}'!A:Z" for name in sheets_to_load]
@@ -198,8 +201,9 @@ class SheetsClient:
             value_ranges = result.get("valueRanges", [])
             for i, name in enumerate(sheets_to_load):
                 rows = value_ranges[i].get("values", []) if i < len(value_ranges) else []
-                self._cache[name] = _parse_sheet(rows)
+                new_cache[name] = _parse_sheet(rows)
 
+        self._cache = new_cache
         self._cache_time = time.time()
         total = sum(len(v) for v in self._cache.values())
         logger.info(f"Sheets reloaded: {total} rows from {len(ALL_SHEETS)} sheets")

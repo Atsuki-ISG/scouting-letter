@@ -30,8 +30,16 @@ SPREADSHEET_ID: str = os.environ.get("SPREADSHEET_ID", "")
 # Authentication
 ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "")
 
-# Cache TTL (seconds). 0 = manual reload only via /api/v1/reload
-CACHE_TTL_SECONDS: int = int(os.environ.get("CACHE_TTL_SECONDS", "0"))
+# 想定する最新のChrome拡張バージョン（manifest.json と揃える）。
+# 拡張が X-Extension-Version ヘッダーで送ってくる版がこれより古ければ、
+# サーバがログに警告を出し、レスポンスヘッダーで拡張に更新を促す。
+LATEST_EXTENSION_VERSION: str = os.environ.get("LATEST_EXTENSION_VERSION", "1.1.0")
+
+# Cache TTL (seconds). 0 = manual reload only via /api/v1/reload.
+# Default 300: min-instances>1 の構成では手動リロードが1インスタンスにしか効かず、
+# 他インスタンスが古い設定でスカウトを生成し続ける。TTL で全インスタンスの
+# staleness を最大5分に抑える（reload はアトミックスワップ化済みで安全）。
+CACHE_TTL_SECONDS: int = int(os.environ.get("CACHE_TTL_SECONDS", "300"))
 
 # Cost monitoring
 GOOGLE_CHAT_WEBHOOK_URL: str = os.environ.get("GOOGLE_CHAT_WEBHOOK_URL", "")
