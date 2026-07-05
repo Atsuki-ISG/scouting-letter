@@ -3089,7 +3089,8 @@ function renderFlowNodeBody(stepId) {
       } else {
         for (const sec of secs) {
           const label = SECTION_TYPE_LABELS[sec.section_type] || sec.section_type;
-          const preview = (sec.content || '').replace(/\n/g, '<br>');
+          // Sheets由来のプロンプト内容。escHtml で先にエスケープしてから改行→<br>（XSS防止）
+          const preview = escHtml(sec.content || '').replace(/\n/g, '<br>');
           html += `<div class="flow-mini-card">
             <div class="flow-mini-card-title">
               <span style="background:#f0fdfa;color:#0f766e;padding:1px 6px;border-radius:3px;font-size:11px">${escHtml(sec.section_type)}</span>
@@ -4060,7 +4061,8 @@ function renderTable() {
 }
 
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  // null/undefined/数値でも例外にならないよう文字列化してからエスケープする。
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function formatCellText(s) {
@@ -7196,13 +7198,16 @@ function simpleMarkdown(text) {
       html += `<h2>${escHtml(trimmed.slice(3))}</h2>`;
     } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
       if (!inList) { html += '<ul>'; inList = true; }
-      const content = trimmed.slice(2).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      // escHtml で先にエスケープしてから **bold** だけHTML化する。
+      // data.analysis(AI出力) や競合調査(Web検索由来)のテキストをそのまま
+      // innerHTML に入れると XSS になるため。
+      const content = escHtml(trimmed.slice(2)).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
       html += `<li>${content}</li>`;
     } else if (trimmed === '') {
       if (inList) { html += '</ul>'; inList = false; }
     } else {
       if (inList) { html += '</ul>'; inList = false; }
-      const content = trimmed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      const content = escHtml(trimmed).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
       html += `<p>${content}</p>`;
     }
   }
@@ -7801,7 +7806,7 @@ function renderDiagnosisView(data) {
   html += '</div>';
 
   if (ctx.stats_summary) {
-    html += `<div style="color:var(--c-text-muted);margin-bottom:8px;">${ctx.stats_summary} | サンプル数: ${ctx.sample_count || 0}</div>`;
+    html += `<div style="color:var(--c-text-muted);margin-bottom:8px;">${escHtml(ctx.stats_summary)} | サンプル数: ${ctx.sample_count || 0}</div>`;
   }
 
   // Priority actions
@@ -7812,7 +7817,7 @@ function renderDiagnosisView(data) {
       const target = pa.target === 'template' ? '<span style="background:#dbeafe;padding:1px 6px;border-radius:4px;font-size:11px;">テンプレ</span>'
         : pa.target === 'prompt' ? '<span style="background:#fef3c7;padding:1px 6px;border-radius:4px;font-size:11px;">プロンプト</span>'
         : '<span style="background:#e0e7ff;padding:1px 6px;border-radius:4px;font-size:11px;">パターン</span>';
-      html += `<li>${impactBadge(pa.impact)} ${pa.action} ${target}</li>`;
+      html += `<li>${impactBadge(pa.impact)} ${escHtml(pa.action)} ${target}</li>`;
     }
     html += '</ol></div>';
   }
@@ -7822,7 +7827,7 @@ function renderDiagnosisView(data) {
   if (weak.length) {
     html += '<div style="margin-bottom:12px;"><strong>弱い心理原則</strong><ul style="margin:4px 0 0 16px;padding:0;">';
     for (const w of weak) {
-      html += `<li>${severityBadge(w.severity)} <strong>${w.principle}</strong>: ${w.issue} <button class="btn btn-sm" style="font-size:11px;padding:1px 6px;margin-left:4px;" onclick="saveDiagnosisKnowledge('profile_handling','${_escAttr(w.principle + ': ' + w.issue)}','診断',this)">蓄積</button></li>`;
+      html += `<li>${severityBadge(w.severity)} <strong>${escHtml(w.principle)}</strong>: ${escHtml(w.issue)} <button class="btn btn-sm" style="font-size:11px;padding:1px 6px;margin-left:4px;" onclick="saveDiagnosisKnowledge('profile_handling','${_escAttr(w.principle + ': ' + w.issue)}','診断',this)">蓄積</button></li>`;
     }
     html += '</ul></div>';
   }
@@ -7832,7 +7837,7 @@ function renderDiagnosisView(data) {
   if (smells.length) {
     html += '<div style="margin-bottom:12px;"><strong>AI臭検出</strong><ul style="margin:4px 0 0 16px;padding:0;">';
     for (const s of smells) {
-      html += `<li><strong>${s.fingerprint}</strong>: ${s.evidence} → <em>${s.fix_hint}</em> <button class="btn btn-sm" style="font-size:11px;padding:1px 6px;margin-left:4px;" onclick="saveDiagnosisKnowledge('expression','${_escAttr(s.fingerprint + ': ' + s.fix_hint)}','診断',this)">蓄積</button></li>`;
+      html += `<li><strong>${escHtml(s.fingerprint)}</strong>: ${escHtml(s.evidence)} → <em>${escHtml(s.fix_hint)}</em> <button class="btn btn-sm" style="font-size:11px;padding:1px 6px;margin-left:4px;" onclick="saveDiagnosisKnowledge('expression','${_escAttr(s.fingerprint + ': ' + s.fix_hint)}','診断',this)">蓄積</button></li>`;
     }
     html += '</ul></div>';
   }
@@ -7844,7 +7849,7 @@ function renderDiagnosisView(data) {
   if (struct.length) {
     html += '<div style="margin-bottom:12px;"><strong>構成の問題</strong> <span style="font-size:11px;color:var(--c-text-muted);">（このテンプレ固有なのでSTEP3で改善）</span><ul style="margin:4px 0 0 16px;padding:0;">';
     for (const s of struct) {
-      html += `<li>${severityBadge(s.severity)} ${s.issue}: ${s.detail}</li>`;
+      html += `<li>${severityBadge(s.severity)} ${escHtml(s.issue)}: ${escHtml(s.detail)}</li>`;
     }
     html += '</ul></div>';
   }
@@ -7854,8 +7859,8 @@ function renderDiagnosisView(data) {
   const iIssues = d.integration_issues || [];
   if (pIssues.length || iIssues.length) {
     html += '<div style="margin-bottom:12px;"><strong>パーソナライズ・統合</strong><ul style="margin:4px 0 0 16px;padding:0;">';
-    for (const p of pIssues) html += `<li>[パーソナライズ] ${p.issue}: ${p.detail}</li>`;
-    for (const i of iIssues) html += `<li>[統合] ${i.issue}: ${i.detail}</li>`;
+    for (const p of pIssues) html += `<li>[パーソナライズ] ${escHtml(p.issue)}: ${escHtml(p.detail)}</li>`;
+    for (const i of iIssues) html += `<li>[統合] ${escHtml(i.issue)}: ${escHtml(i.detail)}</li>`;
     html += '</ul></div>';
   }
 
@@ -7863,7 +7868,7 @@ function renderDiagnosisView(data) {
   const strengths = d.strengths || [];
   if (strengths.length) {
     html += '<div style="margin-bottom:12px;"><strong style="color:#22c55e;">強み</strong><ul style="margin:4px 0 0 16px;padding:0;">';
-    for (const s of strengths) html += `<li style="color:#166534;">${s}</li>`;
+    for (const s of strengths) html += `<li style="color:#166534;">${escHtml(s)}</li>`;
     html += '</ul></div>';
   }
 
