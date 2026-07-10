@@ -480,7 +480,7 @@
 | **L1: 単一スロット** | 本番API（拡張の一括生成）、`/csv-scout` | テンプレート + パーソナライズ文1段落 | 初回 約100〜180字 / 再送 120〜180字（**各社 recipes.md が正**） |
 | **ブロック生成（pro / L3）** | `/generate-scout-pro`、`/csv-scout-pro`、L3ブロック化 | opening / bridge / facility_intro / closing_cta の4ブロック | opening 130-180 / bridge 130-200 / facility_intro 150-220 / closing_cta 60-100（計 約470〜700字） |
 
-※注意: サーバ側のL2/L3実装（`server/pipeline/personalized_scout/prompt.py`）には5ブロック・別数値の指定が残っており、本表とは未統一。統一されるまでは各実装の値が優先される。基準を変えるときは本表 → スキル → サーバプロンプトの順に揃えること。
+※2026-07-10 統一済み: サーバ側のL2/L3実装（`server/pipeline/personalized_scout/prompt.py`）も本表の4ブロック・文字数に統一した。従来の job_framing は生成せず、既存テンプレートに残る `{job_framing}` プレースホルダーは空文字に置換される。基準を変えるときは本表 → スキル → サーバプロンプトの順に揃えること。
 
 ### 2-2. 文章の「重心」理論
 
