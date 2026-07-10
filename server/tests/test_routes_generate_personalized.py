@@ -139,10 +139,14 @@ class TestGeneratePersonalizedRoute:
         body = res.json()
         assert body["generation_path"] == "ai_structured"
         assert body["block_contents"]["opening"] == "固有導入文"
+        # 4ブロック統一（good-scout-pro.md 2-1）: job_framing は生成しない
         assert set(body["block_contents"].keys()) == {
-            "opening", "bridge", "facility_intro", "job_framing", "closing_cta"
+            "opening", "bridge", "facility_intro", "closing_cta"
         }
         assert "## 募集要項" in body["full_scout_text"]
+        # レガシーテンプレの {job_framing} は空文字に置換され、リテラルが残らない
+        assert "{job_framing}" not in body["full_scout_text"]
+        assert "求人フレーム" not in body["full_scout_text"]
         stats = body["personalization_stats"]
         assert stats["level"] == "L3"
         assert stats["personalized_chars"] > 0

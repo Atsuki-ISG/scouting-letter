@@ -15,7 +15,7 @@ from .prompt import (
     build_user_prompt,
     response_schema,
 )
-from .text_builder import BLOCK_PLACEHOLDERS, L2_BLOCKS
+from .text_builder import L2_BLOCKS, L3_BLOCKS
 
 
 async def generate_blocks(
@@ -56,7 +56,7 @@ async def generate_blocks(
         temperature=temperature,
     )
 
-    expected = L2_BLOCKS if level == "L2" else BLOCK_PLACEHOLDERS
+    expected = L2_BLOCKS if level == "L2" else L3_BLOCKS
     blocks: dict[str, str] = {}
     for name in expected:
         value = parsed.get(name, "")
@@ -65,7 +65,7 @@ async def generate_blocks(
 
 
 _REVISE_SYSTEM_PROMPT = """あなたはスカウト文の最終校正を担当するエキスパートです。
-入力として渡される 5 ブロックのドラフトを点検し、以下の癖が含まれていれば
+入力として渡されるブロックのドラフトを点検し、以下の癖が含まれていれば
 自然な表現に**書き換えて**ください。癖が含まれていないブロックはそのまま
 返してください。
 
@@ -121,8 +121,8 @@ _REVISE_SYSTEM_PROMPT = """あなたはスカウト文の最終校正を担当�
 - ドラフトの**文体・トーンは尊重**する。過度に書き換えず、該当箇所だけ直す
 - 削除した分で字数が短くなっても、無理な肉付けはしない
 - 「不安」「両立」「サポート」等の語自体は OK。**属性反射的な慰め前置き構文**だけが対象
-- 各ブロックの役割（opening/bridge/facility_intro/job_framing/closing_cta）は変えない
-- 出力は入力と同じ JSON スキーマで、**全 5 ブロック**を含める（無修正でもブロックは省略しない）
+- 各ブロックの役割（opening/bridge/facility_intro/closing_cta）は変えない
+- 出力は入力と同じ JSON スキーマで、**全ブロック**を含める（無修正でもブロックは省略しない）
 """
 
 
@@ -144,7 +144,7 @@ async def revise_blocks(
     """
     schema = response_schema(level)
     user_prompt = (
-        "以下が初稿の 5 ブロックです。検出して直す癖が含まれていれば書き換えて、"
+        "以下が初稿のブロックです。検出して直す癖が含まれていれば書き換えて、"
         "同じ JSON スキーマで返してください。\n\n"
         f"{_json.dumps(draft_blocks, ensure_ascii=False, indent=2)}"
     )
@@ -155,7 +155,7 @@ async def revise_blocks(
         max_output_tokens=max_output_tokens,
         temperature=temperature,
     )
-    expected = L2_BLOCKS if level == "L2" else BLOCK_PLACEHOLDERS
+    expected = L2_BLOCKS if level == "L2" else L3_BLOCKS
     blocks: dict[str, str] = {}
     for name in expected:
         value = parsed.get(name, "")
