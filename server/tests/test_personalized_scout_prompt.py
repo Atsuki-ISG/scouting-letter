@@ -65,9 +65,9 @@ class TestSystemPromptStaticHead:
         return prompt
 
     def test_contains_block_guide(self):
-        """Static head must have a block-level writing guide."""
+        """Static head must have a block-level writing guide (4 blocks)."""
         head = self._get_head()
-        for block in ["opening", "bridge", "facility_intro", "job_framing", "closing_cta"]:
+        for block in ["opening", "bridge", "facility_intro", "closing_cta"]:
             assert block in head, f"Block guide for '{block}' missing"
 
     def test_contains_dedup_rules(self):
@@ -104,7 +104,7 @@ class TestBlockDescriptions:
     """Verify expanded block descriptions."""
 
     @pytest.mark.parametrize("block_name", [
-        "opening", "bridge", "facility_intro", "job_framing", "closing_cta",
+        "opening", "bridge", "facility_intro", "closing_cta",
     ])
     def test_description_has_char_range(self, block_name):
         """Each block description must mention character limits."""
@@ -112,7 +112,7 @@ class TestBlockDescriptions:
         assert "字" in desc, f"{block_name} description missing char range"
 
     @pytest.mark.parametrize("block_name", [
-        "opening", "bridge", "facility_intro", "job_framing", "closing_cta",
+        "opening", "bridge", "facility_intro", "closing_cta",
     ])
     def test_description_is_multi_sentence(self, block_name):
         """Each block description should be more than a single line."""
@@ -127,6 +127,47 @@ class TestBlockDescriptions:
         """closing_cta should warn against sender-emotion expressions."""
         desc = _block_description("closing_cta")
         assert "感情" in desc or "オファー" in desc or "主語" in desc
+
+
+# ---------------------------------------------------------------------------
+# Step 2.5: canonical 4-block alignment (good-scout-pro.md 2-1)
+# ---------------------------------------------------------------------------
+
+class TestCanonicalBlockAlignment:
+    """good-scout-pro.md 2-1 の正典表（4ブロック・文字数）との整合を守る。"""
+
+    def test_l3_schema_is_four_blocks(self):
+        schema = response_schema("L3")
+        assert set(schema["required"]) == {
+            "opening", "bridge", "facility_intro", "closing_cta"
+        }
+        assert "job_framing" not in schema["properties"]
+
+    def test_l2_schema_unchanged(self):
+        schema = response_schema("L2")
+        assert set(schema["required"]) == {"opening", "closing_cta"}
+
+    @pytest.mark.parametrize("block_name,low,high", [
+        ("opening", "130", "180"),
+        ("bridge", "130", "200"),
+        ("facility_intro", "150", "220"),
+        ("closing_cta", "60", "100"),
+    ])
+    def test_char_ranges_match_canon(self, block_name, low, high):
+        desc = _block_description(block_name)
+        assert low in desc and high in desc, (
+            f"{block_name} の文字数が正典表（{low}〜{high}字）と不一致: {desc}"
+        )
+
+    def test_no_kasanaru_recommendation(self):
+        """「〜と重なります」は Phase 0 で機械的NG — 推奨例に残っていないこと。"""
+        prompt = build_system_prompt(
+            level="L3",
+            company_profile="",
+            prompt_sections_text="",
+            template_body="test",
+        )
+        assert "重なります" not in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +268,7 @@ class TestBuildSystemPromptAssembly:
             template_body="test",
         )
         assert "L3" in prompt
-        assert "5" in prompt or "全て" in prompt or "一貫" in prompt
+        assert "4 ブロック" in prompt
 
     def test_knowledge_rules_injected(self):
         """When knowledge_rules are provided, they appear in the prompt."""

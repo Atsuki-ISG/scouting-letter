@@ -12,8 +12,12 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-# Block names used by L2 and L3. The order matters: stats output
-# preserves it, and the AI prompt references these names 1:1.
+# Placeholder names recognized in template bodies. The order matters:
+# stats output preserves it. `job_framing` is a legacy placeholder —
+# generation is unified on the 4-block canon (good-scout-pro.md 2-1)
+# and no longer produces it, but existing Sheets templates may still
+# contain `{job_framing}`, so it stays recognized here and renders
+# as an empty string instead of leaking a literal placeholder.
 BLOCK_PLACEHOLDERS: tuple[str, ...] = (
     "opening",
     "bridge",
@@ -22,8 +26,18 @@ BLOCK_PLACEHOLDERS: tuple[str, ...] = (
     "closing_cta",
 )
 
-# L2 touches only these two blocks (bridge/facility_intro/job_framing
-# stay as whatever is written in the template body).
+# The 4 blocks L3 actually generates (good-scout-pro.md 2-1 の正典表)。
+# 従来の job_framing の内容（希望雇用形態・希望入職時期）は
+# bridge / facility_intro に織り込む。
+L3_BLOCKS: tuple[str, ...] = (
+    "opening",
+    "bridge",
+    "facility_intro",
+    "closing_cta",
+)
+
+# L2 generates only these two blocks (the other placeholders in the
+# template body are substituted with empty strings).
 L2_BLOCKS: tuple[str, ...] = ("opening", "closing_cta")
 
 # Matches {opening}, {bridge}, etc. as literal substrings. We

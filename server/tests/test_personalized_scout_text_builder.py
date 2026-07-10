@@ -8,6 +8,7 @@ import pytest
 from pipeline.personalized_scout.text_builder import (
     BLOCK_PLACEHOLDERS,
     L2_BLOCKS,
+    L3_BLOCKS,
     build_scout_from_blocks,
     compute_personalization_stats,
     list_placeholders,
@@ -141,3 +142,10 @@ class TestComputePersonalizationStats:
 
     def test_l2_blocks_contains_l3_subset(self):
         assert set(L2_BLOCKS) <= set(BLOCK_PLACEHOLDERS)
+
+    def test_l3_blocks_are_canonical_four(self):
+        """L3の生成ブロックは正典の4ブロック。job_framing はレガシー
+        プレースホルダーとして認識だけされる（空文字置換）。"""
+        assert L3_BLOCKS == ("opening", "bridge", "facility_intro", "closing_cta")
+        assert set(L3_BLOCKS) <= set(BLOCK_PLACEHOLDERS)
+        assert "job_framing" in BLOCK_PLACEHOLDERS

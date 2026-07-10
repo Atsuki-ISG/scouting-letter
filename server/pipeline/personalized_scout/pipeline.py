@@ -241,11 +241,12 @@ async def generate_personalized_scout(
             f"[{profile.member_id}] revise pass failed, using draft: {e}"
         )
 
-    # For L3, the template body should have all 5 placeholders. For
-    # L2 only opening/closing_cta are generated — the other blocks
-    # in the body are left empty. Callers are expected to author L2
-    # templates that don't have the other placeholders (or to accept
-    # the gaps).
+    # For L3, the template body should have the 4 generation-block
+    # placeholders (a legacy {job_framing} is substituted with an
+    # empty string). For L2 only opening/closing_cta are generated —
+    # the other blocks in the body are left empty. Callers are
+    # expected to author L2 templates that don't have the other
+    # placeholders (or to accept the gaps).
     full_scout_text = build_scout_from_blocks(template_body, blocks)
 
     # 6. Output validation (reuse existing foreign-company check).
