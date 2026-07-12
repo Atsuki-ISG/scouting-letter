@@ -1,440 +1,1249 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<meta charset="UTF-8">
-<style>
-body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; color: #333; line-height: 1.8; }
-h1 { font-size: 28px; border-bottom: 3px solid #2c3e50; padding-bottom: 10px; }
-h2 { font-size: 20px; color: #2c3e50; margin-top: 40px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
-h3 { font-size: 17px; color: #2c3e50; margin-top: 25px; }
-h4 { font-size: 15px; color: #34495e; margin-top: 20px; }
-table { border-collapse: collapse; width: 100%; margin: 15px 0; }
-th { background: #2c3e50; color: white; padding: 10px 15px; text-align: left; }
-td { border: 1px solid #ddd; padding: 10px 15px; }
-tr:nth-child(even) { background: #f9f9f9; }
-code { background: #f0e6e6; color: #c0392b; padding: 2px 6px; border-radius: 3px; font-size: 14px; }
-ol, ul { padding-left: 25px; }
-li { margin: 8px 0; }
-blockquote { background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px 16px; margin: 15px 0; }
-hr { border: none; border-top: 2px solid #2c3e50; margin: 30px 0; }
-.subtitle { color: #666; font-size: 15px; margin-top: -5px; }
-.checklist { list-style: none; padding-left: 5px; }
-.checklist li { margin: 6px 0; }
-.checklist li::before { content: "\2610\0020"; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>良いスカウトとは</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <style>
+  body { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif; line-height: 1.75; max-width: 720px; margin: 0 auto; padding: 24px; color: #222; }
+  h1 { font-size: 1.7em; border-bottom: 3px solid #1f3864; padding-bottom: 8px; }
+  h2 { font-size: 1.3em; border-left: 5px solid #1f3864; padding-left: 10px; margin-top: 2em; }
+  h3 { font-size: 1.1em; margin-top: 1.6em; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+  th, td { border: 1px solid #bbb; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #eef2f8; }
+  pre, code { background: #f5f5f5; font-size: 0.9em; }
+  pre { padding: 10px; overflow-x: auto; white-space: pre-wrap; }
+  blockquote { border-left: 4px solid #ccc; margin-left: 0; padding-left: 12px; color: #444; }
+  @media print { body { max-width: none; } h2 { page-break-after: avoid; } }
+  </style>
+  <style>header#title-block-header { display: none; }</style>
 </head>
 <body>
-
-<h1>良いスカウトとは</h1>
-<p class="subtitle">オペレーター向け教育資料。<br>私たちのスカウトが「なぜ価値があるのか」を理解し、品質を自分で判断できるようになることが目的。</p>
-
-<div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 6px; padding: 20px 25px; margin: 25px 0;">
-<p style="font-weight: bold; font-size: 16px; margin: 0 0 12px 0; color: #2c3e50;">目次</p>
-<ol style="margin: 0; padding-left: 20px; line-height: 2.2;">
-<li><a href="#sec1" style="text-decoration: none; color: #2c3e50;">なぜスカウトの質が重要なのか</a></li>
-<li><a href="#sec2" style="text-decoration: none; color: #2c3e50;">相手を知る: 転職希望者の心理</a></li>
-<li><a href="#sec3" style="text-decoration: none; color: #2c3e50;">良いスカウトの3原則</a></li>
-<li><a href="#sec4" style="text-decoration: none; color: #2c3e50;">実践: スカウト文の書き方</a></li>
-<li><a href="#sec5" style="text-decoration: none; color: #2c3e50;">絶対NGルール</a></li>
-<li><a href="#sec6" style="text-decoration: none; color: #2c3e50;">よくあるミス</a></li>
-<li><a href="#sec7" style="text-decoration: none; color: #2c3e50;">セルフチェックリスト</a></li>
-<li><a href="#sec8" style="text-decoration: none; color: #2c3e50;">テンプレートとの重複チェック</a></li>
-<li><a href="#sec9" style="text-decoration: none; color: #2c3e50;">スカウト対象外の判断基準</a></li>
-<li><a href="#secA" style="text-decoration: none; color: #2c3e50;">付録: 各社の教育制度</a></li>
-</ol>
-</div>
-
-<hr>
-
-<h2 id="sec1">1. なぜスカウトの質が重要なのか</h2>
-
-<h3>数字で見る現実</h3>
+<header id="title-block-header">
+<h1 class="title">良いスカウトとは</h1>
+</header>
+<h1 id="良いスカウトとは">良いスカウトとは</h1>
+<p>オペレーター向け教育資料。
+私たちのスカウトが「なぜ価値があるのか」を理解し、品質を自分で判断できるようになることが目的。</p>
+<p><strong>本書の位置づけ:</strong>
+全員の共通基礎（ジャッジの物差し）。書き手・改善担当・AI生成プロンプト向けの深掘りは
+<code>good-scout-pro.md</code>（プロ版）を参照。</p>
+<p><strong>現在のメインフロー:</strong>
+スカウト文はChrome拡張のAPI生成で一括生成される。オペレーターの仕事は「ゼロから書く」ことではなく、<strong>生成された文をジャッジし、必要なら直し、送信する</strong>こと。本書の「良い文の条件」は、そのジャッジの物差しとして読んでほしい。</p>
+<p><strong>毎日の業務で使うのは
+§4（ジャッジ）・§8（送信前チェックリスト）・§9（会社別の確認）・§12（返信が来たら）。</strong>
+§1〜3と§5は、最初に一度読んで物差しを作るための背景と技法。§11（媒体仕様）は迷ったときの辞書。</p>
+<hr />
+<h2 id="なぜスカウトの質が重要なのか">1.
+なぜスカウトの質が重要なのか</h2>
+<h3 id="数字で見る現実">数字で見る現実</h3>
 <ul>
-<li>テンプレート一斉送信の返信率: <strong>1〜5%</strong></li>
-<li>パーソナライズされたスカウトの返信率: <strong>10〜25%</strong></li>
-<li>スカウト経由の応募は通常応募と比べて内定率が<strong>約1.7倍</strong></li>
+<li>パーソナライズの有無で、スカウトの返信率は<strong>2〜3倍</strong>変わる（ダイレクトリクルーティング各社の調査。例:
+文面カスタマイズなし2.0% → あり6.7%）</li>
+<li>スカウト経由の応募は、通常応募と比べて内定率が<strong>約1.7倍</strong>（ジョブメドレー公表値）</li>
+<li>求職者の<strong>71.3%</strong>が「短くて簡潔な文章」のスカウトを好む（ベイジ「スカウト媒体の利用実態調査」2025年・n=2,000）</li>
 </ul>
-<p>同じ100通でも、質の違いで返信が5件か25件かに分かれる。</p>
-
-<h3>私たちの仕事の価値</h3>
-<p>お客様が採用代行に求めているのは「送信数」ではない。<br>
-<strong>「自分たちではできない質のスカウトを送ってくれること」</strong> だ。</p>
+<p>同じ100通でも、質の違いで返信数は数倍変わる。</p>
+<h3 id="私たちの仕事の価値">私たちの仕事の価値</h3>
+<p>お客様が採用代行に求めているのは「送信数」ではない。
+<strong>「自分たちではできない質のスカウトを送ってくれること」</strong>
+だ。</p>
 <ul>
 <li>候補者のプロフィールを読み込み、経験と会社の接点を見つける</li>
 <li>テンプレ一斉送信ではない「あなたに送りました」感がある</li>
 <li>返信率が自分たちで送るより高い</li>
 </ul>
-<p><strong>「ここまでのことは自分たちではできない。頼んで良かった」</strong><br>
+<p><strong>「ここまでのことは自分たちではできない。頼んで良かった」</strong>
 — お客様にこう思ってもらうために、一通一通の質が問われる。</p>
-
-<hr>
-
-<h2 id="sec2">2. 相手を知る: 転職希望者の心理</h2>
-<p>スカウトは「送る側」の都合で書くものではない。<br>
-<strong>受け取る人が何を考え、何に悩み、何を求めているか</strong>を知ることが出発点。</p>
-
-<h3>転職者の最大の不安は「自分に合うか」</h3>
+<h3 id="返信率に表れない価値もある">返信率に表れない価値もある</h3>
+<p>実際にあった候補者からの返信（茅ヶ崎徳洲会・49歳・辞退の連絡）:</p>
+<blockquote>
+<p>「普段は辞退するというボタンですぐ返信をしていたのですが、大変ご丁寧で個人個人をしっかり見てくださっているスカウト内容でボタンひとつで返信するのは大変恐縮で、感謝を伝えたいという気持ちもありこちらから文章送信させていただきました」</p>
+</blockquote>
+<p>丁寧なスカウトは、辞退されても会社の印象を残し、将来の縁につながる。雑なスカウトは、送るほど会社の評判を削る。</p>
+<h3 id="あなたの送信はこう評価される">あなたの送信はこう評価される</h3>
+<p>ディレクターが週次でサンプルレビューを行う。基準は
+<code>quality/criteria.md</code>、ランクは
+<code>quality/scoring.md</code> の5段階。</p>
 <table>
-<tr><th>不安</th><th>割合</th></tr>
-<tr><td>自分に合う職場に転職できるか</td><td><strong>58.5%</strong></td></tr>
-<tr><td>希望に合う求人が見つかるか</td><td>47.7%</td></tr>
-<tr><td>自分の経歴で転職できるか</td><td>34.2%</td></tr>
+<thead>
+<tr>
+<th>ランク</th>
+<th>意味</th>
+<th>アクション</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S</td>
+<td>全項目クリア + 接点の質が高い</td>
+<td>良い例として保存</td>
+</tr>
+<tr>
+<td>A</td>
+<td>全項目クリア</td>
+<td>そのまま送信OK</td>
+</tr>
+<tr>
+<td>B</td>
+<td>トーン＆マナーの軽微な問題1〜2件</td>
+<td>修正して送信</td>
+</tr>
+<tr>
+<td>C</td>
+<td>トーンの問題3件以上、または接点の質に問題</td>
+<td>書き直し</td>
+</tr>
+<tr>
+<td>D</td>
+<td>絶対NG（criteria.md Aカテゴリ）に該当</td>
+<td>差し戻し・原因分析</td>
+</tr>
+</tbody>
+</table>
+<p>本書のチェック項目には criteria.md
+の項目番号（A1等）を併記してある。レビューで指摘された番号と突き合わせて使うこと。</p>
+<hr />
+<h2 id="相手を知る-転職希望者の心理">2. 相手を知る:
+転職希望者の心理</h2>
+<p>スカウトは「送る側」の都合で書くものではない。
+<strong>受け取る人が何を考え、何に悩み、何を求めているか</strong>を知ることが出発点。</p>
+<h3
+id="転職者の最大の不安は自分に合うか">転職者の最大の不安は「自分に合うか」</h3>
+<p>介護職の転職希望者への調査（レバウェル「きらケア介護白書2022」）:</p>
+<table>
+<thead>
+<tr>
+<th>不安</th>
+<th>割合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>自分に合う職場に転職できるか</td>
+<td><strong>58.5%</strong></td>
+</tr>
+<tr>
+<td>希望に合う求人が見つかるか</td>
+<td>47.7%</td>
+</tr>
+<tr>
+<td>自分の経歴で転職できるか</td>
+<td>34.2%</td>
+</tr>
+</tbody>
 </table>
 <p>会社がどんなに素晴らしくても、「自分に合う」と感じなければ動かない。だからパーソナライズが効く。<strong>「あなたの経験がここで活きる」</strong>と伝えることが、この不安に直接応える。</p>
-
-<h3>介護・看護職はなぜ辞めるのか</h3>
-<p><strong>看護師:</strong></p>
+<h3 id="介護看護職はなぜ辞めるのか">介護・看護職はなぜ辞めるのか</h3>
+<p><strong>看護師:</strong>
+出産・育児・結婚など<strong>ライフステージの変化</strong>が離職理由の上位で一貫している。また、働き続けるために重視する点は「業務に見合った賃金」53.6%、「休みがとりやすい」49.6%、「職場の人間関係が良い」48.5%（日本看護協会「2025年看護職員実態調査」）。</p>
+<p><strong>介護職:</strong>（介護労働安定センター「介護労働実態調査」）</p>
 <table>
-<tr><th>1位</th><th>2位</th><th>3位</th></tr>
-<tr><td>結婚・出産・育児（24.8%）</td><td>残業・休暇不足（18.1%）</td><td>人間関係（12.4%）</td></tr>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>1位</th>
+<th>2位</th>
+<th>3位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>人間関係（34.3%）</td>
+<td>施設の理念・運営への不満（26.3%）</td>
+<td>他に良い仕事があった（19.9%）</td>
+</tr>
+</tbody>
 </table>
-
-<p><strong>介護職:</strong></p>
+<p>※令和5年度調査の数値。最新の令和6年度調査では人間関係は24.7%に低下したが、それでも1位は不変。</p>
+<p><strong>ここから読み取れること:</strong> -
+介護職は<strong>人間関係</strong>が最大の理由。チームの雰囲気や上司の姿勢を伝えることが刺さる
+-
+看護師は<strong>ライフステージの変化</strong>が多い。「日勤のみ」「時短」「子育て支援」が響く
+-
+介護職の多くは次の転職先も介護業界を選ぶ（「今の仕事を続けたい」56.0%・介護労働実態調査）。<strong>業界への愛着はあるが環境を変えたい</strong></p>
+<p>→
+スカウトでは「今の仕事を否定せず、もっと良い環境がある」というトーンが効く。</p>
+<h3
+id="求職者はスカウトの何を見ているか">求職者はスカウトの何を見ているか</h3>
+<p>返信するかどうかの判断基準（ベイジ「スカウト媒体の利用実態調査」2025年・n=2,000）:</p>
 <table>
-<tr><th>1位</th><th>2位</th><th>3位</th></tr>
-<tr><td>人間関係（<strong>34.3%</strong>）</td><td>施設の理念・運営への不満（26.3%）</td><td>他に良い仕事があった（19.9%）</td></tr>
+<thead>
+<tr>
+<th>判断要素</th>
+<th>割合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>年収・待遇</td>
+<td><strong>35.9%</strong></td>
+</tr>
+<tr>
+<td>自分のスキルと合うか</td>
+<td><strong>30.4%</strong></td>
+</tr>
+<tr>
+<td>勤務条件</td>
+<td>25.5%</td>
+</tr>
+</tbody>
 </table>
-
-<p><strong>ここから読み取れること:</strong></p>
-<ul>
-<li>介護職は<strong>人間関係が圧倒的</strong>。チームの雰囲気や上司の姿勢を伝えることが刺さる</li>
-<li>看護師は<strong>ライフステージの変化</strong>が多い。「日勤のみ」「時短」「子育て支援」が響く</li>
-<li>介護職の67%が次の転職先も介護施設を選ぶ。<strong>業界への愛着はあるが環境を変えたい</strong></li>
-</ul>
-<p>スカウトでは「介護の仕事を否定せず、もっと良い環境がある」というトーンが効く。</p>
-
-<h3>求職者はスカウトの何を見ているか</h3>
-<p>返信するかどうかの判断基準（2,000名調査）:</p>
-<table>
-<tr><th>判断要素</th><th>割合</th></tr>
-<tr><td>年収・待遇</td><td><strong>35.9%</strong></td></tr>
-<tr><td>自分のスキルと合うか</td><td><strong>30.4%</strong></td></tr>
-<tr><td>勤務条件</td><td>25.5%</td></tr>
-</table>
-<p><strong>「待遇」と「自分に合うか」で66%。</strong> この2つに応えるスカウトが返信される。</p>
-
-<h3>求職者が好むスカウト・嫌うスカウト</h3>
-<p><strong>好む:</strong></p>
-<ul>
-<li>プロフィールをしっかり読んでいると感じる（<strong>60.5%</strong>）</li>
-<li>特別感がある（51.1%）</li>
-<li>なぜスカウトしたか理由が具体的（46.9%）</li>
-<li><strong>短くて簡潔な文章</strong>（<strong>71.3%</strong>が好む）</li>
-</ul>
-
-<p><strong>嫌う:</strong></p>
-<ul>
-<li>希望に合わない求人（最多の不満）</li>
-<li>大量に届くテンプレートメール</li>
-<li>会社の情報ばかりで自分への言及がない</li>
-</ul>
-<p><strong>「数撃てば当たる」の真逆がプロの仕事。</strong></p>
-
-<hr>
-
-<h2 id="sec3">3. 良いスカウトの3原則</h2>
-
-<h3>原則1 「あなたを見ました」が伝わる</h3>
+<p><strong>→ 「待遇」と「自分に合うか」で66%。</strong>
+この2つに応えるスカウトが返信される。</p>
+<h3
+id="求職者が好むスカウト嫌うスカウト">求職者が好むスカウト・嫌うスカウト</h3>
+<p><strong>好む</strong>（ABABA総研調査・2025年。新卒学生n=286が対象だが、構造は中途にも共通）:
+- プロフィールをしっかり読んでいると感じる（<strong>60.5%</strong>） -
+選考優遇など「特別扱い」が明示されている（51.1%） -
+なぜスカウトしたか理由が具体的（46.9%）</p>
+<p>これに加えて、<strong>短くて簡潔な文章</strong>を71.3%が好む（前出のベイジ調査）。</p>
+<p><strong>嫌う:</strong> - 希望に合わない求人（最多の不満） -
+大量に届くテンプレートメール - 会社の情報ばかりで自分への言及がない</p>
+<p>→ <strong>「数撃てば当たる」の真逆がプロの仕事。</strong></p>
+<hr />
+<h2 id="良いスカウトの3原則">3. 良いスカウトの3原則</h2>
+<h3 id="原則①-あなたを見ましたが伝わる">原則①
+「あなたを見ました」が伝わる</h3>
 <p>求職者は何十通ものスカウトを受け取っている。その中で「自分のプロフィールをちゃんと読んでくれた」と思えるものだけが目に留まる。</p>
-
-<p><strong>ダメな例（誰にでも送れる）:</strong></p>
-<blockquote>当ステーションは札幌市西区にあり、認知症の方や神経難病の方など幅広い利用者様がいらっしゃいます。</blockquote>
-<p>会社の情報を並べただけ。</p>
-
-<p><strong>良い例（あなただから送った）:</strong></p>
-<blockquote>認知症ケアのご経験は、認知症の利用者様が多い当ステーションにおいて、大きな力になると考えております。</blockquote>
-<p>「認知症ケアの経験」という候補者固有の情報に触れ、それが会社でどう活きるかを伝えている。</p>
-
-<h3>原則2 接点が明確</h3>
-<p>パーソナライズの核心は <strong>「候補者の強み × 会社の特色 = 接点」</strong>。この掛け算が1つ、明確に伝わること。</p>
+<p><strong>ダメな例（誰にでも送れる）:</strong> &gt;
+当ステーションは〇〇市にあり、認知症の方や神経難病の方など幅広い利用者様がいらっしゃいます。</p>
+<p>→ 会社の情報を並べただけ。</p>
+<p><strong>良い例（あなただから送った）:</strong> &gt;
+認知症ケアのご経験は、認知症の利用者様が多い当ステーションにおいて、大きな力になると考えております。</p>
+<p>→
+「認知症ケアの経験」という候補者固有の情報に触れ、それが会社でどう活きるかを伝えている。</p>
+<h3 id="原則②-接点が明確">原則② 接点が明確</h3>
+<p>パーソナライズの核心は <strong>「候補者の強み × 会社の特色 =
+接点」</strong>。この掛け算が1つ、明確に伝わること。</p>
 <table>
-<tr><th>候補者の情報</th><th>会社の特色</th><th>接点</th></tr>
-<tr><td>認知症ケア5年</td><td>認知症の利用者が多い</td><td>「認知症ケア5年のご経験は、当ステーションで大きな力に」</td></tr>
-<tr><td>急性期病棟の経験</td><td>医療依存度の高い利用者</td><td>「急性期でのご経験は、在宅ケアで活かしていただける」</td></tr>
-<tr><td>看護師+ケアマネ</td><td>チーム連携を重視</td><td>「看護とケアマネの両方の視点で、多職種連携の場で力を発揮」</td></tr>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 35%" />
+<col style="width: 21%" />
+</colgroup>
+<thead>
+<tr>
+<th>候補者の情報</th>
+<th>会社の特色</th>
+<th>接点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>認知症ケア5年</td>
+<td>認知症の利用者が多い</td>
+<td>「認知症ケア5年のご経験は、当ステーションで大きな力になります」</td>
+</tr>
+<tr>
+<td>急性期病棟の経験</td>
+<td>回復期リハ病棟がある</td>
+<td>「急性期で磨かれた観察力は、回復期の微細な変化を見逃さない力になります」</td>
+</tr>
+<tr>
+<td>他業界の営業経験</td>
+<td>入居相談員（提案型営業）</td>
+<td>「ご提案力と信頼関係構築のご経験は、入居相談の場でそのまま活きます」</td>
+</tr>
+</tbody>
 </table>
-<p><strong>接点がないパターン（NG）:</strong> 会社情報の羅列 / 地理情報のみ / 運転免許だけ</p>
-
-<h3>原則3 特徴ではなく「あなたにとっての利益」で語る</h3>
+<p><strong>接点がないパターン（NG）:</strong> 会社情報の羅列 /
+地理情報のみ / 運転免許だけ</p>
+<h3 id="原則③-特徴ではなくあなたにとっての利益で語る">原則③
+特徴ではなく「あなたにとっての利益」で語る</h3>
 <p>会社の特徴をそのまま書いても人は動かない。<strong>「それが相手にとって何を意味するか」</strong>まで踏み込む。</p>
 <table>
-<tr><th>書き方</th><th>例</th></tr>
-<tr><td>&#10005; 特徴をそのまま</td><td>「電子カルテ導入済みです」</td></tr>
-<tr><td>&#9651; 一般的なメリット</td><td>「記録業務が効率化されています」</td></tr>
-<tr><td><strong>&#9678; 相手にとっての利益</strong></td><td><strong>「残業が月平均5時間以内で、プライベートとの両立が可能です」</strong></td></tr>
+<colgroup>
+<col style="width: 61%" />
+<col style="width: 38%" />
+</colgroup>
+<thead>
+<tr>
+<th>書き方</th>
+<th>例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✕ 特徴をそのまま</td>
+<td>「電子カルテ導入済みです」</td>
+</tr>
+<tr>
+<td>△ 一般的なメリット</td>
+<td>「記録業務が効率化されています」</td>
+</tr>
+<tr>
+<td><strong>◎ 相手にとっての利益</strong></td>
+<td><strong>「残業が月平均5時間以内で、プライベートとの両立が可能です」</strong></td>
+</tr>
+</tbody>
 </table>
 <p>「うちはこうです」ではなく「だからあなたにこういう良いことがある」。</p>
-
-<hr>
-
-<h2 id="sec4">4. 実践: スカウト文の書き方</h2>
-
-<h3>4-1. 冒頭30文字が勝負</h3>
-<p>ジョブメドレーの一覧画面では<strong>事業所名 + 本文の冒頭部分</strong>がプレビュー表示される。ここで興味を引けなければ開かれない。</p>
-<ul>
-<li>プレビューで見えるのは<strong>冒頭30〜50文字程度</strong></li>
-<li>全メールの55%以上がスマホで開封される</li>
-</ul>
-<p><strong>最初の1文で「なぜあなたに送ったか」を伝える。</strong></p>
-
+<hr />
+<h2 id="ai生成文のジャッジ">4. AI生成文のジャッジ</h2>
+<p>一括生成された文を確認するときの見方。<strong>あなたは最後の砦。</strong>
+AIは自然な日本語で「もっともらしい間違い」を書くことがあるため、正しさの確認は人間にしかできない。</p>
+<h3 id="ジャッジの流れ">4-1. ジャッジの流れ</h3>
+<ol type="1">
+<li><strong>絶対NG（§6）がないか</strong> — 1つでもあれば送信しない</li>
+<li><strong>事実が正しいか</strong> —
+プロフィールと見比べて、書いてある経歴・資格が実在するか</li>
+<li><strong>トーンに違和感がないか</strong> —
+上から目線・過剰敬語・AI臭（§4-2）</li>
+<li>問題なければ送信。軽微な問題は修正して送信</li>
+</ol>
+<h3 id="aiの典型的な失敗パターン">4-2. AIの典型的な失敗パターン</h3>
+<p>AI生成文で実際に起きた・起きやすい問題。人間が書くときとは違うところが壊れる。</p>
 <table>
-<tr><th>&#10005; テンプレ感</th><th>&#9678; パーソナライズ</th></tr>
-<tr><td>「突然のご連絡失礼いたします。○○の採用担当です。」</td><td>「○○さんの訪問看護でのリハビリ連携のご経験を拝見し、ご連絡しました。」</td></tr>
-<tr><td>「当ステーションの求人にご興味はございませんか。」</td><td>「認知症ケア5年のご経験は、当ステーションで大きな力になると考えております。」</td></tr>
-<tr><td>「プロフィールを拝見し、ご連絡いたしました。」</td><td>「急性期でのご経験は、医療依存度の高い在宅ケアでこそ活きると考えています。」</td></tr>
+<colgroup>
+<col style="width: 45%" />
+<col style="width: 25%" />
+<col style="width: 30%" />
+</colgroup>
+<thead>
+<tr>
+<th>パターン</th>
+<th>例</th>
+<th>対応</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>経歴との不一致</strong></td>
+<td>プロフィールにない経験・役職に言及</td>
+<td>該当部分を削除 or NGスキップ（criteria A5: 憶測）</td>
+</tr>
+<tr>
+<td><strong>他社・他職種の制度混入</strong></td>
+<td>LCC看護師に「eラーニング」（医療事務の制度）</td>
+<td>NGスキップ（criteria A2）</td>
+</tr>
+<tr>
+<td><strong>会社名・施設名の誤り</strong></td>
+<td>別の会社の名前が混入</td>
+<td>NGスキップ（criteria A3）</td>
+</tr>
+<tr>
+<td><strong>文の途切れ・不自然な日本語</strong></td>
+<td>文が途中で終わっている、助詞がおかしい</td>
+<td>修正 or 再生成</td>
+</tr>
+<tr>
+<td><strong>推測ベースの称賛の連発</strong></td>
+<td>「寄り添える方だと感じております」等、プロフィールにない性格の称賛が3連発</td>
+<td>削るか観察ベースに直す（AI臭の代表例）</td>
+</tr>
+<tr>
+<td><strong>属性の決めつけ</strong></td>
+<td>「子育てとの両立を応援します」「ブランクで不安もあるかと」</td>
+<td>削除。事実の提示（「時短勤務制度があります」）に置き換え</td>
+</tr>
+</tbody>
 </table>
-<p>一覧画面でこの違いが見えたとき、どちらを開くかは明らか。</p>
-
-<p><strong>冒頭で避けること:</strong></p>
+<h3 id="スキップ-修正-管理者への相談エスカレーションの判断">4-3.
+スキップ / 修正 / 管理者への相談（エスカレーション）の判断</h3>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>状況</th>
+<th>対応</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>絶対NGに該当</td>
+<td>送信しない。同じパターンが続く場合は管理者に報告（生成側の問題の可能性）</td>
+</tr>
+<tr>
+<td>トーン・表現の軽微な問題</td>
+<td>修正して送信</td>
+</tr>
+<tr>
+<td>事実関係に自信が持てない（制度・数字）</td>
+<td>送信を保留し、管理者に確認</td>
+</tr>
+<tr>
+<td>パーソナライズ文が空・対象外警告</td>
+<td>送信しない（システムの除外判定に従う）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="修正したら記録する">4-4. 修正したら記録する</h3>
+<p>あなたの修正は、生成の仕組みを賢くする材料になる。目立つ修正をしたら、<strong>会社名・会員番号・修正前後・理由</strong>を管理者に共有すること（管理者側で
+<code>/integrate-feedback</code>
+によりナレッジへ反映される）。同じ修正を毎回手でやり続けるのは仕組みの負け。</p>
+<hr />
+<h2 id="実践-書く直すときの技法">5. 実践: 書く・直すときの技法</h2>
+<h3 id="冒頭30文字が勝負-ただし一覧プレビューを担うのはヘッダー行">5-1.
+冒頭30文字が勝負 — ただし一覧プレビューを担うのはヘッダー行</h3>
+<p>ジョブメドレーの一覧画面では<strong>事業所名 +
+本文の冒頭部分</strong>（30〜50文字程度）がプレビュー表示される。実際のテンプレートは本文1行目が【】付きのヘッダー行なので、<strong>一覧で候補者の目に入るのはヘッダー行の前半</strong>。挨拶文が2行目に置かれているのはこのためで、開封率を決めるのはヘッダー前半に置く訴求（§5-2）。</p>
+<p>一方、パーソナライズ文の「冒頭30文字」は、開封後の数秒の流し読み（第2ゲート）で効く。候補者の多くはスマホで読むため、ここで「自分の話だ」と思わせられなければ最後まで読まれない。</p>
+<p><strong>最初の1文で「なぜあなたに送ったか」を伝える。</strong></p>
+<table>
+<colgroup>
+<col style="width: 44%" />
+<col style="width: 55%" />
+</colgroup>
+<thead>
+<tr>
+<th>✕ テンプレ感</th>
+<th>◎ パーソナライズ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>「突然のご連絡失礼いたします。○○の採用担当です。」</td>
+<td>「訪問看護でのリハビリ連携のご経験を拝見し、ご連絡しました。」</td>
+</tr>
+<tr>
+<td>「当院の求人にご興味はございませんか。」</td>
+<td>「認知症ケア5年のご経験は、当ステーションで大きな力になると考えております。」</td>
+</tr>
+<tr>
+<td>「プロフィールを拝見し、ご連絡いたしました。」</td>
+<td>「急性期でのご経験は、回復期のリハビリ看護でこそ活きると考えています。」</td>
+</tr>
+</tbody>
+</table>
+<p><strong>冒頭で避けること:</strong> -
+挨拶から始めない（テンプレの挨拶文と重複し、開封後の貴重な1文目を無駄にする）
+- 会社紹介から始めない（一覧で会社情報の羅列に見える） -
+全員に当てはまることを書かない（「看護師の資格をお持ちの方へ」は全員に送れる）</p>
+<h3 id="ヘッダー1行目も候補者に合わせる">5-2.
+ヘッダー（1行目）も候補者に合わせる</h3>
+<p>テンプレのヘッダー（【】付きの訴求行）も固定ではない。<strong>候補者が重視しそうな訴求を2〜3個に絞って前に出す</strong>だけで開封が変わる。</p>
 <ul>
-<li>挨拶から始めない（プレビューの貴重な30文字を無駄にする）</li>
-<li>会社紹介から始めない（一覧で会社情報の羅列に見える）</li>
-<li>全員に当てはまることを書かない（「看護師の資格をお持ちの方へ」は全員に送れる）</li>
+<li>離職中・すぐ働きたい → 「即入社可」「9〜17時勤務」を前へ</li>
+<li>夜勤不可・時短希望 → 「夜勤なし」「時短相談可」を前へ</li>
+<li>ブランクあり → 「ブランクOK」「教育体制」を前へ</li>
 </ul>
-
-<h3>4-2. パーソナライズの作り方</h3>
-
-<h4>プロフィールのどこを見るか（優先順位）</h4>
-<ol>
-<li><strong>経験・スキル（最優先）</strong>: 臨床経験、施設形態、得意分野</li>
+<p><strong>推定の入力に使えるフィールド:</strong>
+こだわり条件のタグ（日勤のみ・土日祝休み・週1日〜・副業OK等）と<strong>希望入職時期</strong>（「今すぐに」「1か月以内」なら即入社系の訴求を前へ）。種類別の読み方はプロ版2-7。</p>
+<p><strong>禁則:</strong> -
+「50代活躍中！」「子育てママ歓迎！」のような<strong>属性を直接指す訴求はNG</strong>。「年齢不問」「家庭との両立◎」のような包摂的な表現に
+- テンプレにない訴求を勝手に足さない（存在しない手当・盛った給料は捏造）
+-
+<strong>候補者の希望年収がヘッダーの想定年収を大きく上回る場合は、年収訴求を削る</strong>（詳細ルールはプロ版第5章）
+- <strong>書式はテンプレから崩さない</strong> —
+記号（【】・■・🌸）や区切り（｜・／）の形はそのまま。やってよいのは訴求の並べ替え・絞り込みだけ</p>
+<h3 id="パーソナライズの作り方">5-3. パーソナライズの作り方</h3>
+<h4
+id="プロフィールのどこを見るか優先順位">プロフィールのどこを見るか（優先順位）</h4>
+<ol type="1">
+<li><strong>経験・スキル（最優先）</strong>:
+臨床経験、施設形態、得意分野</li>
 <li><strong>保有資格（複数ある場合）</strong>: 看護師+保健師 など</li>
 <li><strong>自己PR</strong>: 本人が書いた想いや強み</li>
-<li><strong>こだわり条件（参考程度）</strong>: 経験で接点が作れるなら不要</li>
-<li><strong>地理情報（最も弱い）</strong>: これだけでは不十分</li>
+<li><strong>こだわり条件</strong>:
+本文の接点としては弱いが、<strong>ヘッダー調整の主要入力</strong>（種類別の読み方はプロ版2-7）</li>
+<li><strong>地理情報（最も弱い）</strong>:
+これだけでは不十分。ただし<strong>希望勤務地と自社所在地が合っていること自体は明示的に書いてよい</strong>（「〇〇市内で訪問看護をお探しとのことで」）</li>
 </ol>
-
-<h4>目指す深さ</h4>
+<h4 id="目指す深さ">目指す深さ</h4>
 <table>
-<tr><th>レベル</th><th>やり方</th><th>求職者の受け取り方</th></tr>
-<tr><td>Lv.0</td><td>「プロフィールを拝見し」のみ</td><td>テンプレートだな</td></tr>
-<tr><td>Lv.1</td><td>資格名を書くだけ</td><td>一応見たのか</td></tr>
-<tr><td><strong>Lv.2</strong></td><td><strong>経験 × 会社特色 → 適性を論理展開</strong></td><td><strong>自分のために書いてくれた</strong></td></tr>
-<tr><td><strong>Lv.3</strong></td><td><strong>過去の経験 → 将来像まで接続</strong></td><td><strong>キャリアを考えてくれている</strong></td></tr>
+<colgroup>
+<col style="width: 24%" />
+<col style="width: 24%" />
+<col style="width: 51%" />
+</colgroup>
+<thead>
+<tr>
+<th>レベル</th>
+<th>やり方</th>
+<th>求職者の受け取り方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Lv.0</td>
+<td>「プロフィールを拝見し」のみ</td>
+<td>テンプレートだな</td>
+</tr>
+<tr>
+<td>Lv.1</td>
+<td>資格名を書くだけ</td>
+<td>一応見たのか</td>
+</tr>
+<tr>
+<td><strong>Lv.2</strong></td>
+<td><strong>経験 × 会社特色 → 適性を論理展開</strong></td>
+<td><strong>自分のために書いてくれた</strong></td>
+</tr>
+<tr>
+<td><strong>Lv.3</strong></td>
+<td><strong>過去の経験 → 将来像まで接続</strong></td>
+<td><strong>キャリアを考えてくれている</strong></td>
+</tr>
+</tbody>
 </table>
 <p>私たちが目指すのは<strong>Lv.2〜3</strong>。これがテンプレ一斉送信との決定的な差。</p>
-
-<h4>転職理由から逆算する</h4>
+<h4 id="自己prの言葉は-でそのまま引用する">自己PRの言葉は「
+」でそのまま引用する</h4>
+<p>自己PRに候補者自身の志や価値観の言葉があれば、そのまま引用して共感を示すのが最も強い。ルールは3つ:</p>
+<ol type="1">
+<li><strong>引用元ラベルをつけない</strong>（「自己PRに綴られていた」はAI臭。直接引用する）</li>
+<li><strong>導入フレーズを毎回変える</strong>（「何より〜」「〜という言葉が印象的で」等。同じ言い回しの繰り返しはテンプレ臭）</li>
+<li><strong>受けの強さを内容の温度に合わせる</strong>（人生観・志→「深く感銘を受けました」OK
+/
+仕事観・姿勢→「印象に残りました」程度。仕事観レベルに大げさな反応を返すと不自然）</li>
+</ol>
+<h4
+id="資格手技は固有名詞で引用する">資格・手技は固有名詞で引用する</h4>
+<p>「豊富なご経験」より「心電図検定をお持ちで」「マーゲンチューブ挿入のご経験があり」。固有名詞は「ちゃんと読んだ」ことの動かぬ証拠になる。</p>
+<h4 id="転職理由から逆算する">転職理由から逆算する</h4>
 <p>退職理由がわからなくても、統計から推測して刺さる訴求を選べる。</p>
 <table>
-<tr><th>よくある退職理由</th><th>響く訴求</th></tr>
-<tr><td>人間関係（介護34%）</td><td>チームの雰囲気、上司の人柄 — <strong>抽象語でなく具体的に</strong></td></tr>
-<tr><td>ライフステージ変化（看護25%）</td><td>「日勤のみ」「時短勤務可」「子育て中のスタッフも在籍」</td></tr>
-<tr><td>残業・休暇（看護18%）</td><td>「残業月平均○時間」「有給消化率○%」— <strong>数字で語る</strong></td></tr>
-<tr><td>収入（介護17%）</td><td>「月給○万円〜」「賞与○ヶ月」— <strong>曖昧にしない</strong></td></tr>
+<colgroup>
+<col style="width: 62%" />
+<col style="width: 37%" />
+</colgroup>
+<thead>
+<tr>
+<th>よくある退職理由</th>
+<th>響く訴求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>人間関係（介護職の1位）</td>
+<td>チームの雰囲気、上司の人柄 —
+<strong>抽象語でなく具体的に</strong></td>
+</tr>
+<tr>
+<td>ライフステージ変化（看護師の上位）</td>
+<td>「日勤のみ」「時短勤務可」「子育て中のスタッフも在籍」</td>
+</tr>
+<tr>
+<td>残業・休暇</td>
+<td>「残業月平均○時間」「有給消化率○%」—
+<strong>数字で語る</strong></td>
+</tr>
+<tr>
+<td>収入</td>
+<td>「月給○万円〜」「賞与○ヶ月」— <strong>曖昧にしない</strong></td>
+</tr>
+</tbody>
 </table>
-
-<h4>経験年数の書き方ルール</h4>
+<h4 id="経験年数の書き方ルール">経験年数の書き方ルール</h4>
 <table>
-<tr><th>経験年数</th><th>書くか</th><th>備考</th></tr>
-<tr><td>1〜2年</td><td>書かない</td><td>短い年数を書くとネガティブに映る</td></tr>
-<tr><td>3年</td><td>条件付き</td><td>30代前半以下なら書く（若さに対して3年は評価に値する）。30代後半以上なら書かない</td></tr>
-<tr><td>4年以上</td><td>書く</td><td>「5年にわたる〜」「10年以上の〜」など</td></tr>
+<thead>
+<tr>
+<th>経験年数</th>
+<th>書くか</th>
+<th>備考</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1〜2年</td>
+<td>書かない</td>
+<td>短い年数を書くとネガティブに映る</td>
+</tr>
+<tr>
+<td>3年</td>
+<td>条件付き</td>
+<td>30代前半以下なら書く。30代後半以上なら書かない</td>
+</tr>
+<tr>
+<td>4年以上</td>
+<td>書く</td>
+<td>「5年にわたる〜」「10年以上の〜」など</td>
+</tr>
+</tbody>
 </table>
-
-<h4>情報が少ない候補者の場合</h4>
+<h4 id="情報が少ない候補者の場合">情報が少ない候補者の場合</h4>
 <p>プロフィール情報が少ない ≠ 経験が浅い。</p>
 <ul>
 <li><strong>就業中なら経験がある前提</strong>で書く</li>
-<li><strong>40代以上 × 情報少ない → 教育体制を前面に出さない</strong>。「初めての方でもサポート」は上から目線になる</li>
+<li><strong>40代以上 × 情報少ない →
+教育体制を前面に出さない</strong>。「初めての方でもサポート」は上から目線になる</li>
 <li>代わりに「これまでの経験やスキルを活かしていただける」と評価ベースで書く</li>
 </ul>
-
-<h3>4-3. 返信を引き出すCTA</h3>
-<p>スカウトの目的は「返信してもらうこと」。最後の一文でハードルを下げる。</p>
-<table>
-<tr><th>ハードル</th><th>例</th></tr>
-<tr><td><strong>低（推奨）</strong></td><td>「ご興味があればお気軽にご返信ください」</td></tr>
-<tr><td><strong>低</strong></td><td>「まずは見学だけでも歓迎です」</td></tr>
-<tr><td><strong>中</strong></td><td>「オンラインで15分ほどお話しできればと思います」</td></tr>
-<tr><td><strong>高（避ける）</strong></td><td>「ぜひご応募ください」</td></tr>
-</table>
-
-<p><strong>ポイント:</strong></p>
-<ul>
-<li>CTAは<strong>1つだけ</strong>。複数並べると迷って行動しない</li>
-<li>「今すぐ転職でなくても」「情報収集だけでも」は転職意欲が低い層にも効く</li>
-</ul>
-
-<h3>4-4. 人が動く心理を使う</h3>
-
-<h4>返報性 — 先に認める</h4>
-<p>プロフィールを丁寧に読み、具体的に評価する。先に相手を認める行為が「読んでくれたから返信しよう」を生む。</p>
-
-<h4>希少性 — 特別感</h4>
-<ul>
-<li>「○○の経験をお持ちの方にのみお送りしています」</li>
-<li>「今回の募集は1名限定です」</li>
-</ul>
-<p>事実ベースで。嘘はNG。</p>
-
-<h4>社会的証明 — みんなも選んでいる</h4>
-<ul>
-<li>「直近1年で看護師○名が入職しています」</li>
-<li>「訪問看護の経験者が多数活躍中です」</li>
-</ul>
-<p>具体的な数字が信頼性を高める。</p>
-
-<h4>損失回避 — もったいない、と気づかせる</h4>
-<ul>
-<li>「○○のスキルを、もっと活かせる環境があります」</li>
-</ul>
-<p>煽りすぎは逆効果。さりげなく。</p>
-
-<h3>4-5. 初回と再送の違い</h3>
-<table>
-<tr><th></th><th>初回</th><th>再送</th></tr>
-<tr><td>文字数</td><td>約100文字</td><td>120〜150文字</td></tr>
-<tr><td>角度</td><td>経験・スキルとの接点</td><td><strong>初回と異なる角度</strong></td></tr>
-<tr><td>熱量</td><td>標準</td><td>「諦めきれず」の冒頭に合った熱量（押し付けはNG）</td></tr>
-</table>
-<p>再送で初回と同じ接点・同じ表現を使い回すのはNG。</p>
-
-<table>
-<tr><th>初回で使った接点</th><th>再送で使う別角度</th></tr>
-<tr><td>専門的な経験・資格</td><td>姿勢・自己PRの想い</td></tr>
-<tr><td>訪問看護の実務経験</td><td>チームワーク面</td></tr>
-<tr><td>主な診療科の経験</td><td>経験の幅広さ</td></tr>
-<tr><td>経験年数の豊富さ</td><td>在宅・地域への可能性</td></tr>
-</table>
-
-<hr>
-
-<h2 id="sec5">5. 絶対NGルール</h2>
-
-<h3>一発アウト</h3>
-<table>
-<tr><th>ルール</th><th>理由</th></tr>
-<tr><td><strong>年齢・世代への言及</strong></td><td>「〇代」「若手」「ベテラン」は不快感を与える</td></tr>
-<tr><td><strong>他社や他職種の情報を混入</strong></td><td>信頼が崩壊する</td></tr>
-<tr><td><strong>居住地の詳細な記載</strong></td><td>「〇〇区」→「都内」「札幌市内」等に</td></tr>
-<tr><td><strong>憶測</strong></td><td>「〜されたいのですね」は事実だけ書く</td></tr>
-</table>
-
-<h3>トーン</h3>
-<table>
-<tr><th>&#9678; やる</th><th>&#10005; やらない</th></tr>
-<tr><td>ですます調で統一</td><td>「拝察いたします」等の過剰敬語</td></tr>
-<tr><td>自然な丁寧さ</td><td>「ご一緒したい」等の送り手の感情が主語</td></tr>
-<tr><td>「〜とのことで、」と自然につなぐ</td><td>「〜とのこと、」で文を切る（体言止め）</td></tr>
-<tr><td>接点から直接書き始める</td><td>「現在離職中とのこと」等の不要な前置き</td></tr>
-</table>
-
-<h3>NG表現と言い換え</h3>
-<table>
-<tr><th>&#10005; NG</th><th>理由</th><th>&#9678; OK</th></tr>
-<tr><td>「感銘を受けました」（経歴に）</td><td>大げさで不自然</td><td>「心強く拝見しました」</td></tr>
-<tr><td>「お持ちとのこと」（対象職種の資格）</td><td>持っている前提なので冗長</td><td>資格に触れず経験から書く</td></tr>
-<tr><td>「アットホームな職場」</td><td>具体性がない</td><td>「チームで声を掛け合いながら〜」</td></tr>
-<tr><td>「フォローします」「安心してください」</td><td>上から目線</td><td>「チーム全体でサポートし合う環境」</td></tr>
-</table>
-
-<hr>
-
-<h2 id="sec6">6. よくあるミス</h2>
-<p>実際の運用で繰り返し見つかった問題。</p>
-
-<h3>1. 情報が少ない = 経験が浅い、と決めつける</h3>
-<p><strong>&#10005;:</strong> 「初めての方でもサポート体制が充実しています」（40代・就業中・情報少）<br>
-<strong>&#9678;:</strong> 「現在も臨床の現場で培われている経験やスキルは、当ステーションで活かしていただけると考えております。」</p>
-
-<h3>2. 対象職種の資格に言及する</h3>
-<p><strong>&#10005;:</strong> 「看護師の資格をお持ちとのこと」（看護師求人で）<br>
-<strong>&#9678;:</strong> 資格への言及を削除し、経験から直接書き始める</p>
-
-<h3>3. 他社や他職種の情報を混ぜる</h3>
-<p><strong>&#10005;:</strong> LCC看護師向けに「eラーニングで学べる環境が〜」（eラーニングは医療事務の制度）<br>
-<strong>&#9678;:</strong> 「東京都訪問看護教育ステーション事業を受託しており、入社後約1ヶ月の同行訪問など学びの環境が整っています。」</p>
-
-<h3>4. 会社情報の羅列で接点がない</h3>
-<p><strong>&#10005;:</strong> 「当ステーションは〇〇に拠点を構えており、訪問範囲には〇〇も含まれております。」<br>
-<strong>&#9678;:</strong> 会社情報はテンプレートに記載済み。パーソナライズ文は候補者との接点に集中する。</p>
-
-<h3>5. 送り手の感情が主語</h3>
-<p><strong>&#10005;:</strong> 「ぜひご一緒したいという想いを強く感じ、ご連絡いたしました。」<br>
-<strong>&#9678;:</strong> 「〇〇のご経験は、当ステーションで大きな力になると考えております。」</p>
-
-<hr>
-
-<h2 id="sec7">7. セルフチェックリスト</h2>
-
-<h3>送信前に必ず確認（1つでもNGなら送らない）</h3>
-<ul class="checklist">
-<li>パーソナライズ文が入っている</li>
-<li>会社名が正しい</li>
-<li>教育制度が正しい会社・職種のもの</li>
-<li>年齢・世代への言及がない</li>
-<li>居住地が詳細すぎない</li>
-</ul>
-
-<h3>品質チェック</h3>
-<ul class="checklist">
-<li>冒頭30文字に「なぜあなたに送ったか」が入っている</li>
-<li>候補者の経験 × 会社の特色の「接点」が明確</li>
-<li>特徴ではなく相手にとっての利益で書かれている</li>
-<li>上から目線・過剰敬語がない</li>
-<li>テンプレート前後と表現が重複していない</li>
-<li>CTAが具体的でハードルが低い</li>
-<li>再送の場合、初回と異なる角度</li>
-</ul>
-
-<hr>
-
-<h2 id="sec8">8. テンプレートとの重複チェック</h2>
-<p>パーソナライズ文はテンプレートの一部に挿入されるため、テンプレートの前後と表現が被らないようにする。</p>
-
-<h3>アークの場合</h3>
-<p>テンプレート冒頭に「ご経歴を<strong>拝見し</strong>」があるため、パーソナライズ文を「プロフィールを<strong>拝見し</strong>、」で始めると「拝見し」が連続する。</p>
-<ul>
-<li>&#10005;:「プロフィールを拝見し、〜」</li>
-<li>&#9678;:「〇〇のご経験に注目しました。」「10年以上にわたり〜」</li>
-</ul>
-
-<h3>LCC・いちごの場合</h3>
-<p>テンプレート冒頭が異なるため、「プロフィールを拝見し、」で開始しても問題ない。</p>
-
-<hr>
-
-<h2 id="sec9">9. スカウト対象外の判断基準</h2>
-<p>以下に該当する候補者はスカウトを送らない（システムが自動で除外するが、手動チェック時にも意識する）:</p>
-<ul>
-<li>対象職種の資格を持っていない</li>
-<li>資格は持っているが臨床経験が一切なく、非臨床職（保健師・事務職・生活支援員等）のみの経歴
-<ul>
-<li>ただし「経験未入力で就業中」の場合は臨床経験ありと推定し、対象とする</li>
-</ul>
-</li>
-</ul>
-
-<hr>
-
-<h2 id="secA">付録: 各社の教育制度</h2>
-<p>パーソナライズ文で教育制度に触れるときは、必ずこの表を確認すること。<br>
-詳細は会社別プロフィール早見表（<code>company-profiles.md</code>）を参照。</p>
-<table>
-<tr><th>会社</th><th>職種</th><th>正しい教育制度</th></tr>
-<tr><td>アーク</td><td>看護師</td><td>S-QUE訪問看護eラーニング、新任研修、研修費補助（年間5万円）</td></tr>
-<tr><td>LCC</td><td>看護師</td><td>東京都訪問看護教育ステーション事業受託、入社後約1ヶ月の同行訪問</td></tr>
-<tr><td>LCC</td><td>医療事務</td><td>研修制度（e-learning）</td></tr>
-<tr><td>いちご</td><td>看護師/リハ</td><td>OJTメイン、スキル・経験に合わせた個別研修</td></tr>
-<tr><td>茅ヶ崎徳洲会</td><td>看護師</td><td>中途入職者に約3ヶ月間マンツーマンサポート、eラーニング（業務時間内受講可）、院内研修・勉強会</td></tr>
-<tr><td>an</td><td>看護師/リハ</td><td>入社初日から見学同行、1ヶ月程度で独り立ち、資格取得支援制度</td></tr>
-<tr><td>ネオ・サミット湯河原</td><td>入居相談員</td><td>資格取得支援制度</td></tr>
-</table>
-<p><strong>よくある間違い:</strong> LCC看護師に「eラーニング」（→医療事務の制度）/ いちごに「S-QUE」（→アーク固有）/ 茅ヶ崎徳洲会の「eラーニング」とアークの「S-QUE eラーニング」を混同</p>
-
-<hr>
-
-<h2>まとめ</h2>
-<p>良いスカウトとは、<strong>相手のことを知り、相手に合った言葉で、相手にとっての価値を伝えるもの</strong>。</p>
-<ol>
-<li><strong>相手を知る</strong> — 転職者の不安・動機を理解している</li>
-<li><strong>冒頭で惹きつける</strong> — 一覧画面の30文字で「あなたに送った」と伝わる</li>
-<li><strong>接点を見つける</strong> — 候補者の経験 × 会社の特色</li>
-<li><strong>利益で語る</strong> — 「うちはこうです」ではなく「あなたにこう良い」</li>
-<li><strong>行動を促す</strong> — 低いハードルのCTAで返信しやすく</li>
-<li><strong>正確な情報</strong> — 教育制度や職場の特徴を間違えない</li>
+<h3 id="会員番号の使い方">5-4. 会員番号の使い方</h3>
+<p>ジョブメドレーでは氏名でなく会員番号（<code>01123057様</code>）しか使えない。番号は使うほど「大量送信」の気配が出る。</p>
+<ol type="1">
+<li><strong>Best: 番号を使わない。</strong>
+経歴の具体性だけで「自分のことだ」と思わせる</li>
+<li><strong>Acceptable:
+使うなら文の後半で人物像を束ねる位置に</strong>（「〜されてきた〇〇様のような方に」）</li>
+<li><strong>Risky:
+文頭の番号呼びは避ける</strong>（「〇〇様、はじめまして」は番号扱いの印象が最初に入る）</li>
+<li><strong>同じ文中で2回以上使わない</strong></li>
 </ol>
-<p>この6つを毎通維持することが、お客様に「頼んで良かった」と思ってもらえる最大の武器になる。</p>
-
+<h3 id="返信を引き出すcta">5-5. 返信を引き出すCTA</h3>
+<p>CTA（Call to
+Action）とは、返信や見学を促す最後の一文のこと。スカウトの目的は「返信してもらうこと」なので、ここでハードルを下げる。</p>
+<table>
+<thead>
+<tr>
+<th>ハードル</th>
+<th>例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>低（推奨）</strong></td>
+<td>「ご興味があればお気軽にご返信ください」</td>
+</tr>
+<tr>
+<td><strong>低</strong></td>
+<td>「まずは見学だけでも歓迎です」</td>
+</tr>
+<tr>
+<td><strong>低</strong></td>
+<td>「まだ転職をご検討中の段階でも問題ありません」</td>
+</tr>
+<tr>
+<td>中</td>
+<td>「オンラインで15分ほどお話しできればと思います」</td>
+</tr>
+<tr>
+<td>高（避ける）</td>
+<td>「ぜひご応募ください」</td>
+</tr>
+</tbody>
+</table>
+<p><strong>ポイント:</strong> -
+CTAは<strong>1つだけ</strong>。複数並べると迷って行動しない -
+「今すぐ転職でなくても」「情報収集だけでも」は転職意欲が低い層にも効く</p>
+<h3 id="なぜこの書き方が効くのか背景知識">5-6.
+なぜこの書き方が効くのか（背景知識）</h3>
+<p>上の技法の背景には行動心理学の原則がある（詳細はプロ版第1章）。ジャッジの際に「なんとなく良い/悪い」を言語化する助けになる。</p>
+<ul>
+<li><strong>返報性</strong> —
+先に具体的に認めるから、返信したくなる</li>
+<li><strong>社会的証明</strong> —
+「急性期出身の看護師が3名在籍」のような<strong>事実の</strong>数字が信頼を作る</li>
+<li><strong>損失回避</strong> —
+「○○のスキルを、もっと活かせる環境があります」は「良い環境です」より動かす</li>
+<li><strong>小さなYes</strong> —
+「応募」でなく「返信」だけを求めるからハードルが低い</li>
+</ul>
+<p><strong>注意: どの原則も事実の裏付けが必須。</strong>
+「募集は1名限定」「○名入職」を事実確認なしに書けば捏造（§6）になる。テクニックのために事実を作らない。</p>
+<h3 id="初回再送お気に入りの違い">5-7. 初回・再送・お気に入りの違い</h3>
+<table style="width:100%;">
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 28%" />
+<col style="width: 28%" />
+<col style="width: 28%" />
+</colgroup>
+<thead>
+<tr>
+<th></th>
+<th>初回</th>
+<th>再送</th>
+<th>お気に入り（「気になる」への返礼）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>きっかけ</td>
+<td>こちらから</td>
+<td>こちらから（2回目）</td>
+<td><strong>候補者が先に「気になる」を押してくれた</strong></td>
+</tr>
+<tr>
+<td>文字数</td>
+<td>約100〜180文字</td>
+<td>120〜180文字</td>
+<td>初回に準じる</td>
+</tr>
+<tr>
+<td>角度</td>
+<td>経験・スキルとの接点</td>
+<td><strong>初回と異なる角度</strong></td>
+<td>感謝はテンプレが担う。接点の深掘りに集中</td>
+</tr>
+<tr>
+<td>熱量</td>
+<td>標準</td>
+<td>「諦めきれず」の冒頭に合った熱量（押し付けはNG）</td>
+<td>相手に興味がある前提。会社説明は薄く、CTAは面談誘導まで踏み込んでよい</td>
+</tr>
+</tbody>
+</table>
+<p>※文字数の正確な基準は各社の <code>recipes.md</code>
+に従う。お気に入りテンプレは全社にあり、拡張が★候補者に自動選択する。</p>
+<p><strong>再送のルール:</strong> -
+タイミングは初回から<strong>7日以上</strong>空ける（7日未満はシステムが自動除外。1〜2週間が目安）
+- 再送は<strong>原則1回</strong>。送信回数の上限判定はサーバに従う -
+<strong>辞退の返信があった候補者には再送しない</strong> -
+初回と同じ接点・同じ表現の使い回しはNG（criteria D1）</p>
+<table>
+<thead>
+<tr>
+<th>初回で使った接点</th>
+<th>再送で使う別角度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>専門的な経験・資格</td>
+<td>姿勢・自己PRの想い</td>
+</tr>
+<tr>
+<td>訪問看護の実務経験</td>
+<td>チームワーク面</td>
+</tr>
+<tr>
+<td>主な診療科の経験</td>
+<td>経験の幅広さ</td>
+</tr>
+<tr>
+<td>経験年数の豊富さ</td>
+<td>働き方の柔軟性・教育制度</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="絶対ngルール">6. 絶対NGルール</h2>
+<h3 id="一発アウトcriteria.md-aカテゴリ">一発アウト（criteria.md
+Aカテゴリ）</h3>
+<table>
+<colgroup>
+<col style="width: 17%" />
+<col style="width: 47%" />
+<col style="width: 35%" />
+</colgroup>
+<thead>
+<tr>
+<th>#</th>
+<th>ルール</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A1</td>
+<td><strong>年齢・世代への言及</strong>（「〇代」「若手」「ベテラン」）</td>
+<td>不快感を与える</td>
+</tr>
+<tr>
+<td>A2</td>
+<td><strong>他社・他職種の教育制度を混入</strong></td>
+<td>信頼が崩壊する</td>
+</tr>
+<tr>
+<td>A3</td>
+<td><strong>会社名の間違い</strong></td>
+<td>致命的</td>
+</tr>
+<tr>
+<td>A4</td>
+<td><strong>居住地の詳細な記載</strong></td>
+<td>「〇〇区」→「横浜市内」「山口県内」等、市区町村より広域に</td>
+</tr>
+<tr>
+<td>A5</td>
+<td><strong>憶測</strong></td>
+<td>「〜されたいのですね」等、プロフィールにない推測を書かない</td>
+</tr>
+<tr>
+<td>A6</td>
+<td><strong>パーソナライズ文が空</strong></td>
+<td>スカウトの意味がない</td>
+</tr>
+<tr>
+<td>A7</td>
+<td><strong>性別への言及・性別に基づく推測</strong>（「女性ならではの」等）</td>
+<td>年齢（A1）と同じく不快感を与える</td>
+</tr>
+<tr>
+<td>A8</td>
+<td><strong>応募資格を満たさない候補者への送信</strong>（正看のみ求人に准看護師の方等）</td>
+<td>「プロフィールを見ていない」証明になる。実際にクレームが発生した</td>
+</tr>
+<tr>
+<td>—</td>
+<td><strong>出典のない数字・固有情報</strong>（年収・駅名・休日数・率）</td>
+<td>捏造。数字は必ず求人票・profile.md にあるものだけ</td>
+</tr>
+</tbody>
+</table>
+<h3 id="トーン">トーン</h3>
+<table>
+<colgroup>
+<col style="width: 42%" />
+<col style="width: 57%" />
+</colgroup>
+<thead>
+<tr>
+<th>◎ やる</th>
+<th>✕ やらない</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ですます調で統一</td>
+<td>「拝察いたします」等の過剰敬語</td>
+</tr>
+<tr>
+<td>自然な丁寧さ</td>
+<td>「ご一緒したい」等の送り手の感情が主語</td>
+</tr>
+<tr>
+<td>「〜とのことで、」と自然につなぐ</td>
+<td>「〜とのこと、」で文を切る（助詞止め）</td>
+</tr>
+<tr>
+<td>接点から直接書き始める</td>
+<td>「現在離職中とのこと」等の不要な前置き</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ng表現と言い換え">NG表現と言い換え</h3>
+<table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>✕ NG</th>
+<th>理由</th>
+<th>◎ OK</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>「感銘を受けました」（経歴に）</td>
+<td>大げさで不自然
+※人生観・志レベルの言葉には使える（仕事観レベルには強すぎる）</td>
+<td>「心強く拝見しました」</td>
+</tr>
+<tr>
+<td>「お持ちとのこと」（対象職種の資格）</td>
+<td>持っている前提なので冗長</td>
+<td>資格に触れず経験から書く</td>
+</tr>
+<tr>
+<td>「アットホームな職場」</td>
+<td>具体性がない</td>
+<td>「チームで声を掛け合いながら〜」</td>
+</tr>
+<tr>
+<td>「フォローします」「安心してください」</td>
+<td>上から目線</td>
+<td>「チーム全体でサポートし合う環境」</td>
+</tr>
+<tr>
+<td>推測ベースの性格称賛（「明るく穏やかなご対応ができる方」）</td>
+<td>プロフィールにない推測 + AI臭</td>
+<td>観察ベースの短い称賛（事実の引用+一言）</td>
+</tr>
+<tr>
+<td>称賛の3連発</td>
+<td>逆に嘘くさい</td>
+<td>称賛は1段落1〜2個まで</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="よくあるミス">7. よくあるミス</h2>
+<p>実際の運用で繰り返し見つかった問題。</p>
+<h3 id="情報が少ない-経験が浅いと決めつける">① 情報が少ない =
+経験が浅い、と決めつける</h3>
+<p><strong>✕:</strong>
+「初めての方でもサポート体制が充実しています」（40代・就業中・情報少）
+<strong>◎:</strong>
+「現在も臨床の現場で培われている経験やスキルは、当ステーションで活かしていただけると考えております。」</p>
+<h3 id="対象職種の資格に言及する">② 対象職種の資格に言及する</h3>
+<p><strong>✕:</strong> 「看護師の資格をお持ちとのこと」（看護師求人で）
+<strong>◎:</strong> 資格への言及を削除し、経験から直接書き始める</p>
+<h3 id="他社他職種の教育制度を混ぜる">③
+他社・他職種の教育制度を混ぜる</h3>
+<p><strong>✕:</strong>
+LCC看護師向けに「eラーニングで学べる環境が〜」（eラーニングは医療事務の制度）
+<strong>◎:</strong>
+「東京都訪問看護教育ステーション事業を受託しており、入社後約1ヶ月の同行訪問など学びの環境が整っています。」</p>
+<h3 id="会社情報の羅列で接点がない">④ 会社情報の羅列で接点がない</h3>
+<p><strong>✕:</strong>
+「当ステーションは〇〇に拠点を構えており、訪問範囲には〇〇も含まれております。」
+<strong>◎:</strong>
+会社情報はテンプレートに記載済み。パーソナライズ文は候補者との接点に集中する。</p>
+<h3 id="送り手の感情が主語">⑤ 送り手の感情が主語</h3>
+<p><strong>✕:</strong>
+「ぜひご一緒したいという想いを強く感じ、ご連絡いたしました。」
+<strong>◎:</strong>
+「〇〇のご経験は、当ステーションで大きな力になると考えております。」</p>
+<h3 id="抽象称賛の連発ai生成文に多い">⑥
+抽象称賛の連発（AI生成文に多い）</h3>
+<p><strong>✕:</strong>
+「不安を抱える方に寄り添える対応力をお持ちの方だと感じております。明るく穏やかなご対応ができる点にも魅力を感じました。」
+<strong>◎:</strong>
+プロフィールの事実を1つ引用して短く受ける。「英語も話せるのはすごいですね」のような観察ベースの一言の方が、人が書いた感が出る。</p>
+<hr />
+<h2 id="送信前チェックリスト">8. 送信前チェックリスト</h2>
+<h3
+id="絶対ng1つでもあれば送らない">絶対NG（1つでもあれば送らない）</h3>
+<ul class="task-list">
+<li><label><input
+type="checkbox" />パーソナライズ文が入っている（A6）</label></li>
+<li><label><input type="checkbox" />会社名が正しい（A3）</label></li>
+<li><label><input
+type="checkbox" />教育制度・特色が正しい会社・職種のもの（A2）</label></li>
+<li><label><input
+type="checkbox" />年齢・世代への言及がない（A1）</label></li>
+<li><label><input
+type="checkbox" />居住地が詳細すぎない（A4）</label></li>
+<li><label><input
+type="checkbox" />憶測・プロフィールにない推測を書いていない（A5）</label></li>
+<li><label><input
+type="checkbox" />性別への言及・性別前提の訴求がない（A7）</label></li>
+<li><label><input
+type="checkbox" />求人の応募資格（正看のみ・無資格可等）と候補者の保有資格が一致している（A8）</label></li>
+<li><label><input
+type="checkbox" />出典のない数字・制度を書いていない</label></li>
+</ul>
+<h3 id="品質チェック">品質チェック</h3>
+<ul class="task-list">
+<li><label><input
+type="checkbox" />冒頭30文字に「なぜあなたに送ったか」が入っている</label></li>
+<li><label><input type="checkbox" />候補者の経験 ×
+会社の特色の「接点」が明確</label></li>
+<li><label><input
+type="checkbox" />特徴ではなく相手にとっての利益で書かれている</label></li>
+<li><label><input
+type="checkbox" />上から目線・過剰敬語がない</label></li>
+<li><label><input
+type="checkbox" />称賛が観察ベースで1〜2個以内（推測称賛の連発がない）</label></li>
+<li><label><input
+type="checkbox" />テンプレート前後と表現が重複していない（書き出し・締めとも。会社別ルール
+→ §9）</label></li>
+<li><label><input
+type="checkbox" />候補者の希望年収とヘッダーの年収訴求が矛盾していない</label></li>
+<li><label><input
+type="checkbox" />雇用形態の訴求（「ご相談可能」等）が求人の実態と一致している</label></li>
+<li><label><input
+type="checkbox" />求人票の勤務地・休日・雇用形態とスカウト本文が矛盾していない</label></li>
+<li><label><input
+type="checkbox" />テンプレ種別（パート/正社員/お気に入り/再送）が候補者の希望・状況と合っている</label></li>
+<li><label><input
+type="checkbox" />CTAが1つで、ハードルが低い</label></li>
+<li><label><input
+type="checkbox" />再送の場合、初回と異なる角度（D1）。ヘッダーから外した訴求と同内容の本文ブロックが残っていない</label></li>
+</ul>
+<h3 id="ai生成文の追加チェック">AI生成文の追加チェック</h3>
+<ul class="task-list">
+<li><label><input
+type="checkbox" />書かれている経歴・資格がプロフィールに実在する</label></li>
+<li><label><input
+type="checkbox" />「取得予定」注記付きの資格を保有扱いで書いていない</label></li>
+<li><label><input
+type="checkbox" />文が途切れていない・日本語が自然</label></li>
+<li><label><input
+type="checkbox" />属性の決めつけ（子育て・ブランク等への直接言及）がない</label></li>
+<li><label><input
+type="checkbox" />生成文の中に絵文字・装飾記号・不要な改行が混入していない（それらはテンプレ側の領分）</label></li>
+</ul>
+<hr />
+<h2 id="会社別の確認">9. 会社別の確認</h2>
+<p>書き出しルール・教育制度・呼称（当院/当ステーション/当施設）などの会社別情報は、<strong><code>company-profiles.md</code>（会社別プロフィール早見表）が唯一の正</strong>。本書には転記しない（転記コピーは必ず古くなる）。</p>
+<p><strong>必ず確認すること:</strong></p>
+<ol type="1">
+<li><strong>書き出しルール</strong> —
+テンプレート冒頭との重複回避。会社によってルールが異なる
+<ul>
+<li>例:
+アーク・いちごはテンプレ冒頭に「拝見し」があるため、パーソナライズ文を「プロフィールを拝見し、」で始めると連続する
+→ 別の書き出しにする</li>
+</ul></li>
+<li><strong>締め・CTAの重複</strong> —
+書き出しだけでなく、パーソナライズの締めとテンプレ末尾CTAが同じ表現になっていないかも見る</li>
+<li><strong>教育制度</strong> — 混同は一発アウト（A2）。よくある間違い:
+LCC看護師に「eラーニング」（→医療事務の制度）</li>
+<li><strong>呼称</strong> —
+病院は「当院」、訪問看護は「当ステーション」、老人ホームは「当ホーム/当施設」</li>
+<li><strong>応募可否の会社差</strong> —
+准看護師の可否は会社によって真逆。必ず company-profiles.md
+で確認する（資格レベルの誤送信は実際にクレームになった）</li>
+</ol>
+<hr />
+<h2 id="スカウト対象外の扱い">10. スカウト対象外の扱い</h2>
+<p>対象/対象外の判断は<strong>サーバ側のバリデーション＋各社のフィルタリング基準</strong>（templates.md）に従う。生成時に対象外警告・除外が出たら送らない。</p>
+<ul>
+<li>資格必須職種（看護師等）の例: 資格を持っていない /
+資格はあるが臨床経験がなく非臨床職のみの経歴（ただし「経験未入力で就業中」は臨床経験ありと推定し対象）</li>
+<li><strong>資格の「レベル」まで確認する</strong> —
+求人が「正看護師のみ」なら准看護師の方は対象外（A8）。資格の種類が合っていてもレベル不一致は最も強い不信を生む</li>
+<li><strong>在学中（資格取得見込み）</strong> —
+教育体制メインの型（型G）の対象。学生の応募可否は会社で異なるため求人要件を確認。「資格を活かして」等の保有前提の表現は書かない</li>
+<li><strong>無資格可の職種（入居相談員・看護助手等）は求人の応募要件に従う</strong>。「資格がないから対象外」は看護職のルールであって全職種共通ではない</li>
+<li><strong>送信回数の上限</strong> —
+サーバが送信済み回数を判定する。上限警告が出た候補者はスキップ</li>
+<li><strong>辞退の返信があった候補者には再送しない</strong></li>
+</ul>
+<p><strong>ここに挙げた基準以外で候補者を勝手に除外しない。</strong>
+車免許がない・少し遠い・扶養内希望などのミスマッチ懸念は、除外ではなく本文に「ご相談可能です」の一文を入れて吸収する（懸念のある候補者からも、実際に質問の返信が来ている）。ただし「ご相談可能」と書けるのは、<strong>実際に相談できる制度・事実がある場合だけ</strong>（正職員のみの会社で「勤務形態はご相談可能」と書くのは捏造）。</p>
+<hr />
+<h2 id="ジョブメドレーの媒体仕様早見">11.
+ジョブメドレーの媒体仕様（早見）</h2>
+<p>迷ったときの辞書。ここに書いていない仕様の疑問は管理者へ。</p>
+<ul>
+<li><strong>件名の入力欄はない。</strong>
+件名相当の訴求は本文1行目（ヘッダー行）に吸収されている。templates.md
+にある「件名:」ブロックはシート管理用で、通常の送信では使われない</li>
+<li><strong>一覧のプレビューに映るのは「事業所名 + 本文冒頭」</strong> =
+ヘッダー行の前半30〜50文字</li>
+<li><strong>候補者の氏名は見えない。</strong> 会員番号のみ（使い方は
+§5-4）</li>
+<li><strong>職務経歴の勤務先名は、未応募の候補者では非表示。</strong>
+「事業内容」欄から施設形態を読む</li>
+<li><strong>「気になる」を押した候補者</strong>は拡張に★バッジで表示され、お気に入りテンプレが自動選択される（書き方は
+§5-7）</li>
+<li><strong>再送は7日未満をシステムが自動除外。</strong>
+送信回数の上限判定もサーバが行う</li>
+<li><strong>本文の長さ</strong>は8社テンプレの実測で約900〜1,200字。媒体の上限は未検証なので、テンプレを大幅に伸ばす変更は実画面で確認してから</li>
+</ul>
+<hr />
+<h2 id="返信が来たら初動の物差し">12. 返信が来たら（初動の物差し）</h2>
+<p>スカウトは送って終わりではない。実際、送信後のやりとりの大半は返信対応で、<strong>返信の瞬間が候補者の意欲のピーク</strong>。初動が遅い・雑だと、せっかくの返信が冷める。</p>
+<p><strong>原則: 24時間以内に返す。</strong></p>
+<h3 id="返信タイプ別の初動">返信タイプ別の初動</h3>
+<table>
+<colgroup>
+<col style="width: 47%" />
+<col style="width: 52%" />
+</colgroup>
+<thead>
+<tr>
+<th>タイプ</th>
+<th>初動の型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>前向き</strong>（話を聞きたい・面談希望）</td>
+<td>感謝 + 日程調整へ。候補日を提示するか調整リンクを送る</td>
+</tr>
+<tr>
+<td><strong>質問</strong>（条件・業務内容）</td>
+<td><strong>全部の質問にインラインで答える</strong>（質問が3つなら①②③で3つとも）+
+次のアクションを1つだけ添える。わからないことは憶測で答えず、管理者・クライアントに確認してから返す</td>
+</tr>
+<tr>
+<td><strong>時期が先</strong>（「来年になったら」「◯月以降なら」）</td>
+<td>時期を尊重して歓迎を伝える。「◯月頃に改めてご連絡してもよいですか」と合意を取り、時期をメモして管理者に共有</td>
+</tr>
+<tr>
+<td><strong>辞退</strong></td>
+<td>条件で追いかけない。感謝 +
+将来の縁を残す返しで丁寧に締める。<strong>辞退への返しの丁寧さが会社の評判を作る</strong>（丁寧なスカウトには辞退でも丁寧な返信が来る。§1参照）</td>
+</tr>
+<tr>
+<td><strong>誤操作</strong>（「間違えて押しました」）</td>
+<td>責めずに一言で受ける。必要なら「よろしければ求人情報だけでも」と軽く添える</td>
+</tr>
+</tbody>
+</table>
+<h3 id="リマインドの目安">リマインドの目安</h3>
+<ul>
+<li>日程調整リンクを送って<strong>3日</strong>返信がなければ1回目のリマインド</li>
+<li><strong>1週間</strong>でもう1回（同じ文面の使い回しではなく角度を変える）</li>
+<li>それ以降は追わない</li>
+<li>体調不良・家庭の事情で中断した相手には、期限を切らず「落ち着いたらご連絡ください」で返す</li>
+</ul>
+<h3 id="aiの利用を聞かれたら">AIの利用を聞かれたら</h3>
+<p>候補者から「これはAIが書いていますか？」と直接聞かれることが実際にある。<strong>事実と異なる否定はしない</strong>（発覚すれば信頼が崩壊し、クライアントの評判に直結する）。回答の言い方は管理者・クライアントと事前に合意しておくこと（例:
+「プロフィールをお一人おひとり確認した上で、文章の作成には支援ツールも活用しています」のような、嘘にならないライン）。</p>
+<p>返信対応の設計の考え方（なぜこの型なのか）はプロ版第9章を参照。</p>
+<hr />
+<h2 id="まとめ">まとめ</h2>
+<p>良いスカウトとは、<strong>相手のことを知り、相手に合った言葉で、相手にとっての価値を伝えるもの</strong>。</p>
+<ol type="1">
+<li><strong>相手を知る</strong> — 転職者の不安・動機を理解している</li>
+<li><strong>冒頭で惹きつける</strong> —
+ヘッダー前半の訴求で開封させ、パーソナライズの冒頭30文字で「あなたに送った」と伝わる</li>
+<li><strong>接点を見つける</strong> — 候補者の経験 × 会社の特色</li>
+<li><strong>利益で語る</strong> —
+「うちはこうです」ではなく「あなたにこう良い」</li>
+<li><strong>事実だけを書く</strong> —
+憶測・捏造・他社の制度混入は一発アウト</li>
+<li><strong>行動を促す</strong> — 低いハードルのCTAで返信しやすく</li>
+<li><strong>AIを見張る</strong> —
+生成文の事実確認とAI臭の除去は人間の仕事</li>
+<li><strong>返信の初動まで丁寧に</strong> —
+返信の瞬間が意欲のピーク。24時間以内に、全部の質問に答える</li>
+</ol>
+<p>この8つを毎通維持することが、お客様に「頼んで良かった」と思ってもらえる最大の武器になる。</p>
 </body>
 </html>
