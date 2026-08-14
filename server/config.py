@@ -33,7 +33,7 @@ ADMIN_PASSWORD: str = os.environ.get("ADMIN_PASSWORD", "")
 # 想定する最新のChrome拡張バージョン（manifest.json と揃える）。
 # 拡張が X-Extension-Version ヘッダーで送ってくる版がこれより古ければ、
 # サーバがログに警告を出し、レスポンスヘッダーで拡張に更新を促す。
-LATEST_EXTENSION_VERSION: str = os.environ.get("LATEST_EXTENSION_VERSION", "1.1.0")
+LATEST_EXTENSION_VERSION: str = os.environ.get("LATEST_EXTENSION_VERSION", "1.2.0")
 
 # Cache TTL (seconds). 0 = manual reload only via /api/v1/reload.
 # Default 300: min-instances>1 の構成では手動リロードが1インスタンスにしか効かず、

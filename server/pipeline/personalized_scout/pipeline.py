@@ -94,6 +94,7 @@ async def generate_personalized_scout(
 
     opts = _OptShim()
     opts.is_resend = is_resend
+    opts.send_type = None
     opts.force_seishain = False
     opts.force_employment = force_employment
 

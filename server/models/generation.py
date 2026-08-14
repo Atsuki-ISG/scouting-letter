@@ -7,6 +7,10 @@ from models.profile import CandidateProfile
 
 class GenerateOptions(BaseModel):
     is_resend: bool = False
+    # 送信種別の判定モード。"auto" は候補者ごとにスカウト送信日の有無で
+    # 初回/再送を判定する（初回と再送が混ざったリストをそのまま生成できる）。
+    # "initial"/"resend" は全員に強制。None は旧クライアント互換で is_resend に従う。
+    send_type: Optional[str] = None  # "auto" | "initial" | "resend" | None
     force_seishain: bool = False  # deprecated: use force_employment instead
     force_employment: Optional[str] = None  # "パート" or "正社員" or "契約" or None (auto)
     job_category_filter: Optional[str] = None  # "nurse", "rehab_pt", etc. or None (all)

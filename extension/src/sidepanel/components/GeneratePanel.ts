@@ -97,11 +97,14 @@ export class GeneratePanel {
       this.modalEmployment.value = prev.employment_type;
       this.modalJobCategory.value = prev.job_category || '';
       this.modalSendType.value = prev.send_type;
+      if (this.modalSendType.selectedIndex === -1) {
+        this.modalSendType.value = 'auto';
+      }
       this.modalPrevNotice.classList.remove('hidden');
     } else {
       this.modalEmployment.value = 'auto';
       this.modalJobCategory.value = '';
-      this.modalSendType.value = 'initial';
+      this.modalSendType.value = 'auto';
       this.modalPrevNotice.classList.add('hidden');
     }
 
@@ -189,8 +192,11 @@ export class GeneratePanel {
     this.hideModal();
 
     // Build options
+    // send_type: "auto" は候補者ごとにスカウト送信日で初回/再送を判定。
+    // is_resend は旧サーバへのフォールバック用に併送する。
     const options: GenerateOptions = {
       is_resend: sendType === 'resend',
+      send_type: sendType,
       force_employment: employment === 'auto' ? undefined : employment,
       job_category_filter: jobCategory || undefined,
     };

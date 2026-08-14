@@ -8,6 +8,9 @@ import type {
 
 export interface GenerateOptions {
   is_resend?: boolean;
+  // "auto"=候補者ごとにスカウト送信日で初回/再送を判定 | "initial" | "resend"
+  // 未指定は旧サーバ互換で is_resend に従う
+  send_type?: string;
   force_employment?: string;  // "パート" | "正社員" | undefined (auto)
   job_category_filter?: string;  // "nurse" | "rehab_pt" | "rehab_st" | "rehab_ot" | "medical_office" | undefined (all)
 }
@@ -157,6 +160,7 @@ export const apiClient = {
         profiles,
         options: {
           is_resend: options?.is_resend,
+          send_type: options?.send_type,
           force_employment: options?.force_employment,
           job_category_filter: options?.job_category_filter,
         },
