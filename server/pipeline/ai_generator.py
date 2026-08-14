@@ -285,6 +285,11 @@ def _build_generation_config(
     `thinking_budget` overrides the env-level `GEMINI_THINKING_BUDGET` for
     one call. Use 0 to disable thinking entirely, or a positive integer to
     cap reasoning tokens. If None, falls back to the env default.
+
+    Gemini 2.5/3系では thinking トークンも max_output_tokens を消費する。
+    上限を共有すると思考が長い呼び出しで本文が途中で切れるため、
+    thinking 対応モデルでは要求された本文分に思考予算を上乗せして
+    本文用の枠を保証する（genai SDK 経路も既定で thinking が走るので同様）。
     """
     config: dict = {
         "temperature": temperature,
@@ -292,9 +297,12 @@ def _build_generation_config(
         **extra,
     }
     effective_budget = GEMINI_THINKING_BUDGET if thinking_budget is None else thinking_budget
-    # Add thinking only for Vertex AI path (genai SDK doesn't support it yet)
-    if for_vertex and effective_budget > 0 and ("gemini-3" in model_name or "gemini-2.5" in model_name):
-        config["thinking_config"] = {"thinking_budget": effective_budget}
+    is_thinking_model = "gemini-3" in model_name or "gemini-2.5" in model_name
+    if is_thinking_model and effective_budget > 0:
+        config["max_output_tokens"] = max_output_tokens + effective_budget
+        # Add thinking only for Vertex AI path (genai SDK doesn't support it yet)
+        if for_vertex:
+            config["thinking_config"] = {"thinking_budget": effective_budget}
     return config
 
 
@@ -461,6 +469,48 @@ def _strip_markdown(text: str) -> str:
     return text.strip()
 
 
+def _finish_reason_name(response) -> str:
+    """Return the first candidate's finish_reason name ('' if unavailable).
+
+    Vertex AI / genai SDK とも candidates[0].finish_reason は proto enum で、
+    .name が "STOP" / "MAX_TOKENS" 等を返す。取れない場合は空文字。
+    """
+    try:
+        fr = response.candidates[0].finish_reason
+    except (AttributeError, IndexError, TypeError):
+        return ""
+    if fr is None:
+        return ""
+    name = getattr(fr, "name", None)
+    return name if name is not None else str(fr)
+
+
+def _is_truncated(response) -> bool:
+    """True if the response stopped because it hit max_output_tokens."""
+    # proto enum の生値が来た場合に備え "2"（= MAX_TOKENS）も見る
+    return _finish_reason_name(response) in ("MAX_TOKENS", "2")
+
+
+_SENTENCE_END_CHARS = ("。", "！", "？", "!", "?", "」", "』")
+
+
+def _trim_to_last_sentence(text: str) -> str:
+    """Drop a trailing incomplete sentence (used after MAX_TOKENS truncation).
+
+    Returns '' when no sentence boundary exists at all — the caller
+    treats that as a generation failure instead of shipping a fragment.
+    """
+    stripped = text.rstrip()
+    if not stripped:
+        return ""
+    if stripped.endswith(_SENTENCE_END_CHARS):
+        return stripped
+    cut = max(stripped.rfind(c) for c in _SENTENCE_END_CHARS)
+    if cut < 0:
+        return ""
+    return stripped[: cut + 1]
+
+
 async def generate_personalized_text(
     system_prompt: str,
     user_prompt: str,
@@ -469,6 +519,7 @@ async def generate_personalized_text(
     temperature: float = 0.7,
     thinking_budget: int | None = None,
     use_google_search: bool = False,
+    retry_on_truncation: bool = True,
 ) -> GenerationResult:
     """Call Gemini to generate personalized scout text.
 
@@ -483,6 +534,10 @@ async def generate_personalized_text(
     returned in `GenerationResult.citations`. If the underlying SDK/model
     doesn't support grounding, the call falls back silently to no-tool
     (citations will be empty) so the caller still gets a text response.
+
+    `retry_on_truncation=True`（既定）の場合、finish_reason=MAX_TOKENS で
+    本文が途切れたら max_output_tokens を倍にして1回だけ再試行する。
+    再試行でも切れた場合は最後の完結文まで切り詰めて返す。
     """
     primary = model_name or GEMINI_MODEL
 
@@ -574,12 +629,54 @@ async def generate_personalized_text(
         # Should be unreachable: either break sets response or we raised.
         raise last_exc or RuntimeError("AI生成: 応答が取得できませんでした")
 
-    raw_text = _extract_text_safe(response)
+    async def _retry_with_larger_budget() -> GenerationResult:
+        """max_output_tokens 到達で本文が切れた場合の1回だけの再試行。"""
+        logger.warning(
+            f"AI出力が max_output_tokens 到達で途切れました "
+            f"(model={name}, max_output_tokens={max_output_tokens}) — 枠を倍にして再試行します"
+        )
+        return await generate_personalized_text(
+            system_prompt,
+            user_prompt,
+            model_name=name,
+            max_output_tokens=max_output_tokens * 2,
+            temperature=temperature,
+            thinking_budget=thinking_budget,
+            use_google_search=use_google_search,
+            retry_on_truncation=False,
+        )
+
+    truncated = _is_truncated(response)
+
+    try:
+        raw_text = _extract_text_safe(response)
+    except ValueError:
+        # 思考だけで枠を使い切り本文ゼロのケースも再試行で救う
+        if truncated and retry_on_truncation:
+            return await _retry_with_larger_budget()
+        raise
     if not raw_text:
+        if truncated and retry_on_truncation:
+            return await _retry_with_larger_budget()
         raise ValueError("AI生成で空の応答が返されました")
+
+    if truncated and retry_on_truncation:
+        return await _retry_with_larger_budget()
 
     text = _strip_thinking(raw_text)
     text = _strip_markdown(text)
+
+    if truncated:
+        # 再試行後も切れている場合は、文の途中で終わる断片を送らないよう
+        # 最後の完結文まで切り詰める（境界が無ければ生成失敗として扱う）
+        trimmed = _trim_to_last_sentence(text)
+        if not trimmed:
+            raise ValueError("AI生成が途中で途切れました（再試行でも文が完結しませんでした）")
+        if trimmed != text:
+            logger.warning(
+                f"AI出力が再試行でも途切れたため文末で切り詰めました（{len(text)}→{len(trimmed)}文字）"
+            )
+        text = trimmed
 
     if not text:
         raise ValueError("AI生成の結果が空です（マークダウン除去後）")
