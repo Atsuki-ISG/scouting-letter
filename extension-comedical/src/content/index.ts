@@ -47,11 +47,29 @@ function log(...args: unknown[]) {
   console.log(`[${BUILD_CONFIG.displayName}]`, ...args);
 }
 
+/**
+ * HTMLエンティティを素の文字へ戻す最終防御。バンドル設定に &quot; 等が
+ * 残っていても、textarea へ入れる直前に無害化する（ビルド時 sanitize の二重化）。
+ */
+function decodeHtmlEntities(s: string): string {
+  if (!s || s.indexOf('&') === -1) return s;
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*34;/g, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&'); // &amp; は最後
+}
+
 function buildScoutBody(personalized: string): string {
   const templates = BUNDLED_COMPANY_CONFIG.templates;
   const firstInitial = templates.find((t) => t.type.endsWith('_初回')) || templates[0];
-  if (!firstInitial) return personalized;
-  return firstInitial.body.replace('{ここに生成した文章を挿入}', personalized);
+  if (!firstInitial) return decodeHtmlEntities(personalized);
+  return decodeHtmlEntities(
+    firstInitial.body.replace('{ここに生成した文章を挿入}', personalized)
+  );
 }
 
 /**
