@@ -224,6 +224,18 @@ PT・OTの6種は 2026-09 クライアント支給文（スプレッドシート
 
 要確認事項（`hearing.md` #3〜#6）: 南太田駅 徒歩3分（他職種テンプレは徒歩2分）／想定年収350万円の訴求削除／「多忙のところ恐縮ですが」の脱字／「訪問看護ステーション」と従来記載「訪問リハビリ」の関係。
 
+### L3用テンプレ（サーバ テンプレートシート row 80 / `rehab_pt` / `正社員_初回_L3`）は据え置き
+
+2026-09-11 判断。今回の支給文には差し替えていない。ヘッダーに旧情報（想定年収350万円・徒歩2分）が残るが、オペレーターが送るスカウト文には混入しない。
+
+理由 — L3は開発者モード専用で通常フローから到達しないため:
+
+- `_L3` サフィックスのテンプレ検索は `pipeline/personalized_scout/pipeline.py` の `if level in ("L2", "L3")` 内のみ。L1（`/api/v1/generate`・`/generate/batch`）を担う `orchestrator.py` / `template_resolver.py` に `_L3` の記述はない
+- L1のテンプレキーは `job_category:type` 形式のため `rehab_pt:正社員_初回_L3` と `rehab_pt:正社員_初回` は別キー。誤選択もしない
+- `/api/v1/generate/personalized` を叩くのは拡張の「🧪 新パーソナライズ生成」タブのみ。同タブは `.dev-only` で `storage.getDevMode()` が真のときだけ表示され、デフォルトは false
+
+L2/L3の検証を再開するときに、支給文ベースで5ブロック構成（`{opening}`/`{bridge}`/`{facility_intro}`/`{job_framing}`/`{closing_cta}`）に作り直すこと。それまで古い文面で評価しないよう注意。
+
 ---
 
 ## PT_正社員_初回テンプレート
