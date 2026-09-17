@@ -84,22 +84,24 @@ export class PersonalizedGeneratePanel {
     const company = await storage.getCompany();
     if (!company || company === this.populatedCompany) return;
     this.populatedCompany = company;
-    // Keep the placeholder (first option)
+
+    let config = null;
+    try {
+      config = await configProvider.getCompanyConfig(company);
+    } catch {
+      // API failure: leave placeholder only
+    }
+    // 取得後にまとめて差し替える。クリアしてから待つと、呼び出しが重なったとき
+    // 選択肢が重複して並ぶ。
+    if (company !== this.populatedCompany) return; // 別の会社の取得に追い越された
     while (this.jobCategorySelect.options.length > 1) {
       this.jobCategorySelect.remove(1);
     }
-    try {
-      const config = await configProvider.getCompanyConfig(company);
-      if (config?.job_categories) {
-        for (const jc of config.job_categories) {
-          const opt = document.createElement('option');
-          opt.value = jc.id;
-          opt.textContent = jc.display_name;
-          this.jobCategorySelect.appendChild(opt);
-        }
-      }
-    } catch {
-      // API failure: leave placeholder only
+    for (const jc of config?.job_categories || []) {
+      const opt = document.createElement('option');
+      opt.value = jc.id;
+      opt.textContent = jc.display_name;
+      this.jobCategorySelect.appendChild(opt);
     }
   }
 

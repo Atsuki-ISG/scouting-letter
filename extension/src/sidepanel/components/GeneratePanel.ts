@@ -12,6 +12,9 @@ export class GeneratePanel {
   private progressFill: HTMLElement;
   private resultSummary: HTMLElement;
   private isGenerating = false;
+  private isOpeningModal = false;
+  /** 最新の populateDropdowns 呼び出しだけがDOMを書き換えるようにするための世代番号 */
+  private dropdownToken = 0;
 
   // Modal elements
   private modal: HTMLElement;
@@ -46,8 +49,7 @@ export class GeneratePanel {
     this.modal.querySelector('.confirmation-backdrop')!.addEventListener('click', () => this.hideModal());
     // Refresh dropdowns when company changes
     this.modalCompany.addEventListener('change', () => {
-      this.populateJobCategories(this.modalCompany.value);
-      this.populateEmploymentTypes(this.modalCompany.value);
+      void this.populateDropdowns(this.modalCompany.value);
     });
 
     this.updateProfileCount();
@@ -69,97 +71,105 @@ export class GeneratePanel {
   }
 
   private async showModal(): Promise<void> {
-    if (this.isGenerating) return;
+    // 設定取得の待ち時間中にボタンを連打されると、選択肢が候補の数だけ重複する。
+    // 開いている最中は再入させない（ボタンも押せなくする）。
+    if (this.isGenerating || this.isOpeningModal) return;
+    this.isOpeningModal = true;
+    this.btnGenerate.disabled = true;
 
-    const profiles = await storage.getExtractedProfiles();
-    if (profiles.length === 0) {
-      alert('抽出済みプロフィールがありません。先に抽出タブでプロフィールを抽出してください。');
-      return;
-    }
-
-    // Populate company dropdown from header select
-    const headerCompany = document.getElementById('company') as HTMLSelectElement;
-    this.modalCompany.innerHTML = headerCompany.innerHTML;
-    this.modalCompany.value = headerCompany.value;
-
-    // Profile count
-    this.modalProfileCount.textContent = String(profiles.length);
-
-    // Populate dropdowns from API
-    await Promise.all([
-      this.populateJobCategories(this.modalCompany.value),
-      this.populateEmploymentTypes(this.modalCompany.value),
-    ]);
-
-    // Restore previous settings
-    const prev = await storage.getGenerateSettings();
-    if (prev) {
-      this.modalEmployment.value = prev.employment_type;
-      this.modalJobCategory.value = prev.job_category || '';
-      this.modalSendType.value = prev.send_type;
-      if (this.modalSendType.selectedIndex === -1) {
-        this.modalSendType.value = 'auto';
+    try {
+      const profiles = await storage.getExtractedProfiles();
+      if (profiles.length === 0) {
+        alert('抽出済みプロフィールがありません。先に抽出タブでプロフィールを抽出してください。');
+        return;
       }
-      this.modalPrevNotice.classList.remove('hidden');
-    } else {
-      this.modalEmployment.value = 'auto';
-      this.modalJobCategory.value = '';
-      this.modalSendType.value = 'auto';
-      this.modalPrevNotice.classList.add('hidden');
-    }
 
-    this.modal.classList.remove('hidden');
+      // Populate company dropdown from header select
+      const headerCompany = document.getElementById('company') as HTMLSelectElement;
+      this.modalCompany.innerHTML = headerCompany.innerHTML;
+      this.modalCompany.value = headerCompany.value;
+
+      // Profile count
+      this.modalProfileCount.textContent = String(profiles.length);
+
+      // Populate dropdowns from API
+      await this.populateDropdowns(this.modalCompany.value);
+
+      // Restore previous settings
+      const prev = await storage.getGenerateSettings();
+      if (prev) {
+        this.modalEmployment.value = prev.employment_type;
+        this.modalJobCategory.value = prev.job_category || '';
+        this.modalSendType.value = prev.send_type;
+        if (this.modalEmployment.selectedIndex === -1) {
+          this.modalEmployment.value = 'auto';
+        }
+        if (this.modalSendType.selectedIndex === -1) {
+          this.modalSendType.value = 'auto';
+        }
+        this.modalPrevNotice.classList.remove('hidden');
+      } else {
+        this.modalEmployment.value = 'auto';
+        this.modalJobCategory.value = '';
+        this.modalSendType.value = 'auto';
+        this.modalPrevNotice.classList.add('hidden');
+      }
+
+      this.modal.classList.remove('hidden');
+    } finally {
+      this.isOpeningModal = false;
+      // 抽出件数に応じた本来の disabled 状態に戻す
+      void this.updateProfileCount();
+    }
   }
 
   private hideModal(): void {
     this.modal.classList.add('hidden');
   }
 
-  private async populateJobCategories(companyId: string): Promise<void> {
-    const savedValue = this.modalJobCategory.value;
-    // Keep only the first option (全職種)
-    while (this.modalJobCategory.options.length > 1) {
-      this.modalJobCategory.remove(1);
-    }
+  /**
+   * 職種・雇用形態のプルダウンを会社設定から作り直す。
+   *
+   * 取得を待ってから一気に差し替える（クリアしてから待たない）。
+   * 途中で別の呼び出しが始まったら、古い方は世代番号で弾いてDOMに触れない。
+   * こうしないと複数呼び出しが重なったとき選択肢が重複して並ぶ。
+   */
+  private async populateDropdowns(companyId: string): Promise<void> {
+    const token = ++this.dropdownToken;
+    const savedJobCategory = this.modalJobCategory.value;
+    const savedEmployment = this.modalEmployment.value;
+
+    let config = null;
     try {
-      const config = await configProvider.getCompanyConfig(companyId);
-      if (config?.job_categories && config.job_categories.length > 0) {
-        for (const jc of config.job_categories) {
-          const option = document.createElement('option');
-          option.value = jc.id;
-          option.textContent = jc.display_name;
-          this.modalJobCategory.appendChild(option);
-        }
-      }
-    } catch { /* API failure: show only 全職種 */ }
-    // Restore previous selection if still available
-    this.modalJobCategory.value = savedValue;
-    if (this.modalJobCategory.selectedIndex === -1) {
-      this.modalJobCategory.value = '';
-    }
+      config = await configProvider.getCompanyConfig(companyId);
+    } catch { /* API failure: 先頭の選択肢だけ残す */ }
+
+    if (token !== this.dropdownToken) return; // 新しい呼び出しに追い越された
+
+    this.fillSelect(this.modalJobCategory, config?.job_categories, savedJobCategory, '');
+    this.fillSelect(this.modalEmployment, config?.employment_types, savedEmployment, 'auto');
   }
 
-  private async populateEmploymentTypes(companyId: string): Promise<void> {
-    const savedValue = this.modalEmployment.value;
-    // Keep only the first option (自動判定)
-    while (this.modalEmployment.options.length > 1) {
-      this.modalEmployment.remove(1);
+  /** 先頭の選択肢（プレースホルダー／自動判定）を残して中身を入れ替える */
+  private fillSelect(
+    select: HTMLSelectElement,
+    items: Array<{ id: string; display_name: string }> | undefined,
+    savedValue: string,
+    fallbackValue: string,
+  ): void {
+    while (select.options.length > 1) {
+      select.remove(1);
     }
-    try {
-      const config = await configProvider.getCompanyConfig(companyId);
-      if (config?.employment_types && config.employment_types.length > 0) {
-        for (const et of config.employment_types) {
-          const option = document.createElement('option');
-          option.value = et.id;
-          option.textContent = et.display_name;
-          this.modalEmployment.appendChild(option);
-        }
-      }
-    } catch { /* API failure: show only 自動判定 */ }
+    for (const item of items || []) {
+      const option = document.createElement('option');
+      option.value = item.id;
+      option.textContent = item.display_name;
+      select.appendChild(option);
+    }
     // Restore previous selection if still available
-    this.modalEmployment.value = savedValue;
-    if (this.modalEmployment.selectedIndex === -1) {
-      this.modalEmployment.value = 'auto';
+    select.value = savedValue;
+    if (select.selectedIndex === -1) {
+      select.value = fallbackValue;
     }
   }
 
