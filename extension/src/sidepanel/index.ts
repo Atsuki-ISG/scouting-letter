@@ -529,15 +529,23 @@ function setupJobOfferExtraction(): void {
         statusEl.textContent = `${extractedOffers.length}件の求人を取得しました`;
         statusEl.style.color = '#22c55e';
 
-        // チェックボックス付きリスト表示
+        // 求人IDが取れなかったものは登録しても求人選択に使えない（id列が空になる）ため、
+        // チェックを外した上で理由を出す。ジョブメドレーがプルダウンに求人IDを
+        // 表示しなくなると全件がこの状態になる。
+        const withoutId = extractedOffers.filter((o) => !o.id).length;
         listEl.innerHTML = extractedOffers.map((o, i) => `
-          <label style="display:block;padding:4px 0;font-size:12px;cursor:pointer;">
-            <input type="checkbox" checked data-index="${i}" style="margin-right:6px;">
-            <strong>${o.id || '(ID不明)'}</strong> ${o.name}
+          <label style="display:block;padding:4px 0;font-size:12px;cursor:${o.id ? 'pointer' : 'not-allowed'};${o.id ? '' : 'opacity:0.5;'}">
+            <input type="checkbox" ${o.id ? 'checked' : 'disabled'} data-index="${i}" style="margin-right:6px;">
+            <strong>${o.id || '(ID取得不可)'}</strong> ${o.name}
           </label>
         `).join('');
 
-        if (extractedOffers.length > 0) {
+        if (withoutId > 0) {
+          statusEl.textContent = `${extractedOffers.length}件中 ${withoutId}件は求人IDを取得できませんでした（登録対象外）。施設情報抽出から profile.md を取得して求人IDを確認してください`;
+          statusEl.style.color = '#f59e0b';
+        }
+
+        if (extractedOffers.some((o) => o.id)) {
           registerBtn?.classList.remove('hidden');
         }
       }
@@ -547,10 +555,10 @@ function setupJobOfferExtraction(): void {
   registerBtn?.addEventListener('click', async () => {
     const company = await storage.getCompany();
     const checkboxes = listEl.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
-    const selected = extractedOffers.filter((_, i) => checkboxes[i]?.checked);
+    const selected = extractedOffers.filter((o, i) => checkboxes[i]?.checked && o.id);
 
     if (selected.length === 0) {
-      registerStatusEl.textContent = '登録する求人を選択してください';
+      registerStatusEl.textContent = '登録する求人を選択してください（求人IDが取得できた求人のみ登録できます）';
       registerStatusEl.style.color = '#ef4444';
       return;
     }
@@ -572,7 +580,9 @@ function setupJobOfferExtraction(): void {
             id: offer.id,
             name: offer.name,
             label: offer.name.split(/\s+/).slice(-2).join(' '),
-            employment_type: offer.name.includes('パート') ? 'part' : offer.name.includes('契約') ? 'contract' : 'full',
+            // form-filler の EMPLOYMENT_KEYWORDS と同じ表記にする。
+            // full/part/contract で入れると雇用形態での絞り込みが効かない
+            employment_type: offer.name.includes('パート') ? 'パート' : offer.name.includes('契約') ? '契約' : '正社員',
             active: 'TRUE',
           }),
         });
@@ -759,6 +769,12 @@ function generateProfileMd(facility: FacilityInfo): string {
     for (const job of facility.jobs) {
       lines.push(`### ${job.title || job.jobType || '(職種不明)'}`);
       lines.push('');
+
+      // 求人IDは求人シートのid列と対応する。ここが無いと拡張が求人を特定できない
+      if (job.jobId) {
+        lines.push(`**求人ID**: ${job.jobId}`);
+        lines.push('');
+      }
 
       if (job.jobType) {
         lines.push(`**募集職種**: ${job.jobType}`);

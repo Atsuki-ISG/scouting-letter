@@ -27,6 +27,23 @@ function deriveSearchTerm(jobCategory: string, config?: CompanyValidationConfig 
   return config?.categoryConfig?.[jobCategory]?.search_term || FALLBACK_SEARCH_TERMS[jobCategory] || '看護';
 }
 
+/**
+ * 求人IDから求人名を引く。
+ *
+ * ジョブメドレーのプルダウンは求人IDを表示しなくなったため、選択は求人名で
+ * 突き合わせる。名前が無いと施設違いを区別できない（いちごのように同じ職種の
+ * 求人が複数施設に並ぶ会社で誤選択になる）。
+ */
+async function deriveJobOfferName(companyId: string, jobOfferId?: string): Promise<string | undefined> {
+  if (!jobOfferId) return undefined;
+  try {
+    const offers = await configProvider.getJobOffers(companyId);
+    return offers.find((o) => o.id === jobOfferId)?.name;
+  } catch {
+    return undefined;
+  }
+}
+
 /** job_categoryからマッチング用キーワードを取得 */
 function deriveCategoryKeywords(jobCategory: string, config?: CompanyValidationConfig | null): string[] | undefined {
   return config?.categoryConfig?.[jobCategory]?.keywords;
@@ -94,7 +111,7 @@ export class CandidateList {
     this.restore();
   }
 
-  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; personalizedText: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[]; jobOfferId?: string } | null> {
+  private async getNextReadyCandidate(): Promise<{ memberId: string; text: string; personalizedText: string; searchTerm?: string; jobCategory?: string; employmentType?: string; categoryKeywords?: string[]; jobOfferId?: string; jobOfferName?: string } | null> {
     const candidate = this.candidates.find((c) => c.status === 'ready');
     if (!candidate) return null;
 
@@ -114,6 +131,7 @@ export class CandidateList {
       employmentType,
       categoryKeywords,
       jobOfferId: candidate.job_offer_id,
+      jobOfferName: await deriveJobOfferName(company, candidate.job_offer_id),
     };
   }
 
@@ -404,6 +422,7 @@ export class CandidateList {
         skipJobOffer: !autoJobOffer,
         categoryKeywords,
         jobOfferId: candidate.job_offer_id,
+        jobOfferName: await deriveJobOfferName(company, candidate.job_offer_id),
       } satisfies Message,
       async (response) => {
         if (response && !response.success) {

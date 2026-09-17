@@ -109,6 +109,7 @@ export async function selectJobOffer(
   employmentType: string,
   categoryKeywords?: string[],
   jobOfferId?: string,
+  jobOfferName?: string,
 ): Promise<{ success: boolean; error?: string; selectedJobId?: string }> {
   const suggestInput = document.querySelector(SELECTORS.jobOfferSuggestInput) as HTMLInputElement | null;
   if (!suggestInput) {
@@ -194,9 +195,10 @@ export async function selectJobOffer(
 
   let targetIndex = -1;
 
-  // 5.0 求人ID優先: サーバが返した job_offer_id と先頭IDが一致する求人を最優先で選択する。
-  //     同一カテゴリ×雇用形態の求人が複数掲載されていても（例: いちご看護師正社員が
-  //     石神井/富士見台/介護の3件）、指定された求人を確実に当てるための分岐。
+  // 5.0 求人ID優先: プルダウンの先頭に求人IDが出ていた頃の表示形式
+  //     （"1234567 東京都 施設名 看護師/准看護師 正職員"）向けの分岐。
+  //     現在のジョブメドレーは求人IDを表示しないため通常はヒットしないが、
+  //     表示が戻った場合に最も確実なので残してある。
   if (jobOfferId && jobOfferId.trim()) {
     const wantId = jobOfferId.trim();
     for (let i = 0; i < options.length; i++) {
@@ -207,31 +209,64 @@ export async function selectJobOffer(
         break;
       }
     }
-    if (targetIndex === -1) {
-      console.warn(`[Scout Assistant] job_offer_id ${wantId} がドロップダウンに見つかりません。キーワード一致にフォールバックします`);
-    }
   }
 
-  // 両方マッチする求人を探す（IDで特定できなかった場合のフォールバック）
+  // 5.1 職種 → 雇用形態 → 求人名 の順に絞り込む。
+  //
+  //     プルダウンに求人IDが出ないため、施設の区別は求人名に頼るしかない。
+  //     ただし求人名とプルダウンの表記は揃っていない（シートは「訪問看護師」、
+  //     画面は「看護師/准看護師」）ので、名前だけでは職種を判定できない。
+  //     そこで職種・雇用形態はキーワードで絞り、残った候補の中から
+  //     求人名に一番多く一致するものを選ぶ。
   if (targetIndex === -1) {
+    let candidates: number[] = [];
     for (let i = 0; i < options.length; i++) {
       const text = options[i].textContent?.trim() || '';
       const categoryMatch = effectiveCategoryKeywords.some((kw) => text.includes(kw));
       const empMatch = empKeywords.length === 0 || empKeywords.some((kw) => text.includes(kw));
-      if (categoryMatch && empMatch) {
-        targetIndex = i;
-        break;
+      if (categoryMatch && empMatch) candidates.push(i);
+    }
+
+    // 雇用形態まで一致するものが無ければ職種だけで拾い直す
+    if (candidates.length === 0) {
+      for (let i = 0; i < options.length; i++) {
+        const text = options[i].textContent?.trim() || '';
+        if (effectiveCategoryKeywords.some((kw) => text.includes(kw))) candidates.push(i);
       }
     }
-  }
 
-  // 雇用形態なしでカテゴリだけマッチするフォールバック
-  if (targetIndex === -1) {
-    for (let i = 0; i < options.length; i++) {
-      const text = options[i].textContent?.trim() || '';
-      if (effectiveCategoryKeywords.some((kw) => text.includes(kw))) {
-        targetIndex = i;
-        break;
+    if (candidates.length === 1) {
+      targetIndex = candidates[0];
+    } else if (candidates.length > 1) {
+      const nameTokens = (jobOfferName || '').trim().split(/\s+/).filter(Boolean);
+      if (nameTokens.length === 0) {
+        // 求人名が無いと施設を見分けられない。従来どおり先頭の候補を使う
+        targetIndex = candidates[0];
+        console.warn('[Scout Assistant] 求人名が無いため候補を絞り込めません。先頭の候補を使います:',
+          options[targetIndex].textContent?.trim().slice(0, 60));
+      } else {
+        // 求人名の語が何個含まれるかで採点する。施設名がそのまま得点になるので、
+        // 「富士見台サテライト」を持つ求人は富士見台の行だけが高得点になる。
+        // 同点なら余分な語が少ない＝より正確な一致とみなして短い方を採る
+        // （石神井の求人名は富士見台の行にも全語が出てしまうため）。
+        const scored = candidates.map((index) => {
+          const text = options[index].textContent?.trim() || '';
+          return {
+            index,
+            score: nameTokens.filter((t) => text.includes(t)).length,
+            length: text.length,
+          };
+        });
+        scored.sort((a, b) => (b.score - a.score) || (a.length - b.length));
+        targetIndex = scored[0].index;
+
+        if (scored.length > 1 && scored[0].score === scored[1].score) {
+          console.warn('[Scout Assistant] 求人名の得点が同点の候補があります。短い方を採用しました:',
+            scored.slice(0, 3).map((c) => options[c.index].textContent?.trim().slice(0, 60)));
+        } else {
+          console.log('[Scout Assistant] Job offer matched by name "%s" at option[%d] (score %d/%d, %d candidates)',
+            jobOfferName, targetIndex, scored[0].score, nameTokens.length, candidates.length);
+        }
       }
     }
   }

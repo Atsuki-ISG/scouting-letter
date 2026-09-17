@@ -1,5 +1,7 @@
 /** 施設情報（求人プレビューから抽出） */
 export interface FacilityJobInfo {
+  /** 求人ID（施設ページの「求人ID: xxxx」。求人シートのid列と対応する） */
+  jobId: string;
   /** 求人タイトル（募集職種 + 雇用形態） */
   title: string;
   /** 募集職種 */
@@ -256,9 +258,9 @@ export type Message =
   | { type: 'EXTRACTION_ERROR'; error: string }
   | { type: 'GET_OVERLAY_MEMBER_ID' }
   | { type: 'OVERLAY_MEMBER_ID'; memberId: string | null }
-  | { type: 'FILL_FORM'; text: string; memberId?: string; searchTerm?: string; jobCategory?: string; employmentType?: string; skipJobOffer?: boolean; categoryKeywords?: string[]; jobOfferId?: string }
+  | { type: 'FILL_FORM'; text: string; memberId?: string; searchTerm?: string; jobCategory?: string; employmentType?: string; skipJobOffer?: boolean; categoryKeywords?: string[]; jobOfferId?: string; jobOfferName?: string }
   | { type: 'FILL_FORM_RESULT'; success: boolean; error?: string }
-  | { type: 'FILL_JOB_OFFER'; searchTerm: string; jobCategory: string; employmentType: string; memberId?: string; jobOfferId?: string }
+  | { type: 'FILL_JOB_OFFER'; searchTerm: string; jobCategory: string; employmentType: string; memberId?: string; jobOfferId?: string; jobOfferName?: string }
   | { type: 'OPEN_SIDE_PANEL' }
   | { type: 'EXTRACT_CONVERSATION' }
   | { type: 'EXTRACT_ALL_CONVERSATIONS'; limit?: number }
@@ -269,7 +271,7 @@ export type Message =
   | { type: 'START_CONTINUOUS_SEND' }
   | { type: 'STOP_CONTINUOUS_SEND' }
   | { type: 'GET_NEXT_CANDIDATE' }
-  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string; jobOfferId?: string } | null }
+  | { type: 'NEXT_CANDIDATE'; candidate: { memberId: string; text: string; searchTerm?: string; jobCategory?: string; employmentType?: string; jobOfferId?: string; jobOfferName?: string } | null }
   | {
       type: 'CANDIDATE_SENT';
       memberId: string;
