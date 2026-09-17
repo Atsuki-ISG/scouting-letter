@@ -67,6 +67,7 @@ _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "rehab_ot": "作業療法士",
     "medical_office": "医療事務",
     "dietitian": "管理栄養士",
+    "pharmacist": "薬剤師",
     "counselor": "相談支援専門員",
     "sales": "入居相談員",
     "nursing_assistant": "看護助手",

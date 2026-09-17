@@ -85,6 +85,7 @@ LCC_CATEGORY_MAP = {
     "管理栄養士/栄養士": "dietitian",
     "相談支援専門員": "counselor",
     "入居相談員": "sales",
+    "薬剤師": "pharmacist",
 }
 
 

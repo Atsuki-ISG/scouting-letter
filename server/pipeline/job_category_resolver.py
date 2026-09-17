@@ -44,6 +44,7 @@ _QUALIFICATION_MAP: list[tuple[str, str]] = [
     ("作業療法士", "rehab_ot"),
     ("管理栄養士", "dietitian"),
     ("栄養士", "dietitian"),
+    ("薬剤師", "pharmacist"),
     ("主任相談支援専門員", "counselor"),
     ("相談支援従事者研修", "counselor"),
     ("相談支援専門員", "counselor"),
@@ -65,6 +66,7 @@ _LEGACY_DESIRED_FALLBACK: list[tuple[str, str]] = [
     ("准看護師", "nurse"),
     ("管理栄養士", "dietitian"),
     ("栄養士", "dietitian"),
+    ("薬剤師", "pharmacist"),
 ]
 
 
