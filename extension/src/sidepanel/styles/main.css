@@ -293,6 +293,14 @@ body {
   width: 56px;
 }
 
+.extraction-hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--c-text-muted);
+}
+
 /* ===== Progress ===== */
 .progress-section {
   margin-bottom: 12px;

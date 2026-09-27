@@ -253,6 +253,7 @@ export interface StorageData {
 export type Message =
   | { type: 'START_EXTRACTION'; count: number; startMemberId?: string }
   | { type: 'STOP_EXTRACTION' }
+  | { type: 'EXTRACTION_STARTED'; mode: 'checked' | 'range'; total: number }
   | { type: 'EXTRACTION_PROGRESS'; current: number; total: number; profile: CandidateProfile }
   | { type: 'EXTRACTION_COMPLETE'; profiles: CandidateProfile[] }
   | { type: 'EXTRACTION_ERROR'; error: string }

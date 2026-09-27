@@ -85,11 +85,12 @@
         </div>
         <button id="btn-start-extract" class="btn btn-primary">抽出開始</button>
         <button id="btn-stop-extract" class="btn btn-danger hidden">停止</button>
+        <p class="extraction-hint">画面で候補者にチェックを入れると、チェックした人だけを抽出します（開始会員番号・件数は無視）。チェックなしなら開始会員番号から件数分。</p>
       </div>
 
       <div id="extraction-progress" class="progress-section hidden">
         <div class="progress-text">
-          進捗: <span id="progress-current">0</span>/<span id="progress-total">0</span>
+          <span id="progress-mode"></span>進捗: <span id="progress-current">0</span>/<span id="progress-total">0</span>
         </div>
         <div class="progress-bar">
           <div id="progress-fill" class="progress-fill"></div>

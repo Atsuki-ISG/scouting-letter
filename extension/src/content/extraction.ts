@@ -66,33 +66,55 @@ function findCardIndexByMemberId(cards: Element[], normalizedId: string): number
   });
 }
 
-/** プロフィール一括抽出 */
+/** 画面上でチェックが入っているカードのインデックス一覧 */
+function findCheckedCardIndexes(cards: Element[]): number[] {
+  const indexes: number[] = [];
+  cards.forEach((card, i) => {
+    const checkbox = card.querySelector(SELECTORS.memberCheckbox) as HTMLInputElement | null;
+    if (checkbox?.checked) indexes.push(i);
+  });
+  return indexes;
+}
+
+/**
+ * プロフィール一括抽出。
+ * - 画面で候補者にチェックが入っていれば、チェックした人だけを抽出（開始会員番号・件数は無視）
+ * - チェックがなければ、開始会員番号（空欄なら先頭）から件数分を抽出
+ */
 export async function startExtraction(count: number, startMemberId?: string): Promise<void> {
   aborted = false;
   const cards = queryAllElements(document, SELECTORS.candidateCard);
 
-  let startIndex = 0;
-  const normalizedStartId = startMemberId ? normalizeMemberId(startMemberId) : '';
-  if (startMemberId && !normalizedStartId) {
-    safeSendMessage({ type: 'EXTRACTION_ERROR', error: `開始会員番号「${startMemberId}」に数字が含まれていません` });
-    return;
-  }
-  if (normalizedStartId) {
-    const idx = findCardIndexByMemberId(cards, normalizedStartId);
-    if (idx === -1) {
-      safeSendMessage({ type: 'EXTRACTION_ERROR', error: `会員番号 ${startMemberId} が表示中のリスト（${cards.length}件）に見つかりません。該当ページを開いているか確認してください` });
+  let targetIndexes = findCheckedCardIndexes(cards);
+  const mode: 'checked' | 'range' = targetIndexes.length > 0 ? 'checked' : 'range';
+
+  if (mode === 'range') {
+    let startIndex = 0;
+    const normalizedStartId = startMemberId ? normalizeMemberId(startMemberId) : '';
+    if (startMemberId && !normalizedStartId) {
+      safeSendMessage({ type: 'EXTRACTION_ERROR', error: `開始会員番号「${startMemberId}」に数字が含まれていません` });
       return;
     }
-    startIndex = idx;
+    if (normalizedStartId) {
+      const idx = findCardIndexByMemberId(cards, normalizedStartId);
+      if (idx === -1) {
+        safeSendMessage({ type: 'EXTRACTION_ERROR', error: `会員番号 ${startMemberId} が表示中のリスト（${cards.length}件）に見つかりません。該当ページを開いているか確認してください` });
+        return;
+      }
+      startIndex = idx;
+    }
+    const end = Math.min(startIndex + count, cards.length);
+    targetIndexes = [];
+    for (let i = startIndex; i < end; i++) targetIndexes.push(i);
   }
 
-  const available = cards.length - startIndex;
-  const total = Math.min(count, available);
-  console.log(`[Scout Assistant] Found ${cards.length} cards, startIndex=${startIndex}, will extract ${total}`);
+  const total = targetIndexes.length;
+  console.log(`[Scout Assistant] Found ${cards.length} cards, mode=${mode}, targets=[${targetIndexes.join(',')}]`);
+  safeSendMessage({ type: 'EXTRACTION_STARTED', mode, total });
   const profiles: CandidateProfile[] = [];
 
   for (let i = 0; i < total; i++) {
-    const cardIndex = startIndex + i;
+    const cardIndex = targetIndexes[i];
     if (aborted) break;
 
     const scoutSentDate = extractScoutSentDate(cards[cardIndex]);
