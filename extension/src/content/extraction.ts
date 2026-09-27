@@ -38,31 +38,83 @@ function extractScoutSentDate(card: Element): string {
   return '';
 }
 
-/** プロフィール一括抽出 */
+/**
+ * 会員番号を比較用に正規化する。
+ * 画面表示のコピペ（先頭ゼロ付き・「会員番号:」ラベルや空白混じり）でも一致させるため、
+ * 数字以外を除去し、先頭ゼロを落とす。
+ */
+function normalizeMemberId(id: string): string {
+  return id.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/\D/g, '')
+    .replace(/^0+/, '');
+}
+
+/**
+ * 指定会員番号のカード位置を探す。
+ * まずチェックボックスvalueで全件照合し、見つからなければカード内テキストの数字列で照合する
+ * （value が表示番号と形式違いのケースへの保険。誤一致を避けるため2パスに分ける）。
+ */
+function findCardIndexByMemberId(cards: Element[], normalizedId: string): number {
+  const byCheckbox = cards.findIndex((card) => {
+    const checkbox = card.querySelector(SELECTORS.memberCheckbox) as HTMLInputElement | null;
+    return !!checkbox && normalizeMemberId(checkbox.value) === normalizedId;
+  });
+  if (byCheckbox !== -1) return byCheckbox;
+  return cards.findIndex((card) => {
+    const digitRuns = (card.textContent || '').match(/\d{5,}/g) || [];
+    return digitRuns.some((run) => normalizeMemberId(run) === normalizedId);
+  });
+}
+
+/** 画面上でチェックが入っているカードのインデックス一覧 */
+function findCheckedCardIndexes(cards: Element[]): number[] {
+  const indexes: number[] = [];
+  cards.forEach((card, i) => {
+    const checkbox = card.querySelector(SELECTORS.memberCheckbox) as HTMLInputElement | null;
+    if (checkbox?.checked) indexes.push(i);
+  });
+  return indexes;
+}
+
+/**
+ * プロフィール一括抽出。
+ * - 画面で候補者にチェックが入っていれば、チェックした人だけを抽出（開始会員番号・件数は無視）
+ * - チェックがなければ、開始会員番号（空欄なら先頭）から件数分を抽出
+ */
 export async function startExtraction(count: number, startMemberId?: string): Promise<void> {
   aborted = false;
   const cards = queryAllElements(document, SELECTORS.candidateCard);
 
-  let startIndex = 0;
-  if (startMemberId) {
-    const idx = cards.findIndex((card) => {
-      const checkbox = card.querySelector(SELECTORS.memberCheckbox) as HTMLInputElement | null;
-      return checkbox?.value === startMemberId;
-    });
-    if (idx === -1) {
-      safeSendMessage({ type: 'EXTRACTION_ERROR', error: `会員番号 ${startMemberId} がリストに見つかりません` });
+  let targetIndexes = findCheckedCardIndexes(cards);
+  const mode: 'checked' | 'range' = targetIndexes.length > 0 ? 'checked' : 'range';
+
+  if (mode === 'range') {
+    let startIndex = 0;
+    const normalizedStartId = startMemberId ? normalizeMemberId(startMemberId) : '';
+    if (startMemberId && !normalizedStartId) {
+      safeSendMessage({ type: 'EXTRACTION_ERROR', error: `開始会員番号「${startMemberId}」に数字が含まれていません` });
       return;
     }
-    startIndex = idx;
+    if (normalizedStartId) {
+      const idx = findCardIndexByMemberId(cards, normalizedStartId);
+      if (idx === -1) {
+        safeSendMessage({ type: 'EXTRACTION_ERROR', error: `会員番号 ${startMemberId} が表示中のリスト（${cards.length}件）に見つかりません。該当ページを開いているか確認してください` });
+        return;
+      }
+      startIndex = idx;
+    }
+    const end = Math.min(startIndex + count, cards.length);
+    targetIndexes = [];
+    for (let i = startIndex; i < end; i++) targetIndexes.push(i);
   }
 
-  const available = cards.length - startIndex;
-  const total = Math.min(count, available);
-  console.log(`[Scout Assistant] Found ${cards.length} cards, startIndex=${startIndex}, will extract ${total}`);
+  const total = targetIndexes.length;
+  console.log(`[Scout Assistant] Found ${cards.length} cards, mode=${mode}, targets=[${targetIndexes.join(',')}]`);
+  safeSendMessage({ type: 'EXTRACTION_STARTED', mode, total });
   const profiles: CandidateProfile[] = [];
 
   for (let i = 0; i < total; i++) {
-    const cardIndex = startIndex + i;
+    const cardIndex = targetIndexes[i];
     if (aborted) break;
 
     const scoutSentDate = extractScoutSentDate(cards[cardIndex]);

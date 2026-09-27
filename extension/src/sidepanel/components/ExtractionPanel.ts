@@ -14,6 +14,7 @@ export class ExtractionPanel {
   private extractStart: HTMLInputElement;
   private extractCount: HTMLInputElement;
   private progressSection: HTMLElement;
+  private progressMode: HTMLElement;
   private progressCurrent: HTMLElement;
   private progressTotal: HTMLElement;
   private progressFill: HTMLElement;
@@ -26,6 +27,7 @@ export class ExtractionPanel {
     this.extractStart = document.getElementById('extract-start') as HTMLInputElement;
     this.extractCount = document.getElementById('extract-count') as HTMLInputElement;
     this.progressSection = document.getElementById('extraction-progress')!;
+    this.progressMode = document.getElementById('progress-mode')!;
     this.progressCurrent = document.getElementById('progress-current')!;
     this.progressTotal = document.getElementById('progress-total')!;
     this.progressFill = document.getElementById('progress-fill')!;
@@ -39,6 +41,10 @@ export class ExtractionPanel {
     chrome.runtime.onMessage.addListener((msg: Message, sender) => {
       if (sender.id !== chrome.runtime.id) return;
       switch (msg.type) {
+        case 'EXTRACTION_STARTED':
+          this.progressMode.textContent = msg.mode === 'checked' ? 'チェックした人のみ／' : '';
+          this.progressTotal.textContent = String(msg.total);
+          break;
         case 'EXTRACTION_PROGRESS':
           this.onProgress(msg.current, msg.total, msg.profile);
           break;
@@ -74,6 +80,7 @@ export class ExtractionPanel {
     this.btnStart.classList.add('hidden');
     this.btnStop.classList.remove('hidden');
     this.progressSection.classList.remove('hidden');
+    this.progressMode.textContent = '';
     this.progressCurrent.textContent = '0';
     this.progressTotal.textContent = String(count);
     this.progressFill.style.width = '0%';
