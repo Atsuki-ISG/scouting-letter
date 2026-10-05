@@ -60,6 +60,22 @@ python3 "$SCRIPT" init <company>
 前提: `companies/<company>/` に profile.md と templates.md が存在すること。
 recipes.md があれば init 後に `sync` でパターンを上書きできる。
 
+### テンプレート本文の一括置換
+
+```bash
+# 会社の全テンプレート本文に対して正規表現置換（改行は \n で書ける）
+python3 "$SCRIPT" replace-templates <company> '<regex>' ['<replacement>'] --dry-run
+python3 "$SCRIPT" replace-templates <company> '<regex>' ['<replacement>']
+```
+
+例: LCCのインスタグラム告知2行を削除
+```bash
+python3 "$SCRIPT" replace-templates lcc-visiting-nurse \
+  '＼ ?インスタグラムで社員や職場の情報を発信中 ?／\n@lifecareconcierge ?とインスタグラムで検索し、フォローすると最新情報をGET！\n\n' --dry-run
+```
+
+サーバ側で version 加算と変更履歴の記録が行われる（管理画面の履歴から戻せる）。
+
 ### 行の直接操作
 
 ```bash
@@ -132,6 +148,6 @@ python3 "$SCRIPT" delete <sheet> <row_index>
 
 - `--dry-run` は破壊的操作の前に必ず実行
 - `init` は既存会社には実行不可（テンプレートが存在するとエラー）
-- `sync` はパターン（型A〜G）のみ。テンプレート・プロンプト等は管理画面で編集
+- `sync` はパターン（型A〜G）のみ。テンプレートの定型修正は `replace-templates`、それ以外のテンプレート・プロンプト等は管理画面で編集
 - LCC訪問看護は `## 看護師` / `## リハビリ職` / `## 医療事務` のセクション分割を自動認識
 - 依存: `requests`（`pip install requests`）
