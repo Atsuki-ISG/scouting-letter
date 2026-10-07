@@ -8,12 +8,8 @@ templates.md / recipes.md を読み、以下をサーバに追加する（冪等
   2. パターン:     medical_office の 型A〜G（10行。server_admin.py create-patterns 相当）
   3. プロンプト:   medical_office の station_features / education / ai_guide（3行）
   4. 職種キーワード: nomura-hospital 固有の「医療事務」「受付」→ medical_office（3行）
-
-求人（求人シート）は登録しない。ジョブメドレーの求人IDが未入手（hearing.md #11）。
-入手後: python3 .claude/skills/server-admin/scripts/server_admin.py add job_offers \
-  '{"company":"nomura-hospital","job_category":"medical_office","id":"<求人ID>",
-    "name":"山口県 医療法人天秋会 野村病院 医療事務 パート・バイト","label":"医療事務 パート",
-    "employment_type":"パート","active":"TRUE"}'
+  5. 求人:         医療事務/受付（パート・バイト）求人ID 285319（1行）
+                   出典 https://job-medley.com/mc/285319/ （2026-10-07 あっきーさん共有）
 
 Usage (リポジトリルートで実行):
   python3 workspace/nomura-medical-office/push_server.py --dry-run
@@ -54,6 +50,16 @@ EDUCATION_CONTENT = (
     "- ※研修制度・教育体制の記載なし。「寮完備」「引越し手当」「退職金」は医療事務の求人票にない。使わないこと\n"
     "- ※テンプレ本文の「1日4〜8時間」「社会保険完備」は求人票と食い違う。パーソナライズ文で書かないこと"
 )
+
+JOB_OFFER = {
+    "company": COMPANY,
+    "job_category": JC,
+    "id": "285319",
+    "name": "山口県 医療法人天秋会 野村病院 医療事務/受付 パート・バイト",
+    "label": "医療事務 パート",
+    "employment_type": "パート",
+    "active": "TRUE",
+}
 
 KEYWORDS = [
     {"keyword": "医療事務", "source_fields": "qualification"},
@@ -195,6 +201,16 @@ def push_keywords():
     return n
 
 
+def push_job_offer():
+    existing = sa.api_get("job_offers", {"company": COMPANY}).get("rows", [])
+    if any(str(r.get("id", "")).strip() == JOB_OFFER["id"] for r in existing):
+        print(f"  SKIP job_offers {JOB_OFFER['id']} (exists)")
+        return 0
+    print(f"  ADD  job_offers {JOB_OFFER['id']} {JOB_OFFER['name']}")
+    sa.api_post("job_offers", JOB_OFFER)
+    return 1
+
+
 def main():
     if sa.DRY_RUN:
         print("[DRY RUN] 書き込みは行いません")
@@ -204,8 +220,8 @@ def main():
     print("\n== patterns ==");   p = push_patterns()
     print("\n== prompts ==");    q = push_prompts(recipes_md)
     print("\n== job_category_keywords =="); k = push_keywords()
-    print(f"\nadded: templates={t} patterns={p} prompts={q} keywords={k}")
-    print("未実施: 求人シート（ジョブメドレー求人IDが必要。hearing.md #11）")
+    print("\n== job_offers ==");  j = push_job_offer()
+    print(f"\nadded: templates={t} patterns={p} prompts={q} keywords={k} job_offers={j}")
 
 
 if __name__ == "__main__":
