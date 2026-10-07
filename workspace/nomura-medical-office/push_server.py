@@ -8,8 +8,10 @@ templates.md / recipes.md を読み、以下をサーバに追加する（冪等
   2. パターン:     medical_office の 型A〜G（10行。server_admin.py create-patterns 相当）
   3. プロンプト:   medical_office の station_features / education / ai_guide（3行）
   4. 職種キーワード: nomura-hospital 固有の「医療事務」「受付」→ medical_office（3行）
-  5. 求人:         医療事務/受付（パート・バイト）求人ID 285319（1行）
-                   出典 https://job-medley.com/mc/285319/ （2026-10-07 あっきーさん共有）
+  5. 求人:         2行（2026-10-07 あっきーさん共有の求人URLから）
+                   - 医療事務/受付（パート・バイト）求人ID 285319  https://job-medley.com/mc/285319/
+                   - 薬剤師（パート・バイト）求人ID 1729377  https://job-medley.com/apo/1729377/
+                     薬剤師のテンプレ・パターン・プロンプトは 2026-09 に登録済み。求人だけ未登録だった
 
 Usage (リポジトリルートで実行):
   python3 workspace/nomura-medical-office/push_server.py --dry-run
@@ -51,15 +53,26 @@ EDUCATION_CONTENT = (
     "- ※テンプレ本文の「1日4〜8時間」「社会保険完備」は求人票と食い違う。パーソナライズ文で書かないこと"
 )
 
-JOB_OFFER = {
-    "company": COMPANY,
-    "job_category": JC,
-    "id": "285319",
-    "name": "山口県 医療法人天秋会 野村病院 医療事務/受付 パート・バイト",
-    "label": "医療事務 パート",
-    "employment_type": "パート",
-    "active": "TRUE",
-}
+JOB_OFFERS = [
+    {
+        "company": COMPANY,
+        "job_category": JC,
+        "id": "285319",
+        "name": "山口県 医療法人天秋会 野村病院 医療事務/受付 パート・バイト",
+        "label": "医療事務 パート",
+        "employment_type": "パート",
+        "active": "TRUE",
+    },
+    {
+        "company": COMPANY,
+        "job_category": "pharmacist",
+        "id": "1729377",
+        "name": "山口県 医療法人天秋会 野村病院 精神科病院の薬剤師 薬剤師 パート・バイト",
+        "label": "薬剤師 パート",
+        "employment_type": "パート",
+        "active": "TRUE",
+    },
+]
 
 KEYWORDS = [
     {"keyword": "医療事務", "source_fields": "qualification"},
@@ -201,15 +214,18 @@ def push_keywords():
     return n
 
 
-def push_job_offer():
+def push_job_offers():
     existing = sa.api_get("job_offers", {"company": COMPANY}).get("rows", [])
-    if any(str(r.get("id", "")).strip() == JOB_OFFER["id"] for r in existing):
-        print(f"  SKIP job_offers {JOB_OFFER['id']} (exists)")
-        return 0
-    print(f"  ADD  job_offers {JOB_OFFER['id']} {JOB_OFFER['name']}")
-    sa.api_post("job_offers", JOB_OFFER)
-    return 1
-
+    have = {str(r.get("id", "")).strip() for r in existing}
+    n = 0
+    for offer in JOB_OFFERS:
+        if offer["id"] in have:
+            print(f"  SKIP job_offers {offer['id']} (exists)")
+            continue
+        print(f"  ADD  job_offers {offer['id']} {offer['name']}")
+        sa.api_post("job_offers", offer)
+        n += 1
+    return n
 
 def main():
     if sa.DRY_RUN:
@@ -220,7 +236,7 @@ def main():
     print("\n== patterns ==");   p = push_patterns()
     print("\n== prompts ==");    q = push_prompts(recipes_md)
     print("\n== job_category_keywords =="); k = push_keywords()
-    print("\n== job_offers ==");  j = push_job_offer()
+    print("\n== job_offers ==");  j = push_job_offers()
     print(f"\nadded: templates={t} patterns={p} prompts={q} keywords={k} job_offers={j}")
 
 
