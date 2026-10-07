@@ -23,6 +23,7 @@ import importlib.util
 import os
 import re
 import sys
+import time
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SA_PATH = os.path.join(ROOT, ".claude", "skills", "server-admin", "scripts", "server_admin.py")
@@ -33,6 +34,27 @@ COMPANY_DIR = os.path.join(ROOT, "companies", COMPANY)
 spec = importlib.util.spec_from_file_location("server_admin", SA_PATH)
 sa = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sa)
+
+# POST 1回ごとにサーバが全シートを読み直す（_safe_reload）ため、連続で書くと
+# Sheets API の回数制限に当たり 500 になる（2026-10-07 パターン6件目で発生）。
+# 書き込みの間隔を空け、5xx は待ってから再試行する。
+POST_INTERVAL_SEC = 4
+RETRY_WAITS_SEC = (20, 40, 60)
+
+
+def post(path, data):
+    for wait in RETRY_WAITS_SEC + (None,):
+        try:
+            sa.api_post(path, data)
+            break
+        except sa.requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else 0
+            if wait is None or status < 500:
+                raise
+            print(f"  RETRY {path}: HTTP {status}, {wait}秒待って再試行")
+            time.sleep(wait)
+    if not sa.DRY_RUN:
+        time.sleep(POST_INTERVAL_SEC)
 
 TEMPLATE_HEADINGS = {
     "パート_初回": "## 医療事務 パート 初回テンプレート",
@@ -50,7 +72,7 @@ EDUCATION_CONTENT = (
     "- 歓迎要件は医療機関での受付経験（求人票）、入院レセプト・病院での勤務経験（支給文）\n"
     "- 応募要件はパソコン入力（Excel・Word）\n"
     "- ※研修制度・教育体制の記載なし。「寮完備」「引越し手当」「退職金」は医療事務の求人票にない。使わないこと\n"
-    "- ※テンプレ本文の「1日4〜8時間」「社会保険完備」は求人票と食い違う。パーソナライズ文で書かないこと"
+    "- ※「1日4〜8時間」「社会保険完備」は求人票と食い違う（支給文にあった表記）。パーソナライズ文で書かないこと"
 )
 
 JOB_OFFERS = [
@@ -121,7 +143,7 @@ def push_templates(templates_md):
         body = code_block_after(templates_md, heading)
         assert "{ここに生成した文章を挿入}" in body, ttype
         print(f"  ADD  templates {JC}:{ttype} ({len(body)} chars)")
-        sa.api_post("templates", {
+        post("templates", {
             "company": COMPANY, "job_category": JC, "type": ttype,
             "body": body.replace("\n", "\\n"), "version": "",
         })
@@ -131,15 +153,19 @@ def push_templates(templates_md):
 
 def push_patterns():
     existing = sa.api_get("patterns", {"company": COMPANY}).get("rows", [])
-    if any(r.get("job_category", "") == JC for r in existing):
-        print(f"  SKIP patterns {JC} (exists; use server_admin.py sync {COMPANY})")
-        return 0
+    have = {
+        (r.get("pattern_type", ""), r.get("employment_variant", ""))
+        for r in existing if r.get("job_category", "") == JC
+    }
     recipes = sa.parse_lcc_recipes(os.path.join(COMPANY_DIR, "recipes.md")).get(JC, {})
     if len(recipes) != 10:
         raise SystemExit(f"expected 10 {JC} patterns in recipes.md, got {sorted(recipes)}")
     n = 0
     for key in sorted(recipes):
         pt, _, variant = key.partition("_")
+        if (pt, variant) in have:
+            print(f"  SKIP patterns {JC}:{key} (exists; 内容の更新は server_admin.py sync {COMPANY})")
+            continue
         features = recipes[key].get("features") or []
         row = {
             "company": COMPANY, "job_category": JC,
@@ -152,7 +178,7 @@ def push_patterns():
             "qualification_combo": "", "replacement_text": "",
         }
         print(f"  ADD  patterns {JC}:{key}: {row['template_text'][:40]}...")
-        sa.api_post("patterns", row)
+        post("patterns", row)
         n += 1
     return n
 
@@ -180,7 +206,7 @@ def push_prompts(recipes_md):
             print(f"  SKIP prompts {st}/{JC} (exists)")
             continue
         print(f"  ADD  prompts {st}/{JC} order={order} ({len(content)} chars)")
-        sa.api_post("prompts", {
+        post("prompts", {
             "company": COMPANY, "section_type": st, "job_category": JC,
             "order": str(order), "content": content.replace("\n", "\\n"),
         })
@@ -206,7 +232,7 @@ def push_keywords():
             print(f"  SKIP keyword {kw['keyword']}/{kw['source_fields']} (exists)")
             continue
         print(f"  ADD  keyword {kw['keyword']}/{kw['source_fields']} → {JC}")
-        sa.api_post("job_category_keywords/append", {
+        post("job_category_keywords/append", {
             "company": COMPANY, "job_category": JC, **kw,
             "weight": "1", "enabled": "TRUE", "note": "2026-10 医療事務パート追加",
         })
@@ -223,7 +249,7 @@ def push_job_offers():
             print(f"  SKIP job_offers {offer['id']} (exists)")
             continue
         print(f"  ADD  job_offers {offer['id']} {offer['name']}")
-        sa.api_post("job_offers", offer)
+        post("job_offers", offer)
         n += 1
     return n
 
