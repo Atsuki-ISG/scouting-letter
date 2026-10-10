@@ -744,7 +744,7 @@ def cmd_replace_templates(company, pattern, replacement=""):
         print(f"Invalid regex: {e}")
         sys.exit(1)
 
-    rows = api_get("templates", {"company": company})
+    rows = api_get("templates", {"company": company}).get("rows", [])
     if not rows:
         print(f"No templates found for {company}")
         sys.exit(1)
