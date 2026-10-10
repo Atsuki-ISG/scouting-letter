@@ -7,6 +7,8 @@ Usage:
   server_admin.py sync <company> [--dry-run]        # Sync recipes.md patterns → server
   server_admin.py create-patterns <company> [jc]    # Create patterns from recipes.md (new company)
   server_admin.py init <company> [--dry-run]        # Init new company from local files via AI
+  server_admin.py replace-templates <company> <regex> [replacement] [--dry-run]
+                                                    # Regex-replace in all template bodies of a company
   server_admin.py update <sheet> <row_index> <json> # Update a specific row
   server_admin.py add <sheet> <json>                # Add a row
   server_admin.py delete <sheet> <row_index>        # Delete a row
@@ -729,6 +731,47 @@ def cmd_init(company):
         print(f"\nrecipes.md found. Run 'sync {company}' to overwrite AI-generated patterns with local ones.")
 
 
+def cmd_replace_templates(company, pattern, replacement=""):
+    """Regex-replace text in every template body of a company (server side).
+
+    Bodies are matched after converting literal ``\\n`` to real newlines, so
+    the pattern can be written with ``\\n`` for line breaks. The server
+    escapes newlines back for Sheets storage and bumps version/history.
+    """
+    try:
+        regex = re.compile(pattern, re.MULTILINE)
+    except re.error as e:
+        print(f"Invalid regex: {e}")
+        sys.exit(1)
+
+    rows = api_get("templates", {"company": company}).get("rows", [])
+    if not rows:
+        print(f"No templates found for {company}")
+        sys.exit(1)
+
+    changed = []
+    for r in rows:
+        body = (r.get("body") or "").replace("\\n", "\n")
+        new_body, n = regex.subn(replacement, body)
+        label = f"[{r.get('job_category', '')}/{r.get('type', '')}] row {r.get('_row_index')}"
+        if n == 0:
+            print(f"  - {label}: no match")
+            continue
+        print(f"  * {label}: {n} replacement(s), {len(body)} -> {len(new_body)} chars")
+        changed.append((r, new_body))
+
+    if not changed:
+        print("\nNothing to update.")
+        return
+
+    print(f"\n{len(changed)}/{len(rows)} templates to update" + (" (dry run)" if DRY_RUN else ""))
+    for r, new_body in changed:
+        api_put(f"templates/{r['_row_index']}", {"body": new_body})
+        if not DRY_RUN:
+            print(f"  updated row {r['_row_index']}")
+            time.sleep(1)  # be gentle with the Sheets API quota
+
+
 def cmd_update(sheet, row_index, json_str):
     """Update a specific row."""
     if sheet not in VALID_SHEETS:
@@ -817,6 +860,13 @@ def main():
             print("Usage: init <company> [--dry-run]")
             sys.exit(1)
         cmd_init(args[1])
+
+    elif command == "replace-templates":
+        rest = [a for a in args[1:] if a != "--dry-run"]
+        if len(rest) < 2:
+            print("Usage: replace-templates <company> <regex> [replacement] [--dry-run]")
+            sys.exit(1)
+        cmd_replace_templates(rest[0], rest[1], rest[2] if len(rest) > 2 else "")
 
     elif command == "update":
         if len(args) < 4:
