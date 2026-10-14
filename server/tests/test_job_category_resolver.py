@@ -108,6 +108,16 @@ class TestStageQualification:
         assert result.category == "nurse"
         assert result.method == "qualification"
 
+    def test_dental_hygienist_builtin_qualification(self):
+        # Sheets 辞書が空でも組み込みの資格マップで歯科衛生士を判定できる
+        result = resolve_job_category(
+            _profile(qualifications="歯科衛生士"),
+            company_categories=["dental_hygienist"],
+            keywords=[],
+        )
+        assert result.category == "dental_hygienist"
+        assert result.method == "qualification"
+
     def test_multi_qualification_filtered_by_company(self, keywords):
         # 候補者は看護師+理学療法士、会社は nurse のみ → nurse 確定
         result = resolve_job_category(

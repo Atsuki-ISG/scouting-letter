@@ -109,6 +109,7 @@ python3 "$SCRIPT" delete <sheet> <row_index>
 | LCC訪問看護 | `lcc-visiting-nurse` |
 | 野村病院 | `nomura-hospital` |
 | いちご訪問看護 | `ichigo-visiting-nurse` |
+| 東京国際歯科 六本木 | `tokyo-kokusai-dental` |
 
 ## ワークフロー
 

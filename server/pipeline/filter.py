@@ -15,6 +15,7 @@ _REQUIRED_QUALIFICATIONS: dict[str, list[str]] = {
     "rehab_ot": ["作業療法士"],
     "dietitian": ["管理栄養士"],
     "pharmacist": ["薬剤師"],
+    "dental_hygienist": ["歯科衛生士"],
     # counselor: resolved via desired_job, no specific qualification required
     # medical_office: no additional qualification check needed
 }

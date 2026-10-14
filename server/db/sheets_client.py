@@ -71,6 +71,7 @@ _JOB_CATEGORY_DISPLAY_NAMES: dict[str, str] = {
     "counselor": "相談支援専門員",
     "sales": "入居相談員",
     "nursing_assistant": "看護助手",
+    "dental_hygienist": "歯科衛生士",
 }
 
 

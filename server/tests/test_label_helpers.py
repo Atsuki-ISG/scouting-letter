@@ -15,6 +15,7 @@ def test_label_for_category_known_ids():
     assert label_for_category("dietitian") == "管理栄養士"
     assert label_for_category("counselor") == "相談支援専門員"
     assert label_for_category("nursing_assistant") == "看護助手"
+    assert label_for_category("dental_hygienist") == "歯科衛生士"
 
 
 def test_label_for_category_sales():

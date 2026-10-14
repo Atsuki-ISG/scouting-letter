@@ -44,6 +44,22 @@ class TestFilterCandidate:
         assert any("看護師に必要な資格がありません" in w for w in warns)
         assert not any("nurseに必要" in w for w in warns)
 
+    async def test_dental_hygienist_qualification(self, ark_validation_config):
+        """歯科衛生士は資格一致で通過、不一致は日本語ラベルで警告。"""
+        ok = CandidateProfile(member_id="DH1", qualifications="歯科衛生士", age="30歳")
+        block, warns = await filter_candidate(
+            ok, "tokyo-kokusai-dental", "dental_hygienist", ark_validation_config,
+        )
+        assert block is None
+        assert warns == []
+
+        ng = CandidateProfile(member_id="DH2", qualifications="歯科助手", age="30歳")
+        block, warns = await filter_candidate(
+            ng, "tokyo-kokusai-dental", "dental_hygienist", ark_validation_config,
+        )
+        assert block is None
+        assert any("歯科衛生士に必要な資格がありません" in w for w in warns)
+
     async def test_already_scouted_max_count_reached(self, ark_validation_config):
         profile = CandidateProfile(
             member_id="003",
