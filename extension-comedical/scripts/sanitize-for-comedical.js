@@ -17,6 +17,7 @@
  *      ※ カタカナ長音「ー」（U+30FC）は送信OK（別文字扱い）
  *
  * 方針:
+ *   - HTMLエンティティ（&quot; 等）は素の文字へデコード
  *   - ハイフン/ダッシュ系は削除
  *   - URL は削除＋warning に積む
  *   - 6桁数字は自動修正不能なので warning のみ。テンプレート側で書き直しを促す。
@@ -34,6 +35,25 @@ const URL_RE = /https?:\/\/[A-Za-z0-9._\-\/?=&%#~+]+/g;
 const LONG_DIGITS_RE = /[0-9０-９]{6,}/g;
 
 /**
+ * HTMLエンティティを素の文字へ戻す。管理画面・拡張の escapeHtml が生成し得る
+ * &amp; &lt; &gt; &quot; &#39;（および &#34; &apos;）を対象とする。
+ * これを通さないと本文に "&quot;" 等がそのまま残り、コメディカル.com に出力される。
+ * @param {string} text
+ * @returns {string}
+ */
+function decodeHtmlEntities(text) {
+  if (typeof text !== 'string' || text.indexOf('&') === -1) return text;
+  return text
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*34;/g, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&'); // &amp; は最後（二重エスケープを1段ずつ解く）
+}
+
+/**
  * テキストをコメディカル.com 送信可能形にサニタイズする。
  * @param {string} text
  * @returns {SanitizeResult}
@@ -45,6 +65,9 @@ export function sanitizeForComedical(text) {
 
   const counts = { hyphen: 0, url: 0, longDigits: 0 };
   const warnings = [];
+
+  // 0. HTMLエンティティを素の文字へデコード（&quot; などの混入を無害化）
+  text = decodeHtmlEntities(text);
 
   // 1. URL を検出して削除
   const urls = text.match(URL_RE);

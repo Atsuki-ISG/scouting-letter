@@ -88,6 +88,26 @@ describe('sanitizeForComedical', () => {
     expect(r.counts.longDigits).toBe(1);
   });
 
+  it('HTMLエンティティ &quot; を素のダブルクオートへ戻す', () => {
+    const r = sanitizeForComedical('&quot;プレミアムスカウト&quot;のご案内');
+    expect(r.text).toBe('"プレミアムスカウト"のご案内');
+  });
+
+  it('&amp; &lt; &gt; &#39; &apos; をデコードする', () => {
+    const r = sanitizeForComedical('A&amp;B &lt;tag&gt; it&#39;s &apos;ok&apos;');
+    expect(r.text).toBe("A&B <tag> it's 'ok'");
+  });
+
+  it('二重エスケープ &amp;quot; を1段デコードして &quot; に戻す', () => {
+    const r = sanitizeForComedical('&amp;quot;');
+    expect(r.text).toBe('&quot;');
+  });
+
+  it('エンティティを含まないテキストは変化しない', () => {
+    const r = sanitizeForComedical('年収520万円、年休128日');
+    expect(r.text).toBe('年収520万円、年休128日');
+  });
+
   it('違反なしのテキストはそのまま返す', () => {
     const text = 'サポート/プリセプター/年収520万円/年休128日';
     const r = sanitizeForComedical(text);
