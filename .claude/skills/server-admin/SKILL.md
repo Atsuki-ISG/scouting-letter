@@ -110,6 +110,7 @@ python3 "$SCRIPT" delete <sheet> <row_index>
 | 野村病院 | `nomura-hospital` |
 | いちご訪問看護 | `ichigo-visiting-nurse` |
 | 東京国際歯科 六本木 | `tokyo-kokusai-dental` |
+| よぞら訪問看護 | `yozora-visiting-nurse` |
 
 ## ワークフロー
 
