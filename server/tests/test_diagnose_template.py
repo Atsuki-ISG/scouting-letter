@@ -8,6 +8,7 @@ TDD tests for:
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock, AsyncMock
 
 import pytest
@@ -237,9 +238,12 @@ class TestDiagnoseTemplate:
 
     def test_diagnosis_with_full_text_samples(self, client, mock_sheets_writer, mock_sheets_client):
         """Should use full_text samples from send data when available."""
+        # 診断は直近30日の送信だけをサンプルにするため、日付は実行日基準で作る
+        # （固定日付だと日が経つとサンプル0件になって落ちる）
+        recent = (datetime.now(timezone(timedelta(hours=9))) - timedelta(days=1)).strftime("%Y-%m-%d 10:00:00")
         send_rows_with_data = [
             _SEND_DATA_EMPTY[0],  # header
-            ["2026-04-14 10:00:00", "M001", "看護師", "正社員_default", "3",
+            [recent, "M001", "看護師", "正社員_default", "3",
              "standard", "", "30代", "看護師", "5-10年", "正職員",
              "在職中", "東京都", "月曜", "10-12時",
              "完成形スカウト文サンプル1", "", "", ""],
