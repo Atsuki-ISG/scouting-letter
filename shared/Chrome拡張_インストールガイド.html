@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<title>Scout Assistant インストールガイド</title>
 <style>
 body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; color: #333; line-height: 1.8; }
 h1 { font-size: 28px; border-bottom: 3px solid #2c3e50; padding-bottom: 10px; }
@@ -18,90 +19,157 @@ hr { border: none; border-top: 2px solid #2c3e50; margin: 30px 0; }
 </style>
 </head>
 <body>
-
-<h1>Scout Assistant インストールガイド</h1>
-
-<hr>
-
-<h2>必要なもの</h2>
+<h1 id="scout-assistant-インストールガイド">Scout Assistant
+インストールガイド</h1>
+<h2 id="必要なもの">必要なもの</h2>
 <table>
-<tr><th>項目</th><th>説明</th></tr>
-<tr><td>Google Chrome</td><td>最新版を推奨</td></tr>
-<tr><td>scout-extension-YYYYMMDD.zip</td><td>管理者から配布されるファイル（YYYYMMDDは日付）</td></tr>
-<tr><td>APIエンドポイント</td><td>管理者から伝えられるURL</td></tr>
-<tr><td>パスワード</td><td>管理者から伝えられる接続用パスワード</td></tr>
+<thead>
+<tr>
+<th>項目</th>
+<th>説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Google Chrome</strong></td>
+<td>最新版を推奨</td>
+</tr>
+<tr>
+<td><strong>scout-extension-YYYYMMDD.zip</strong></td>
+<td>管理者から配布されるファイル</td>
+</tr>
+<tr>
+<td><strong>APIエンドポイント</strong></td>
+<td>管理者から伝えられるURL</td>
+</tr>
+<tr>
+<td><strong>パスワード</strong></td>
+<td>管理者から伝えられる接続用パスワード</td>
+</tr>
+</tbody>
 </table>
-
-<hr>
-
-<h2>Step 1: zipファイルを展開する</h2>
-<ol>
-<li>管理者から受け取った <code>scout-extension-YYYYMMDD.zip</code> を任意の場所に保存</li>
-<li>zipファイルを右クリック → 「すべて展開」（Windowsの場合）またはダブルクリック（Macの場合）</li>
+<hr />
+<h2 id="step-1-zipファイルを展開する">Step 1: zipファイルを展開する</h2>
+<ol type="1">
+<li>管理者から受け取った <code>scout-extension-YYYYMMDD.zip</code>
+を任意の場所に保存</li>
+<li>zipファイルを右クリック →
+<strong>「すべて展開」</strong>（Windowsの場合）またはダブルクリック（Macの場合）</li>
 <li>展開すると <code>scout_extension/</code> フォルダが入っています</li>
 </ol>
-<blockquote>展開先はデスクトップや書類フォルダなど、わかりやすい場所を選んでください。このフォルダは削除しないでください。</blockquote>
-
-<hr>
-
-<h2>Step 2: Chromeに拡張機能を読み込む</h2>
-<ol>
-<li>Chromeのアドレスバーに <code>chrome://extensions</code> と入力してEnter</li>
-<li>画面右上の <strong>「デベロッパーモード」</strong> のスイッチをONにする</li>
-<li>画面左上に表示される <strong>「パッケージ化されていない拡張機能を読み込む」</strong> をクリック</li>
-<li>展開したフォルダ内の <code>scout_extension</code> フォルダを選択して「フォルダの選択」を押す</li>
-<li>拡張機能一覧に <strong>「Scout Assistant」</strong> が表示されれば完了</li>
+<blockquote>
+<p>展開先はデスクトップや書類フォルダなど、わかりやすい場所を選んでください。このフォルダは削除しないでください。</p>
+</blockquote>
+<hr />
+<h2 id="step-2-chromeに拡張機能を読み込む">Step 2:
+Chromeに拡張機能を読み込む</h2>
+<ol type="1">
+<li>Chromeのアドレスバーに <code>chrome://extensions</code>
+と入力してEnter</li>
+<li>画面右上の <strong>「デベロッパーモード」</strong>
+のスイッチをONにする</li>
+<li>画面左上に表示される
+<strong>「パッケージ化されていない拡張機能を読み込む」</strong>
+をクリック</li>
+<li>展開したフォルダ内の <strong><code>scout_extension</code></strong>
+フォルダを選択して「フォルダの選択」を押す</li>
+<li>拡張機能一覧に <strong>「Scout Assistant」</strong>
+が表示されれば完了</li>
 </ol>
-
-<hr>
-
-<h2>Step 3: ツールバーにピン留めする</h2>
-<ol>
-<li>Chromeツールバー右側の <strong>パズルピースアイコン</strong>（拡張機能メニュー）をクリック</li>
+<hr />
+<h2 id="step-3-ツールバーにピン留めする">Step 3:
+ツールバーにピン留めする</h2>
+<ol type="1">
+<li>Chromeツールバー右側の
+<strong>パズルピースアイコン</strong>（拡張機能メニュー）をクリック</li>
 <li>「Scout Assistant」の横にあるピンアイコンをクリック</li>
-<li>ツールバーにScout Assistantのアイコンが常時表示されるようになります</li>
+<li>ツールバーにScout
+Assistantのアイコンが常時表示されるようになります</li>
 </ol>
-
-<hr>
-
-<h2>Step 4: API接続を設定する</h2>
-<ol>
-<li>ツールバーの <strong>Scout Assistantアイコン</strong> をクリック</li>
+<hr />
+<h2 id="step-4-api接続を設定する">Step 4: API接続を設定する</h2>
+<ol type="1">
+<li>ツールバーの <strong>Scout Assistantアイコン</strong>
+をクリック</li>
 <li><strong>「サイドパネルを開く」</strong> を押す</li>
 <li>サイドパネルの <strong>⚙ 設定</strong> タブを開く</li>
 <li>以下を入力:</li>
 </ol>
 <table>
-<tr><th>項目</th><th>入力する内容</th></tr>
-<tr><td>APIエンドポイント</td><td>管理者から伝えられたURL</td></tr>
-<tr><td>パスワード</td><td>管理者から伝えられたパスワード</td></tr>
+<thead>
+<tr>
+<th>項目</th>
+<th>入力する内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>APIエンドポイント</strong></td>
+<td>管理者から伝えられたURL</td>
+</tr>
+<tr>
+<td><strong>パスワード</strong></td>
+<td>管理者から伝えられたパスワード</td>
+</tr>
+</tbody>
 </table>
-<ol start="5">
+<ol start="5" type="1">
 <li><strong>「接続テスト」</strong> ボタンを押す</li>
 <li>緑色で <strong>「接続OK」</strong> と表示されれば設定完了</li>
 </ol>
-<blockquote>この設定はブラウザに保存されます。毎回入力する必要はありません。</blockquote>
-
-<hr>
-
-<h2>拡張機能の更新</h2>
-<p>管理者から新しい <code>scout-extension-YYYYMMDD.zip</code> を受け取った場合:</p>
-<ol>
+<blockquote>
+<p>この設定はブラウザに保存されます。毎回入力する必要はありません。</p>
+</blockquote>
+<hr />
+<h2 id="拡張機能の更新">拡張機能の更新</h2>
+<p>管理者から新しい <code>scout-extension-YYYYMMDD.zip</code>
+を受け取った場合:</p>
+<ol type="1">
 <li>新しいzipを展開して、前回と同じ場所に上書き</li>
 <li>Chromeで <code>chrome://extensions</code> を開く</li>
 <li>Scout Assistantのリロードアイコン（🔄）をクリック</li>
+<li><strong>開いているジョブメドレーのページを再読み込み（F5）する</strong>
+<ul>
+<li>これをしないと拡張がページと接続できず、抽出や送信を押しても動きません</li>
+</ul></li>
 </ol>
-
-<hr>
-
-<h2>トラブルシューティング</h2>
+<hr />
+<h2 id="トラブルシューティング">トラブルシューティング</h2>
 <table>
-<tr><th>症状</th><th>対処法</th></tr>
-<tr><td>拡張機能一覧に表示されない</td><td>デベロッパーモードがONになっているか確認</td></tr>
-<tr><td>「マニフェストファイルが見つかりません」</td><td>選択したフォルダが <code>scout_extension</code> であるか確認</td></tr>
-<tr><td>アイコンが表示されない</td><td>パズルピースアイコンからピン留めしてください</td></tr>
-<tr><td>接続テストが失敗する</td><td>エンドポイントURLとパスワードが正しいか管理者に確認</td></tr>
-<tr><td>「Content Scriptと通信できません」</td><td>ジョブメドレーのページをリロードしてください</td></tr>
+<thead>
+<tr>
+<th>症状</th>
+<th>対処法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>拡張機能一覧に表示されない</td>
+<td>デベロッパーモードがONになっているか確認</td>
+</tr>
+<tr>
+<td>「マニフェストファイルが見つかりません」</td>
+<td>選択したフォルダが <code>scout_extension</code>
+であるか確認（zip展開後のフォルダではなくその中の
+<code>scout_extension</code> を選択）</td>
+</tr>
+<tr>
+<td>アイコンが表示されない</td>
+<td>パズルピースアイコンからピン留めしてください</td>
+</tr>
+<tr>
+<td>接続テストが失敗する</td>
+<td>エンドポイントURLとパスワードが正しいか管理者に確認</td>
+</tr>
+<tr>
+<td>「ジョブメドレーのページと接続できません」「ページから反応がありません」</td>
+<td>ジョブメドレーのページを再読み込み（F5）してから、もう一度お試しください</td>
+</tr>
+<tr>
+<td>「候補者カードが見つかりません」</td>
+<td>求職者検索の結果一覧を開いた状態で実行してください。一覧を開いているのに出る場合は、エラー文の「診断:」以降を管理者に伝えてください</td>
+</tr>
+</tbody>
 </table>
 
 </body>

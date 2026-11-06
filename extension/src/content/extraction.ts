@@ -1,9 +1,9 @@
 import { CandidateProfile } from '../shared/types';
 import { EXTRACTION_INTERVAL_MS } from '../shared/constants';
 import { randomSleep } from '../shared/utils';
-import { SELECTORS, queryAllElements } from './selectors';
+import { SELECTORS, queryAllElements, findScoutButton } from './selectors';
 import { waitForOverlay, waitForOverlayClose, extractProfile, closeOverlay } from './scraper';
-import { safeSendMessage } from './helpers';
+import { safeSendMessage, debugLog } from './helpers';
 
 /** 抽出を中断するためのフラグ */
 let aborted = false;
@@ -66,6 +66,18 @@ function findCardIndexByMemberId(cards: Element[], normalizedId: string): number
   });
 }
 
+/**
+ * 主要セレクタの一致件数をまとめた診断文字列。
+ * オペレーターはサーバやDOMを見られないので、エラー文に添えて
+ * 「どのセレクタが外れたか」を報告だけで切り分けられるようにする。
+ */
+function diagnoseSelectors(): string {
+  const n = (selector: string) => document.querySelectorAll(selector).length;
+  const cards = queryAllElements(document, SELECTORS.candidateCard);
+  const buttons = cards.filter((card) => findScoutButton(card) !== null).length;
+  return `カード${cards.length}件 / スカウトボタン${buttons}件 / チェックボックス${n(SELECTORS.memberCheckbox)}件 / ${location.pathname}`;
+}
+
 /** 画面上でチェックが入っているカードのインデックス一覧 */
 function findCheckedCardIndexes(cards: Element[]): number[] {
   const indexes: number[] = [];
@@ -84,6 +96,13 @@ function findCheckedCardIndexes(cards: Element[]): number[] {
 export async function startExtraction(count: number, startMemberId?: string): Promise<void> {
   aborted = false;
   const cards = queryAllElements(document, SELECTORS.candidateCard);
+  if (cards.length === 0) {
+    safeSendMessage({
+      type: 'EXTRACTION_ERROR',
+      error: `候補者カードが見つかりません。求職者検索の結果一覧を開いた状態で実行してください。一覧を開いているのに出る場合は、ジョブメドレーの画面構成が変わった可能性があります（診断: ${diagnoseSelectors()}）`,
+    });
+    return;
+  }
 
   let targetIndexes = findCheckedCardIndexes(cards);
   const mode: 'checked' | 'range' = targetIndexes.length > 0 ? 'checked' : 'range';
@@ -112,6 +131,7 @@ export async function startExtraction(count: number, startMemberId?: string): Pr
   console.log(`[Scout Assistant] Found ${cards.length} cards, mode=${mode}, targets=[${targetIndexes.join(',')}]`);
   safeSendMessage({ type: 'EXTRACTION_STARTED', mode, total });
   const profiles: CandidateProfile[] = [];
+  let missingButtons = 0;
 
   for (let i = 0; i < total; i++) {
     const cardIndex = targetIndexes[i];
@@ -120,10 +140,14 @@ export async function startExtraction(count: number, startMemberId?: string): Pr
     const scoutSentDate = extractScoutSentDate(cards[cardIndex]);
     const isFavorite = detectFavorite(cards[cardIndex]);
 
-    const scoutBtn = cards[cardIndex].querySelector(SELECTORS.scoutButton);
-    console.log(`[Scout Assistant] Card ${cardIndex}: scoutBtn =`, scoutBtn ? 'found' : 'NOT FOUND', 'selector:', SELECTORS.scoutButton);
-    if (!scoutBtn) continue;
-    (scoutBtn as HTMLElement).click();
+    const scoutBtn = findScoutButton(cards[cardIndex]);
+    console.log(`[Scout Assistant] Card ${cardIndex}: scoutBtn =`, scoutBtn ? 'found' : 'NOT FOUND');
+    if (!scoutBtn) {
+      missingButtons++;
+      debugLog('抽出', 'error', `カード${cardIndex + 1}: 「スカウトを送る」ボタンが見つからずスキップ`);
+      continue;
+    }
+    scoutBtn.click();
     console.log(`[Scout Assistant] Card ${cardIndex}: clicked scout button, waiting for overlay...`);
 
     const overlay = await waitForOverlay();
@@ -146,6 +170,16 @@ export async function startExtraction(count: number, startMemberId?: string): Pr
     if (i < total - 1) {
       await randomSleep(EXTRACTION_INTERVAL_MS, EXTRACTION_INTERVAL_MS * 4);
     }
+  }
+
+  // 1件も抽出できず、原因がボタン未検出なら完了扱いにせずエラーで知らせる
+  // （以前は無言で0件完了になり、オペレーターには何が起きたか分からなかった）
+  if (!aborted && profiles.length === 0 && missingButtons > 0) {
+    safeSendMessage({
+      type: 'EXTRACTION_ERROR',
+      error: `${missingButtons}件のカードで「スカウトを送る」ボタンが見つからず、1件も抽出できませんでした。ジョブメドレーの画面構成が変わった可能性があります（診断: ${diagnoseSelectors()}）`,
+    });
+    return;
   }
 
   safeSendMessage({

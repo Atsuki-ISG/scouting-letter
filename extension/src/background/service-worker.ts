@@ -37,17 +37,28 @@ function isJobMedleyUrl(url: string | undefined): boolean {
 }
 
 const NOT_JOBMEDLEY_ERROR = 'ジョブメドレーのタブで操作してください';
+const CONTENT_SCRIPT_UNREACHABLE_ERROR =
+  'ジョブメドレーのページと接続できません。拡張を更新・再読み込みした直後は、ジョブメドレーのページを再読み込み（F5）する必要があります。再読み込みしてからもう一度お試しください';
 
-/** アクティブタブのContent Scriptにメッセージを転送（レスポンスなし） */
-async function forwardToContentScript(message: Message): Promise<void> {
+/**
+ * アクティブタブのContent Scriptにメッセージを転送（レスポンスなし）。
+ * 届かなかった場合は ok=false と理由を返す（呼び出し側がUIに出すかは任意）。
+ * 典型的な失敗は「拡張更新後にページを再読み込みしていない」で、このとき
+ * chrome.tabs.sendMessage は "Receiving end does not exist" で reject する。
+ */
+async function forwardToContentScript(message: Message): Promise<{ ok: boolean; error?: string }> {
   const tab = await getActiveTab();
   if (!tab?.id || !isJobMedleyUrl(tab.url)) {
     console.warn('[SW] Skip forward (not a job-medley tab):', message.type, tab?.url);
-    return;
+    return { ok: false, error: NOT_JOBMEDLEY_ERROR };
   }
-  await chrome.tabs.sendMessage(tab.id, message).catch((err) => {
+  try {
+    await chrome.tabs.sendMessage(tab.id, message);
+    return { ok: true };
+  } catch (err) {
     console.error('[SW] sendMessage failed:', err);
-  });
+    return { ok: false, error: CONTENT_SCRIPT_UNREACHABLE_ERROR };
+  }
 }
 
 /** アクティブタブのContent Scriptにメッセージを転送（レスポンスあり） */
@@ -72,8 +83,18 @@ chrome.runtime.onMessage.addListener(
     }
 
     switch (message.type) {
-      // サイドパネルからの抽出開始指示 → Content Scriptに転送
-      case 'START_EXTRACTION':
+      // サイドパネルからの抽出開始指示 → Content Scriptに転送。
+      // 届かなかった場合は無言で止めず、抽出エラーとしてサイドパネルに通知する
+      case 'START_EXTRACTION': {
+        console.log('[SW] Forwarding', message.type, 'to content script');
+        forwardToContentScript(message).then((result) => {
+          if (!result.ok) {
+            chrome.runtime.sendMessage({ type: 'EXTRACTION_ERROR', error: result.error || CONTENT_SCRIPT_UNREACHABLE_ERROR } satisfies Message).catch(() => {});
+          }
+        });
+        sendResponse({ ok: true });
+        return false;
+      }
       case 'STOP_EXTRACTION': {
         console.log('[SW] Forwarding', message.type, 'to content script');
         forwardToContentScript(message);

@@ -15,8 +15,15 @@ export const SELECTORS = {
   /** カード内の会員番号チェックボックス */
   memberCheckbox: 'input[name="member-select"]',
 
-  /** カード内の「スカウトを送る」ボタン */
+  /**
+   * カード内の「スカウトを送る」ボタン（旧: ツアーガイド用クラス）。
+   * 2026-10 にこのクラスが消えたため、実際の探索は findScoutButton() を使うこと。
+   * 表示が戻った場合に備えて第一候補として残している。
+   */
   scoutButton: 'button.js-tour-guide-scout-button',
+
+  /** カード下部のボタン領域（プロフィール確認 / スカウトを送る が並ぶ） */
+  cardButtonArea: '.c-search-member-card__buttons',
 
   /** サイドカバー（スカウト送信パネル） */
   overlay: '.c-side-cover',
@@ -39,6 +46,32 @@ export const SELECTORS = {
   /** プロフィールのDTラベル */
   definitionHead: 'dt',
 } as const;
+
+/**
+ * カード内スカウトボタンの文言。未送信は「スカウトを送る」、送信済みは
+ * 「再度スカウトを送る」になるため、空白除去後の部分一致で判定する。
+ */
+const SCOUT_BUTTON_TEXT = 'スカウトを送る';
+
+/**
+ * 候補者カードから「スカウトを送る」ボタンを探す。
+ *
+ * 2026-10 にジョブメドレーがボタンの `js-tour-guide-scout-button` クラスを外し、
+ * `button.c-button.c-button--secondary` + 文言のみになった。クラス名は汎用で
+ * 「プロフィール確認」ボタンと区別できないため、ボタン領域内の文言で特定する。
+ * 旧クラスが残っている／戻った場合はそちらを優先する。
+ */
+export function findScoutButton(card: Element): HTMLElement | null {
+  const legacy = card.querySelector(SELECTORS.scoutButton) as HTMLElement | null;
+  if (legacy) return legacy;
+  const scope = card.querySelector(SELECTORS.cardButtonArea) || card;
+  for (const btn of scope.querySelectorAll('button')) {
+    if ((btn.textContent || '').replace(/\s+/g, '').includes(SCOUT_BUTTON_TEXT)) {
+      return btn as HTMLElement;
+    }
+  }
+  return null;
+}
 
 /**
  * ラベルテキストからDT/DDペアの値を取得する

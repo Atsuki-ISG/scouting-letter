@@ -7,6 +7,9 @@ import { escapeHtml } from '../../shared/utils';
 export class ExtractionPanel {
   private profiles: CandidateProfile[] = [];
   private extracting = false;
+  /** 抽出開始後、Content Script から最初の反応が来るまでの見張りタイマー */
+  private startWatchdog: number | null = null;
+  private static readonly START_TIMEOUT_MS = 10000;
 
   private btnStart: HTMLButtonElement;
   private btnStop: HTMLButtonElement;
@@ -42,16 +45,20 @@ export class ExtractionPanel {
       if (sender.id !== chrome.runtime.id) return;
       switch (msg.type) {
         case 'EXTRACTION_STARTED':
+          this.clearWatchdog();
           this.progressMode.textContent = msg.mode === 'checked' ? 'チェックした人のみ／' : '';
           this.progressTotal.textContent = String(msg.total);
           break;
         case 'EXTRACTION_PROGRESS':
+          this.clearWatchdog();
           this.onProgress(msg.current, msg.total, msg.profile);
           break;
         case 'EXTRACTION_COMPLETE':
+          this.clearWatchdog();
           this.onComplete(msg.profiles);
           break;
         case 'EXTRACTION_ERROR':
+          this.clearWatchdog();
           this.onError(msg.error);
           break;
       }
@@ -73,7 +80,10 @@ export class ExtractionPanel {
     if (this.extracting) return;
 
     const count = parseInt(this.extractCount.value, 10);
-    if (isNaN(count) || count < 1) return;
+    if (isNaN(count) || count < 1) {
+      alert('抽出件数を1以上で入力してください');
+      return;
+    }
 
     this.extracting = true;
     this.profiles = [];
@@ -96,9 +106,24 @@ export class ExtractionPanel {
       count,
       startMemberId,
     } satisfies Message).catch(() => {});
+
+    // 一定時間なにも返ってこなければ、無言で固まらせずに案内を出す
+    this.startWatchdog = window.setTimeout(() => {
+      this.startWatchdog = null;
+      if (!this.extracting) return;
+      this.onError('ジョブメドレーのページから反応がありません。ジョブメドレーのページを再読み込み（F5）してから、もう一度お試しください');
+    }, ExtractionPanel.START_TIMEOUT_MS);
+  }
+
+  private clearWatchdog(): void {
+    if (this.startWatchdog !== null) {
+      window.clearTimeout(this.startWatchdog);
+      this.startWatchdog = null;
+    }
   }
 
   private stopExtraction(): void {
+    this.clearWatchdog();
     chrome.runtime.sendMessage({
       type: 'STOP_EXTRACTION',
     } satisfies Message).catch(() => {});

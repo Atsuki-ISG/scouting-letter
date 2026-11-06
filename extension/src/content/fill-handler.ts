@@ -1,5 +1,5 @@
 import { randomSleep } from '../shared/utils';
-import { SELECTORS, queryAllElements } from './selectors';
+import { SELECTORS, queryAllElements, findScoutButton } from './selectors';
 import { waitForOverlay, waitForOverlayClose, getOverlayMemberId } from './scraper';
 import { fillScoutText, selectJobOffer } from './form-filler';
 import { debugLog, safeSendMessage } from './helpers';
@@ -71,10 +71,10 @@ async function openOverlayForMember(
     return { success: false, error: `会員番号 ${memberId} のカードが見つかりません（${cards.length}件中）` };
   }
 
-  const scoutBtn = targetCard.querySelector(SELECTORS.scoutButton) as HTMLElement | null;
+  const scoutBtn = findScoutButton(targetCard);
   if (!scoutBtn) {
     console.log('[Scout Assistant] Card found but no scout button. Card HTML:', targetCard.innerHTML.slice(0, 200));
-    return { success: false, error: 'スカウトボタンが見つかりません' };
+    return { success: false, error: 'カード内に「スカウトを送る」ボタンが見つかりません。ジョブメドレーの画面構成が変わった可能性があります' };
   }
 
   scoutBtn.click();
