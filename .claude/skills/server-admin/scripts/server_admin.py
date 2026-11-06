@@ -89,6 +89,7 @@ LCC_CATEGORY_MAP = {
     "入居相談員": "sales",
     "薬剤師": "pharmacist",
     "歯科衛生士": "dental_hygienist",
+    "ケアマネジャー": "care_manager",
 }
 
 

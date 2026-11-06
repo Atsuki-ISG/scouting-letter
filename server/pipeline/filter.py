@@ -16,6 +16,8 @@ _REQUIRED_QUALIFICATIONS: dict[str, list[str]] = {
     "dietitian": ["管理栄養士"],
     "pharmacist": ["薬剤師"],
     "dental_hygienist": ["歯科衛生士"],
+    # 主任介護支援専門員は「介護支援専門員」を含むので部分一致で通る
+    "care_manager": ["介護支援専門員", "ケアマネ"],
     # counselor: resolved via desired_job, no specific qualification required
     # medical_office: no additional qualification check needed
 }

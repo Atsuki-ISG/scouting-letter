@@ -60,6 +60,23 @@ class TestFilterCandidate:
         assert block is None
         assert any("歯科衛生士に必要な資格がありません" in w for w in warns)
 
+    async def test_care_manager_qualification(self, ark_validation_config):
+        """ケアマネは介護支援専門員（主任含む）で通過、不一致は日本語ラベルで警告。"""
+        for i, quals in enumerate(["介護支援専門員", "主任介護支援専門員", "ケアマネジャー"]):
+            ok = CandidateProfile(member_id=f"CM{i}", qualifications=quals, age="45歳")
+            block, warns = await filter_candidate(
+                ok, "an-visiting-nurse", "care_manager", ark_validation_config,
+            )
+            assert block is None
+            assert warns == [], quals
+
+        ng = CandidateProfile(member_id="CM9", qualifications="介護福祉士", age="45歳")
+        block, warns = await filter_candidate(
+            ng, "an-visiting-nurse", "care_manager", ark_validation_config,
+        )
+        assert block is None
+        assert any("ケアマネジャーに必要な資格がありません" in w for w in warns)
+
     async def test_already_scouted_max_count_reached(self, ark_validation_config):
         profile = CandidateProfile(
             member_id="003",

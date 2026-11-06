@@ -118,6 +118,25 @@ class TestStageQualification:
         assert result.category == "dental_hygienist"
         assert result.method == "qualification"
 
+    def test_care_manager_builtin_qualification(self):
+        # 主任介護支援専門員も「介護支援専門員」の部分一致でケアマネに寄る
+        result = resolve_job_category(
+            _profile(qualifications="主任介護支援専門員"),
+            company_categories=["nurse", "care_manager"],
+            keywords=[],
+        )
+        assert result.category == "care_manager"
+        assert result.method == "qualification"
+
+    def test_care_manager_not_matched_for_company_without_it(self):
+        # ケアマネを募集していない会社では、看護師+ケアマネは従来どおり nurse
+        result = resolve_job_category(
+            _profile(qualifications="看護師,介護支援専門員"),
+            company_categories=["nurse", "rehab_pt"],
+            keywords=[],
+        )
+        assert result.category == "nurse"
+
     def test_multi_qualification_filtered_by_company(self, keywords):
         # 候補者は看護師+理学療法士、会社は nurse のみ → nurse 確定
         result = resolve_job_category(
@@ -462,6 +481,12 @@ class TestQualificationOnly:
 
     def test_empty_with_desired_fallback(self):
         assert resolve_qualification_only("", "看護師") == "nurse"
+
+    def test_care_manager(self):
+        assert resolve_qualification_only("介護支援専門員") == "care_manager"
+        # 看護師との併記は先勝ちで nurse のまま（既存の集計を動かさない）
+        assert resolve_qualification_only("看護師,介護支援専門員") == "nurse"
+        assert resolve_qualification_only("", "ケアマネジャー") == "care_manager"
 
     def test_unknown(self):
         assert resolve_qualification_only("") is None

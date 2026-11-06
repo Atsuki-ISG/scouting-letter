@@ -50,6 +50,10 @@ _QUALIFICATION_MAP: list[tuple[str, str]] = [
     ("相談支援専門員", "counselor"),
     ("医療事務", "medical_office"),
     ("歯科衛生士", "dental_hygienist"),
+    # 看護師より後ろに置く: resolve_qualification_only は先勝ちなので、
+    # 看護師+ケアマネの候補者は従来どおり nurse に寄る
+    ("介護支援専門員", "care_manager"),
+    ("ケアマネ", "care_manager"),
 ]
 
 
@@ -69,6 +73,8 @@ _LEGACY_DESIRED_FALLBACK: list[tuple[str, str]] = [
     ("栄養士", "dietitian"),
     ("薬剤師", "pharmacist"),
     ("歯科衛生士", "dental_hygienist"),
+    ("ケアマネ", "care_manager"),
+    ("介護支援専門員", "care_manager"),
 ]
 
 
