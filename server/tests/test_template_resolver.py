@@ -90,3 +90,79 @@ class TestLegacyClients:
         p = _profile(desired_employment_type="パート", scout_sent_date="2026/07/01")
         opts = GenerateOptions(send_type="auto")
         assert resolve_template_type(p, opts, "nurse") == "パート_再送"
+
+
+# ---------------------------------------------------------------------------
+# 年代別テンプレート（種別名末尾の年齢帯）
+# ---------------------------------------------------------------------------
+
+from pipeline.template_resolver import find_age_variant, parse_age_band
+
+
+def _tpl(ttype: str, jc: str = "nurse") -> dict:
+    return {"type": ttype, "job_category": jc, "body": ttype}
+
+
+def _templates(*tpls: dict) -> dict:
+    return {
+        (f"{t['job_category']}:{t['type']}" if t["job_category"] else t["type"]): t
+        for t in tpls
+    }
+
+
+class TestParseAgeBand:
+    def test_open_lower(self):
+        assert parse_age_band("〜39歳") == (None, 39)
+
+    def test_open_upper(self):
+        assert parse_age_band("40歳〜") == (40, None)
+
+    def test_closed_range(self):
+        assert parse_age_band("25-29歳") == (25, 29)
+
+    def test_not_a_band(self):
+        assert parse_age_band("L3") is None
+        assert parse_age_band("〜") is None
+
+
+class TestFindAgeVariant:
+    LCC = _templates(
+        _tpl("正社員_初回"),
+        _tpl("正社員_初回_〜39歳"),
+        _tpl("正社員_初回_40歳〜"),
+        _tpl("正社員_再送"),
+    )
+
+    def test_boundary_39_goes_young(self):
+        v = find_age_variant(self.LCC, "nurse", "正社員_初回", "39歳")
+        assert v["type"] == "正社員_初回_〜39歳"
+
+    def test_boundary_40_goes_older(self):
+        v = find_age_variant(self.LCC, "nurse", "正社員_初回", "40歳")
+        assert v["type"] == "正社員_初回_40歳〜"
+
+    def test_over_60_goes_older(self):
+        v = find_age_variant(self.LCC, "nurse", "正社員_初回", "63歳")
+        assert v["type"] == "正社員_初回_40歳〜"
+
+    def test_unknown_age_falls_back(self):
+        assert find_age_variant(self.LCC, "nurse", "正社員_初回", None) is None
+        assert find_age_variant(self.LCC, "nurse", "正社員_初回", "") is None
+
+    def test_resend_without_bands_is_untouched(self):
+        assert find_age_variant(self.LCC, "nurse", "正社員_再送", "45歳") is None
+
+    def test_other_job_category_ignored(self):
+        assert find_age_variant(self.LCC, "rehab_pt", "正社員_初回", "45歳") is None
+
+    def test_gap_between_bands_falls_back(self):
+        t = _templates(_tpl("正社員_初回_25-29歳"), _tpl("正社員_初回_40歳〜"))
+        assert find_age_variant(t, "nurse", "正社員_初回", "33歳") is None
+
+    def test_job_category_row_beats_generic_row(self):
+        t = _templates(
+            _tpl("正社員_初回_40歳〜", jc=""),
+            _tpl("正社員_初回_40歳〜", jc="nurse"),
+        )
+        v = find_age_variant(t, "nurse", "正社員_初回", "50歳")
+        assert v["job_category"] == "nurse"

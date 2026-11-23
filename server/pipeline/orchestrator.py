@@ -18,7 +18,7 @@ from pipeline.job_category_resolver import (
     resolve_job_category_batch,
 )
 from pipeline.filter import filter_candidate
-from pipeline.template_resolver import resolve_template_type
+from pipeline.template_resolver import find_age_variant, resolve_template_type
 from pipeline.pattern_matcher import should_use_pattern, match_pattern
 from pipeline.prompt_builder import build_system_prompt, build_user_prompt
 from pipeline.ai_generator import generate_personalized_text, GenerationResult
@@ -467,7 +467,18 @@ async def _process_candidate(
     # 4. Get template body (prefer job_category-specific, fallback to generic)
     template_warnings: list[str] = []
     original_template_type = template_type
-    template_data = config["templates"].get(f"{job_category}:{template_type}")
+    # 年代別テンプレ（「正社員_初回_40歳〜」等）があれば年齢で優先する
+    template_data = find_age_variant(
+        config["templates"], job_category, template_type, profile.age
+    )
+    if template_data is not None:
+        template_type = template_data["type"]
+        logger.info(
+            f"[{profile.member_id}] age variant: '{original_template_type}' → "
+            f"'{template_type}' (age={profile.age})"
+        )
+    else:
+        template_data = config["templates"].get(f"{job_category}:{template_type}")
     if template_data is None:
         template_data = config["templates"].get(template_type)
     if template_data is None:

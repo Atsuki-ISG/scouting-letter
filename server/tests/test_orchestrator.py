@@ -279,3 +279,38 @@ class TestGenerateBatch:
         assert results_by_id["001"].generation_path == "pattern"
         assert results_by_id["002"].generation_path == "pattern"
         assert results_by_id["003"].generation_path == "filtered_out"
+
+
+class TestAgeVariantTemplates:
+    @pytest.mark.asyncio
+    async def test_age_band_template_is_used_and_recorded(self, ark_config):
+        """年代別テンプレがあれば年齢で選ばれ、template_type にも帯が残る（効果測定用）。"""
+        ark_config["templates"]["パート_初回_40歳〜"] = {
+            "type": "パート_初回_40歳〜",
+            "body": "40代以上向け\n\n{personalized_text}\n\nアーク訪問看護ステーション",
+        }
+        base = dict(
+            qualifications="看護師",
+            experience_years="10年以上",
+            employment_status="就業中",
+        )
+        older = await generate_single(
+            GenerateRequest(
+                company_id="ark-visiting-nurse",
+                profile=CandidateProfile(member_id="101", age="44歳", **base),
+            ),
+            _mock_data_client(ark_config),
+        )
+        younger = await generate_single(
+            GenerateRequest(
+                company_id="ark-visiting-nurse",
+                profile=CandidateProfile(member_id="102", age="35歳", **base),
+            ),
+            _mock_data_client(ark_config),
+        )
+        assert older.template_type == "パート_初回_40歳〜"
+        assert older.full_scout_text.startswith("40代以上向け")
+        assert younger.template_type == "パート_初回"
+        assert younger.full_scout_text.startswith("はじめまして")
+        # 帯つきでも求人は雇用形態どおりに引ける
+        assert older.job_offer_id == "1550716"

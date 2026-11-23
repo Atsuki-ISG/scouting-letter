@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import re
+
 from models.profile import CandidateProfile
 from models.generation import GenerateOptions
 
@@ -67,3 +71,68 @@ def resolve_template_type(
         send_type = "初回"
 
     return f"{employment}_{send_type}"
+
+
+# 年代別テンプレート: 種別名の末尾に年齢帯を付けた行（例: 「正社員_初回_〜39歳」
+# 「正社員_初回_40歳〜」「正社員_初回_25-29歳」）を置くと、その年齢の候補者には
+# 帯つきの行が優先される。該当する帯が無い・年齢不明のときは従来の種別にそのまま
+# フォールバックするので、帯つき行が無い会社の挙動は変わらない。
+_AGE_BAND_RE = re.compile(r"^(?:(\d+)歳?)?[〜~\-－](?:(\d+)歳?)?$")
+
+
+def parse_age_band(band: str) -> tuple[int | None, int | None] | None:
+    """「〜39歳」→(None, 39)、「40歳〜」→(40, None)、「25-29歳」→(25, 29)。
+
+    上限・下限は両端を含む。年齢帯として読めなければ None。
+    """
+    m = _AGE_BAND_RE.match(band.strip())
+    if not m:
+        return None
+    lo, hi = m.group(1), m.group(2)
+    if lo is None and hi is None:
+        return None
+    return (int(lo) if lo else None, int(hi) if hi else None)
+
+
+def _parse_age(age_str: str | None) -> int | None:
+    if not age_str:
+        return None
+    m = re.search(r"(\d+)", age_str)
+    return int(m.group(1)) if m else None
+
+
+def find_age_variant(
+    templates: dict[str, dict],
+    job_category: str,
+    template_type: str,
+    age_str: str | None,
+) -> dict | None:
+    """template_type に年齢帯を付けた行のうち、候補者の年齢を含むものを返す。
+
+    職種指定のある行を職種なしの汎用行より優先する。年齢不明・該当帯なしは None。
+    """
+    age = _parse_age(age_str)
+    if age is None:
+        return None
+    prefix = f"{template_type}_"
+    candidates: list[tuple[int, dict]] = []
+    for tpl in templates.values():
+        ttype = tpl.get("type", "")
+        if not ttype.startswith(prefix):
+            continue
+        tjc = tpl.get("job_category", "")
+        if tjc and tjc != job_category:
+            continue
+        band = parse_age_band(ttype[len(prefix):])
+        if band is None:
+            continue
+        lo, hi = band
+        if lo is not None and age < lo:
+            continue
+        if hi is not None and age > hi:
+            continue
+        candidates.append((0 if tjc == job_category else 1, tpl))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda c: c[0])
+    return candidates[0][1]
